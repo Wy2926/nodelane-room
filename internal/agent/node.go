@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/platform"
 )
@@ -31,7 +32,7 @@ func (r *Runtime) ConfigureNode(server string, port int) error {
 		return errors.New("UDP port must be 1024–65535")
 	}
 	if server != "" {
-		if err := client.ValidateURL(server); err != nil {
+		if err := device.ValidateURL(server); err != nil {
 			return err
 		}
 	}
@@ -108,7 +109,7 @@ func (r *Runtime) EnrollNode(ctx context.Context, key string) (model.NodeLocalSt
 	i := r.identity
 	if i.ID() == "" {
 		var err error
-		i, err = client.NewIdentity(r.nodeServer, "infrastructure")
+		i, err = device.NewIdentity(r.nodeServer, "infrastructure")
 		if err != nil {
 			return model.NodeLocalStatus{}, err
 		}

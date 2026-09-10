@@ -1,27 +1,29 @@
-# 协议与安全边界
+# 架构、协议与安全边界
 
-## 代码与接口边界
+## 代码组织
 
-管理台为 React/TypeScript/Vite 应用，构建时嵌入 Go 二进制，同源 Cookie、Origin、CSRF 与静态文件白名单继续生效。节点及玩家分别通过 `/v2/node/telemetry`、`/v2/rooms/{room}/telemetry` 上报；管理员 `/v2/admin/telemetry` 查询当前实例最近 60 秒。认证和对端身份/IP 归属使用 PostgreSQL 当前授权，监控样本仅在有界内存中，独立于持久化 SSE 状态。多实例数据不自动合并。
+- 单 Go 模块、四个独立进程。`cmd` 仅负责参数、命令、输入输出和进程装配，业务放内部包；命令增长时在入口包内按职责分文件。
+- `agent` 协调玩家与节点，共用一套授权到期、Nebula、探测和发现生命周期；节点专属逻辑按文件隔离，保留既有锁边界。`control` 保持单包，HTTP 按调用方分文件，事务按领域组织，避免为跨包调用暴露内部授权操作。
+- `localapi` 提供本机协议与客户端，`client` 提供控制面 HTTPS/SSE 客户端。CLI 和 `nodehost` 通过本机协议调用后台；控制面与 `agent` 不互相导入，平台存储不依赖 HTTP 客户端或业务运行时。
+- `model` 仅放共享协议及基本校验，依赖标准库；`device` 放设备身份和持久化配置，仅依赖标准库及 `model`。数据库驱动仅在 `control` 使用；Nebula 运行时仅在 `engine` 使用，`agent`、`pki` 可使用 `nebula/cert`。
+- 导入白名单以 [依赖检查](../scripts/architecture/boundaries_test.go) 为准，禁止内部包导入入口或构建脚本。检查扫描所有平台生产源码，测试可跨包构造客户端；随 CI 全量测试执行，单独运行 `go test ./scripts/architecture`。文件职责只在 [索引](files.md) 维护。
 
-路径和远端地址只查询固定 Nebula hostmap，RTT/丢包只读真实探测。成员字节来自 Windows IP Helper / Linux TUN 网卡计数；Linux 节点另以 AF_PACKET、内核 BPF 过滤本机 UDP 端口，只读取最多 68 字节包头，统计包括中继转发的 UDP 负载字节。此观察器不参与收发决策、不保存报文、不改变授权或 Nebula 依赖；采集丢包后返回未知。节点容器/systemd 需要 `NET_RAW` / `AF_PACKET`。实际远端地址可能因 NAT 目标而不同；GeoIP 只读本地 MMDB，不向第三方发送 IP。
+## HTTP 与本机接口
 
-`internal/control` 保持单个 Go 包：HTTP 按调用方分文件，事务逻辑按房间、节点、身份及存储职责组织，避免为跨包调用暴露内部授权操作。目录入口见 [文件索引](files.md)。
+`registerPlayer`、`registerNode`、`registerAdmin` 显式绑定具名处理函数，不按 URL 二次分派。共用调用方认证与幂等包装，保留限速、管理写失败审计及事务内会话复查；授权复查、状态修改、幂等和事件写入保持在同一业务事务。
 
-各调用方在 `registerPlayer`、`registerNode`、`registerAdmin` 中显式绑定路由与具名处理函数；处理函数不再按 URL 二次分发。玩家和管理员共用各自的认证与幂等包装，各接口保留原有限速，管理员写操作保留失败审计和事务内会话复查。房间操作、管理会话、节点管理与事件流按职责分文件；新增接口同步对应处理函数、测试和 OpenAPI。
+| 调用方 | 接口 | 认证 |
+|---|---|---|
+| 玩家服务 | `/v2/auth/*`、`/v2/rooms/*` | player Bearer 会话 |
+| 实例初始化 | `/v2/admin/setup` | 同源 Origin、本实例 10 分钟初始化码；接入另验管理员密码 |
+| 管理页面 | `/v2/admin/*` | 管理员 Cookie；写操作校验 Origin 和 CSRF |
+| 基础设施节点 | `/v2/node/*` | 登记密钥与挑战；登记后使用 node Bearer 会话 |
+| 浏览器与安装器 | `/{实例私有入口}`、其下 `/assets/*`、`/install/{file}` | 页面入口随机持久化或显式配置，资源按白名单；根路径与 `/admin` 为 404 |
+| 运维探针 | `/healthz`、`/readyz`、`/metrics` | 反代限制指标外部访问 |
 
-| 调用方 | 接口 | 实现 | 认证 |
-|---|---|---|---|
-| 玩家 CLI/服务 | `/v2/auth/*`、`/v2/rooms/*` | `player_http.go`、`player_rooms_http.go`、`player_events_http.go` | player Bearer 会话 |
-| 实例初始化 | `/v2/admin/setup` | `setup.go`、`deployment.go` | 同源 Origin 与本实例 10 分钟初始化码；接入另验管理员密码 |
-| 管理页面 | `/v2/admin/*` | `admin_http.go` 注册，`admin_{session,nodes,rooms,events}_http.go` 处理 | 管理员 Cookie；写操作校验 Origin 和 CSRF |
-| 基础设施节点 | `/v2/node/*` | `node_http.go` | 登记密钥与挑战；登记后使用 node Bearer 会话 |
-| 浏览器与安装器 | `/{实例私有入口}`、该入口下 `/assets/*`、`/install/{file}` | `admin_web.go`、`install_http.go` | 页面入口随机持久化或显式配置，资源按白名单；根路径与 `/admin` 为 404 |
-| 运维探针 | `/healthz`、`/readyz`、`/metrics` | `http.go` | 指标由反代限制外部访问 |
+React 管理台构建后嵌入 Go，同源 Cookie、Origin、CSRF 与静态资源白名单生效。三类身份不能互换，房间操作只注册支持的动作。管理房间详情在独立一致性快照中读取房间、成员和端口，不借用房主身份，不返回节点或撤销列表；玩家与节点仍使用各自授权的数据面快照。
 
-管理页面资源单独放在 `internal/control/adminweb/`，玩家入口为 `cmd/nodelane/`。三类身份不能互换；房间操作只注册支持的动作。管理房间详情在独立一致性快照中读取房间、成员和端口，不借用房主身份，不返回节点或撤销列表。玩家与节点仍使用各自授权的数据面快照。
-
-本机 `/rpc` 由 `internal/agent/local.go` 承载，经 Named Pipe/Unix socket 限制访问；`node_local.go` 分派节点命令。节点存活、就绪和指标由 `health.go` 在独立监听器提供，不属于公网控制 API。完整契约见 [OpenAPI](openapi.yaml)。
+本机 `/rpc` 经 Named Pipe/Unix socket 限制访问；节点健康与指标使用独立监听器，不属于公网控制 API。字段与响应以 [OpenAPI](openapi.yaml) 为准。
 
 ## 控制实例与配置
 
@@ -33,7 +35,7 @@
 
 ## 分工
 
-`nodelane` 的普通用户命令经本机 HTTP-over-Named-Pipe 请求 SYSTEM 服务。管道 DACL 只允许安装时指定 SID、SYSTEM 和管理员。服务写入的身份文件使用 machine DPAPI，加上仅 SYSTEM/管理员可读的目录 DACL；machine DPAPI 本身不替代 ACL。身份 Ed25519 私钥持久保存，隧道 X25519 私钥在每次网络生命周期生成并仅保留在服务内存。
+`nlroom-cli` 的普通用户命令经本机 HTTP-over-Named-Pipe 请求 SYSTEM 运行的 `nlroom-service`。未来 `nlroom` GUI 同样通过本机接口调用服务；进程规划与 Tauri 选型见 [客户端设计](client.md)。管道 DACL 只允许安装时指定 SID、SYSTEM 和管理员。服务写入的身份文件使用 machine DPAPI，加上仅 SYSTEM/管理员可读的目录 DACL；machine DPAPI 本身不替代 ACL。身份 Ed25519 私钥持久保存，隧道 X25519 私钥在每次网络生命周期生成并仅保留在服务内存。
 
 Windows 状态目录只能位于 ProgramData 的直接子目录，使用最终 ACL/管理员所有权原子创建；拒绝普通用户预创建的目录、重解析点和用户可控制的父目录。安装文件放在管理员拥有的 Program Files 目录。不能通过把状态移到用户可写路径来绕过服务权限错误。
 
@@ -84,3 +86,15 @@ SSE 首先重放游标之后最多 256 个持久 `change` 通知，再发送完�
 管理 SSE 每 5 秒发送完整当前快照，id 为持久管理事件游标。任意 Last-Event-ID 都能恢复当前状态；快照附最近 200 条审计、200 条操作和 500 个最近房间（节点不截断）。流最长 5 分钟并每轮验证会话；它与房间 SSE 的 change 重放协议不同。系统信息展示部署身份、只读地址池和 CA 到期日，剩余 30/7/1 天均在页面提醒范围内。
 
 公网连通证据来自另一已登记节点的 Nebula 路径与探测回复，记录来源、目标入口、远端地址和时间。只有 direct 路径且远端 IP/端口与登记域名当前解析相符才显示公网 UDP 已验证；relay 成功仅证明隧道可达。最新探测失败不以历史平均 RTT 冒充成功。首次部署没有外部观察者时显示尚未验证，不阻止首个节点启动。
+
+## 监控
+
+节点和玩家每 5 秒分别向 `/v2/node/telemetry`、`/v2/rooms/{room}/telemetry` 上报，管理台每 5 秒读取 `/v2/admin/telemetry`。控制实例只保留最近 60 秒有界内存样本，15 秒无更新视为陈旧；重启清空，多实例不合并，不写入 PostgreSQL、审计、幂等或 SSE 事件。认证及对端身份/IP 归属校验使用 PostgreSQL 当前授权，采样不参与授权、地址分配或撤销决策。
+
+路径和远端地址只查询固定 Nebula hostmap，RTT/丢包来自最近 60 秒实际探测。成员字节来自 Windows IP Helper / Linux TUN 网卡计数，包含游戏和诊断；计数重置或采样断档不推算速率。房间连接按成员对去重，不含基础设施隧道；流量为成员接口之和，发送计上传、接收计下载，另显示上报覆盖人数。
+
+Linux 节点用 AF_PACKET 和内核 BPF 过滤本机 Nebula UDP 端口，最多读取 68 字节包头，统计握手、诊断及中继转发的 UDP 负载字节。观察器不参与收发决策、不保存报文；缺少权限或采集丢包时流量返回未知。节点展示实际隧道数、速率、窗口流量和逐对端链路。
+
+出口必须来自真实观察，附观察方；NAT 对不同目标可使用不同端口，不能用 HTTP 来源、配置入口、中继地址或历史结果冒充当前出口。GeoIP 只查询本地 MMDB，不向第三方发送成员 IP；采集权限与 GeoIP 配置见 [部署指南](deployment.md#监控与-ip-归属地)。
+
+单次最多上报 128 个对端，超出时轮转，总连接数仍来自完整 hostmap。每实例最多接纳 1024 个上报身份，内存按保守估计限制为 64 MiB，满载返回 429，不挤掉已接收窗口。

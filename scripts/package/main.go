@@ -53,7 +53,7 @@ func run() error {
 		}
 		h.Name = filepath.ToSlash(rel)
 		h.Mode = 0644
-		if d.IsDir() || d.Name() == "nodelane" || d.Name() == "nlroom-node" || d.Name() == "nodelane-server" {
+		if d.IsDir() || d.Name() == "nlroom-cli" || d.Name() == "nlroom-service" || d.Name() == "nlroom-node" || d.Name() == "nodelane-server" {
 			h.Mode = 0755
 		}
 		if e = tw.WriteHeader(h); e != nil {

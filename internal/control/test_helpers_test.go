@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
 )
@@ -60,7 +61,7 @@ func apiServer(t *testing.T, s *Store, ca *pki.Authority) *httptest.Server {
 }
 func user(t *testing.T, server *httptest.Server, name string) *client.API {
 	t.Helper()
-	i, err := client.NewIdentity(server.URL, name)
+	i, err := device.NewIdentity(server.URL, name)
 	must(t, err)
 	a := client.NewAPI(i)
 	a.HTTP = server.Client()

@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nodelane/nodelane-room/internal/agent"
-	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
@@ -49,7 +49,7 @@ func ReadConfig(path string) (Config, error) {
 	}
 	err = json.Unmarshal(b, &c)
 	if err == nil {
-		err = client.ValidateURL(c.Server)
+		err = device.ValidateURL(c.Server)
 	}
 	return c, err
 }
@@ -247,7 +247,7 @@ func Update(ctx context.Context, configPath, stateDir, version string) error {
 		return errors.New("release binary version check failed")
 	}
 	var previous model.NodeLocalStatus
-	_ = agent.LocalCall(ctx, stateDir, agent.Request{Action: "status"}, &previous)
+	_ = localapi.Call(ctx, stateDir, localapi.Request{Action: "status"}, &previous)
 	if err = systemctl(ctx, "stop", "nlroom-node.service"); err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func Update(ctx context.Context, configPath, stateDir, version string) error {
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		var s model.NodeLocalStatus
-		e := agent.LocalCall(ctx, stateDir, agent.Request{Action: "status"}, &s)
+		e := localapi.Call(ctx, stateDir, localapi.Request{Action: "status"}, &s)
 		if e == nil && s.Version == version && (previous.Engine != "running" || s.Engine == "running") {
 			fmt.Fprintln(os.Stdout, "Node updated to", version)
 			return nil

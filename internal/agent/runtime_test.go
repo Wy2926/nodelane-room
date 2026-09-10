@@ -2,12 +2,6 @@ package agent
 
 import (
 	"context"
-	"github.com/nodelane/nodelane-room/internal/client"
-	"github.com/nodelane/nodelane-room/internal/engine"
-	"github.com/nodelane/nodelane-room/internal/model"
-	"github.com/nodelane/nodelane-room/internal/pki"
-	"github.com/slackhq/nebula/cert"
-	"github.com/slackhq/nebula/overlay"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,6 +9,14 @@ import (
 	"net/netip"
 	"testing"
 	"time"
+
+	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
+	"github.com/nodelane/nodelane-room/internal/engine"
+	"github.com/nodelane/nodelane-room/internal/model"
+	"github.com/nodelane/nodelane-room/internal/pki"
+	"github.com/slackhq/nebula/cert"
+	"github.com/slackhq/nebula/overlay"
 )
 
 func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
@@ -38,7 +40,7 @@ func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.engine = engine.NewWithDeviceFactory(slog.New(slog.NewTextHandler(io.Discard, nil)), overlay.NewUserDeviceFromConfig)
-	i, err := client.NewIdentity(server.URL, "alice")
+	i, err := device.NewIdentity(server.URL, "alice")
 	if err != nil {
 		t.Fatal(err)
 	}

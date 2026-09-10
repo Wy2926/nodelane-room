@@ -59,9 +59,9 @@ def main():
         if name.endswith(".zip"):
             with zipfile.ZipFile(archive) as bundle:
                 files = {item.filename: bundle.read(item) for item in bundle.infolist() if not item.is_dir()}
-            required = ["nodelane.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLane.cmd",
+            required = ["nlroom-cli.exe", "nlroom-service.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLaneRoom.cmd",
                         f"dist/windows/wintun/bin/{arch}/wintun.dll", "dist/windows/wintun/LICENSE.txt"]
-            for binary in ("nodelane.exe", required[-2]):
+            for binary in ("nlroom-cli.exe", "nlroom-service.exe", required[-2]):
                 data = files[binary]
                 offset = struct.unpack_from("<I", data, 0x3C)[0]
                 require(data[offset:offset + 4] == b"PE\0\0", f"invalid PE: {binary}")
@@ -77,12 +77,12 @@ def main():
                     if item.isfile():
                         relative = item.name.removeprefix(prefix)
                         files[relative] = bundle.extractfile(item).read()
-                        if relative in ("nodelane", "nlroom-node", "nodelane-server"):
+                        if relative in ("nlroom-cli", "nlroom-service", "nlroom-node", "nodelane-server"):
                             require(item.mode & 0o111 == 0o111, f"missing executable mode: {relative}")
-            required = ["nodelane", "nlroom-node", "nodelane-server", "Dockerfile", ".dockerignore",
+            required = ["nlroom-cli", "nlroom-service", "nlroom-node", "nodelane-server", "Dockerfile", ".dockerignore",
                         "deploy/compose.yaml", "deploy/compose.host.yaml", "deploy/compose.network.yaml", "deploy/compose.node.yaml", "deploy/Caddyfile",
                         "deploy/.env.example", "deploy/.env.host.example", "deploy/.env.node.example", "deploy/nlroom-node.service"]
-            for binary in required[:3]:
+            for binary in required[:4]:
                 data = files[binary]
                 require(data[:4] == b"\x7fELF" and data[4:6] == b"\x02\x01", f"invalid ELF: {binary}")
                 require(struct.unpack_from("<H", data, 18)[0] == {"amd64": 62, "arm64": 183}[arch], f"wrong ELF architecture: {binary}")

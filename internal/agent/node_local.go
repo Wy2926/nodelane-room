@@ -9,17 +9,14 @@ import (
 	"os"
 	"strings"
 	"sync"
-)
 
-type LogEntry struct {
-	Sequence uint64 `json:"sequence"`
-	Line     string `json:"line"`
-}
+	"github.com/nodelane/nodelane-room/internal/localapi"
+)
 
 type LogBuffer struct {
 	sequence uint64
 	mu       sync.Mutex
-	lines    []LogEntry
+	lines    []localapi.LogEntry
 	partial  string
 }
 
@@ -37,17 +34,17 @@ func (b *LogBuffer) Write(p []byte) (int, error) {
 			line = line[:8192]
 		}
 		b.sequence++
-		b.lines = append(b.lines, LogEntry{Sequence: b.sequence, Line: line})
+		b.lines = append(b.lines, localapi.LogEntry{Sequence: b.sequence, Line: line})
 	}
 	if len(b.lines) > 1000 {
-		b.lines = append([]LogEntry(nil), b.lines[len(b.lines)-1000:]...)
+		b.lines = append([]localapi.LogEntry(nil), b.lines[len(b.lines)-1000:]...)
 	}
 	return len(p), nil
 }
-func (b *LogBuffer) Lines() []LogEntry {
+func (b *LogBuffer) Lines() []localapi.LogEntry {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return append([]LogEntry{}, b.lines...)
+	return append([]localapi.LogEntry{}, b.lines...)
 }
 func NodeLogger() (*slog.Logger, *LogBuffer) {
 	buffer := &LogBuffer{}
@@ -66,7 +63,7 @@ func NodeLogger() (*slog.Logger, *LogBuffer) {
 	return slog.New(handler), buffer
 }
 func (r *Runtime) SetLogBuffer(b *LogBuffer) { r.logs = b }
-func (r *Runtime) nodeLocal(ctx context.Context, in Request) (any, error) {
+func (r *Runtime) nodeLocal(ctx context.Context, in localapi.Request) (any, error) {
 	switch in.Action {
 	case "status", "config":
 		return r.NodeStatus(), nil
@@ -94,7 +91,7 @@ func (r *Runtime) nodeLocal(ctx context.Context, in Request) (any, error) {
 		return r.nodeDoctor(ctx), nil
 	case "logs":
 		if r.logs == nil {
-			return []LogEntry{}, nil
+			return []localapi.LogEntry{}, nil
 		}
 		return r.logs.Lines(), nil
 	default:

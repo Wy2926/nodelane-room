@@ -228,7 +228,7 @@ class TestRun:
         self.passed("independent registration, create/join and invitation rotation")
         for service in ("alice", "bob"):
             self.eventually(service + " online", lambda: self.connected(service))
-            cli = json.loads(self.execute(service, "nodelane", "--state-dir", "/state/client", "status", "--json").stdout)
+            cli = json.loads(self.execute(service, "nlroom-cli", "--state-dir", "/state/client", "status", "--json").stdout)
             self.require(cli["engine"] == "running" and cli["room"]["id"] == room, "CLI status differs from joined room")
         denial = self.rpc("bob", "create", body={"name": "Second active room", "game": "custom"}, denied=True)
         self.require("control API 409" in denial["error"], "single-room restriction rejected for unexpected reason")

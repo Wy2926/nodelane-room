@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
 )
 
 // SavePrivateFile publishes complete, protected data. Exclusive publication uses
@@ -57,21 +57,21 @@ func LoadPrivateFile(path string) ([]byte, error) {
 	return unprotect(b)
 }
 
-func SaveIdentity(dir string, i client.Identity) error {
+func SaveIdentity(dir string, i device.Identity) error {
 	b, err := json.Marshal(i)
 	if err != nil {
 		return err
 	}
 	return SavePrivateFile(filepath.Join(dir, "identity.bin"), b, true)
 }
-func LoadIdentity(dir string) (client.Identity, error) {
-	var i client.Identity
+func LoadIdentity(dir string) (device.Identity, error) {
+	var i device.Identity
 	b, err := LoadPrivateFile(filepath.Join(dir, "identity.bin"))
 	if err != nil {
 		return i, err
 	}
 	err = json.Unmarshal(b, &i)
-	if err == nil && (i.ID() == "" || client.ValidateURL(i.Server) != nil) {
+	if err == nil && (i.ID() == "" || device.ValidateURL(i.Server) != nil) {
 		err = errors.New("invalid persisted device identity")
 	}
 	return i, err

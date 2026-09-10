@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
 )
@@ -52,7 +52,7 @@ func (in *SetupRequest) normalize() error {
 		in.PublicURL = "https://" + in.PublicURL
 	}
 	in.PublicURL = strings.TrimRight(in.PublicURL, "/")
-	if client.ValidateURL(in.PublicURL) != nil {
+	if device.ValidateURL(in.PublicURL) != nil {
 		return fmt.Errorf("%w: 公网地址须为 HTTPS 域名或 origin，不含路径", ErrInvalid)
 	}
 	u, err = url.Parse(in.PublicURL)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
 )
@@ -29,7 +30,7 @@ func testNode(t *testing.T, s *Store) (model.Node, string) {
 }
 func nodeAPI(t *testing.T, server *httptest.Server) *client.API {
 	t.Helper()
-	i, err := client.NewIdentity(server.URL, "node")
+	i, err := device.NewIdentity(server.URL, "node")
 	must(t, err)
 	i.Node = true
 	a := client.NewAPI(i)
@@ -174,7 +175,7 @@ func TestChallengeScopeCannotBeSwapped(t *testing.T) {
 	s, _ := database(t)
 	ctx := context.Background()
 	_, key := testNode(t, s)
-	i, err := client.NewIdentity("https://example.com", "node")
+	i, err := device.NewIdentity("https://example.com", "node")
 	must(t, err)
 	c, err := s.challenge(ctx, model.ChallengeRequest{DeviceID: i.ID(), Name: i.Name, PublicKey: ed25519.PrivateKey(i.PrivateKey).Public().(ed25519.PublicKey)}, "enrollment", key)
 	must(t, err)
@@ -198,12 +199,12 @@ func TestNodeEnrollmentDrainAndInfrastructureLease(t *testing.T) {
 	}))
 	token, err := s.IssueEnrollmentKey(ctx, n.ID, "test")
 	must(t, err)
-	i, err := client.NewIdentity(server.URL, "node")
+	i, err := device.NewIdentity(server.URL, "node")
 	must(t, err)
 	i.Node = true
 	node := client.NewAPI(i)
 	must(t, node.Enroll(ctx, token))
-	otherID, err := client.NewIdentity(server.URL, "other")
+	otherID, err := device.NewIdentity(server.URL, "other")
 	must(t, err)
 	otherID.Node = true
 	statusError(t, client.NewAPI(otherID).Enroll(ctx, token), 403)

@@ -16,7 +16,8 @@ COPY scripts ./scripts
 COPY docs ./docs
 
 FROM source AS build
-RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/nodelane ./cmd/nodelane \
+RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/nlroom-cli ./cmd/nlroom-cli \
+ && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/nlroom-service ./cmd/nlroom-service \
  && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/nlroom-node ./cmd/nlroom-node \
  && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/nodelane-server ./cmd/nodelane-server
 

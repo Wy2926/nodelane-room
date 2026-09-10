@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/agent"
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/nodehost"
 	"github.com/spf13/cobra"
@@ -46,7 +47,7 @@ func command() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		err = agent.LocalCall(cmd.Context(), dir, agent.Request{Action: action, Body: b}, out)
+		err = localapi.Call(cmd.Context(), dir, localapi.Request{Action: action, Body: b}, out)
 		if err != nil && strings.Contains(err.Error(), "cannot reach NodeLane service") {
 			return errors.New("无法连接节点管理进程；原生部署运行 nlroom-node service start，容器部署检查 Compose/1Panel 运行状态和身份目录挂载")
 		}
@@ -226,7 +227,7 @@ func command() *cobra.Command {
 	logs := &cobra.Command{Use: "logs", Short: "Show bounded recent node logs", RunE: func(cmd *cobra.Command, _ []string) error {
 		var last uint64
 		for {
-			var lines []agent.LogEntry
+			var lines []localapi.LogEntry
 			if err := call(cmd, "logs", nil, &lines); err != nil {
 				return err
 			}

@@ -1,6 +1,8 @@
 # NodeLane Room V2
 
-Go 游戏组网产品，版本 **0.2.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Windows CLI/服务。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
+**NodeLane**（`nodelane.net`）旗下游戏组网子产品，版本 **0.2.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
+
+当前客户端为 AI、脚本和开发调试提供 `nlroom-cli`，网络后台为独立的 `nlroom-service`。未来玩家 GUI 预留进程名 `nlroom`，选用 Tauri 2 + React + TypeScript，首期支持 Windows/Linux；GUI 尚未实现。命名、旧版本迁移及后续平台边界见 [客户端设计](docs/client.md)。
 
 V2 使用全新数据库、CA 和节点/玩家身份。初始化仅接受空数据库 schema 或 V2 schema，遇到 V1/其他版本退出，不清库、不自动转换。0.2.0 控制面与节点镜像已发布至 `docker.nodelane.net`，支持 `linux/amd64`、`linux/arm64`；摘要见 [镜像清单](deploy/IMAGES.txt)。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
@@ -33,7 +35,7 @@ docker compose -f compose.node.yaml exec node nlroom-node enroll
 
 ## Windows 客户端
 
-Windows 解压 `dist/0.2.0/` 中对应架构的 ZIP（Intel/AMD 电脑选 `windows-amd64`，Windows ARM 电脑选 `windows-arm64`），在玩家账户下双击 `Install.cmd`，接受 UAC 提权。安装入口会在提权前取得玩家 SID；安装脚本检查架构、必需文件和 WireGuard 签名的 Wintun，并等待服务及本地管道就绪。安装后双击 `NodeLane.cmd` 打开已配置临时 PATH 的普通 PowerShell。
+Windows 解压当前源码构建的对应架构 ZIP（Intel/AMD 电脑选 `windows-amd64`，Windows ARM 电脑选 `windows-arm64`），在玩家账户下双击 `Install.cmd`，接受 UAC 提权。安装入口会在提权前取得玩家 SID；安装脚本检查架构、必需文件和 WireGuard 签名的 Wintun，并等待服务及本地管道就绪。安装后双击 `NodeLaneRoom.cmd` 打开已配置临时 PATH 的普通 PowerShell。
 
 也可先在玩家自己的终端执行 `whoami /user` 获取 SID，再在管理员 PowerShell 手动安装：
 
@@ -41,12 +43,12 @@ Windows 解压 `dist/0.2.0/` 中对应架构的 ZIP（Intel/AMD 电脑选 `windo
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -OwnerSid 'S-1-5-21-...'
 ```
 
-使用同一账户 UAC 提权安装时可省略 `-OwnerSid`。安装到 `%ProgramFiles%\NodeLaneRoom`，后台以 SYSTEM 运行；状态在 `%ProgramData%\NodeLaneRoom`，只有 SYSTEM/管理员能读。玩家通过授权 SID 的 Named Pipe 操作，无需继续提权。
+使用同一账户 UAC 提权安装时可省略 `-OwnerSid`。安装到 `%ProgramFiles%\NodeLaneRoom`，后台 `nlroom-service.exe` 以 SYSTEM 运行，服务注册名仍为 `NodeLaneRoom`；状态在 `%ProgramData%\NodeLaneRoom`，只有 SYSTEM/管理员能读。玩家通过授权 SID 的 Named Pipe 操作，无需继续提权。
 
 普通终端执行（可把安装目录加入自己的 PATH）：
 
 ```powershell
-$nl = "$env:ProgramFiles\NodeLaneRoom\nodelane.exe"
+$nl = "$env:ProgramFiles\NodeLaneRoom\nlroom-cli.exe"
 & $nl init --server https://room.example.com --name 玩家甲
 & $nl room create --name 周末世界 --game minecraft-java
 # 将输出的 invitation.code 发给朋友；朋友在自己的设备初始化后执行：
@@ -71,13 +73,27 @@ $nl = "$env:ProgramFiles\NodeLaneRoom\nodelane.exe"
 | `room port tcp/25565`、`room port udp/27015` | 增加本机游戏端口，持续登记到离房为止；其他游戏建 `--game custom` 房间 |
 | `status --watch`、`peers`、`ping <成员>` | 分别显示控制状态、Nebula 路径与真实探测结果；支持 `--json` |
 | `doctor` | 查看 Wintun 文件、网卡、凭据、控制状态和探测结果 |
-| `service install/uninstall` | 注册或删除 Windows 服务，安装需要管理员 |
+| `nlroom-service service install/uninstall` | 注册或删除 Windows 服务，需要管理员 |
 
 每设备同时一房，每房最多 32 人，有效期 24 小时；房主离线不关闭房间。玩家设备身份绑定本机私钥；管理台使用独立的管理员账号密码。默认地址池 `10.203.0.0/16`，页面初始化时可改，运行中不能直接换池。
 
 证书最多 10 分钟，剩余约 7 分钟开始续签。控制失联期间不接受新操作，已有链路最多保留至当前凭据到期；实际可用时间也取决于对端和 relay 的剩余凭据。端口权限变化会受控重启 Nebula，短暂重连，这是规避固定上游版本防火墙热更新竞争的措施。
 
-卸载前先 `room leave`，再在管理员 PowerShell 执行发布包中的 `uninstall.ps1`。默认保留设备身份；`-PurgeState` 同时清除身份。升级前卸载服务并保留身份，再装新包。后台退出会关闭隧道、本机代理和 WFP 动态会话，并释放 Nebula TUN。
+卸载前先 `room leave`，再在管理员 PowerShell 执行发布包中的 `uninstall.ps1`。默认保留设备身份；`-PurgeState` 同时清除身份。升级前使用**旧安装包的卸载脚本**卸载服务并保留身份，再装新包；自动化将 `nodelane` 玩家命令改为 `nlroom-cli`，后台/服务命令改用 `nlroom-service`。后台退出会关闭隧道、本机代理和 WFP 动态会话，并释放 Nebula TUN。
+
+## Linux 客户端开发
+
+Linux 归档包含 `nlroom-cli` 和 `nlroom-service`。当前用于开发和隔离回归，后台需要 TUN 权限；默认 socket 为 `0600`，CLI 和后台必须使用同一系统用户及同一 `--state-dir`。桌面普通用户控制 root 服务的安装、socket/UID 授权方案尚待实现，见 [客户端设计](docs/client.md)。
+
+在具有 TUN 权限的隔离开发环境，两个终端使用相同用户执行：
+
+```sh
+# 终端一，前台运行后台服务
+nlroom-service --state-dir /state/client daemon
+# 终端二
+nlroom-cli --state-dir /state/client init --server https://room.example.com --name 玩家甲
+nlroom-cli --state-dir /state/client status --json
+```
 
 ## 开发与构建
 
@@ -95,6 +111,8 @@ NODELANE_TEST_DATABASE_URL='postgres://user:password@localhost/nodelane_test?ssl
 bash scripts/build.sh
 ```
 
+Go 包边界与依赖检查见 [架构说明](docs/architecture.md#代码组织)。
+
 Go 编译前须构建前端，`go:embed` 嵌入 `internal/control/adminweb/dist/`；构建目录与 `node_modules` 不入库。发布脚本、源码 Dockerfile 与 CI 已自动执行此步骤。`npm --prefix internal/control/adminweb run dev` 启动 Vite；完整登录与初始化验收使用 Go 提供的随机管理入口，以满足已配置的同源 Origin。
 
 Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
@@ -105,7 +123,7 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 .\scripts\build.ps1 -Targets 'linux/amd64','linux/arm64'
 ```
 
-产物在 `dist/0.2.0/`，包含 Windows ZIP 安装包、Linux tar.gz、SHA256SUMS、Wintun 和第三方许可。Windows 包只包含客户端及安装入口；Linux 包带控制面和节点二进制、运行镜像 Dockerfile、控制面与数据节点的 Compose 编排，解压后无需源码或 Go 即可构建部署。发布包不包含 README、AGENTS、docs 或驱动使用说明；操作步骤见源码中的 [部署指南](docs/deployment.md)，法律声明和许可证保留。可执行文件尚未由 NodeLane 代码签名证书签名。构建脚本不安装服务、不创建云资源。
+产物默认在 `dist/0.2.0/`，包含 Windows ZIP 安装包、Linux tar.gz、SHA256SUMS、Wintun 和第三方许可。Windows 包包含 `nlroom-cli.exe`、`nlroom-service.exe` 及安装入口；Linux 包包含相同两项客户端程序、控制面和节点二进制、运行镜像 Dockerfile、控制面与数据节点的 Compose 编排，解压后无需源码或 Go 即可构建部署。发布包不包含 README、AGENTS、docs 或驱动使用说明；操作步骤见源码中的 [部署指南](docs/deployment.md)，法律声明和许可证保留。可执行文件尚未由 NodeLane 代码签名证书签名。构建脚本不安装服务、不创建云资源。
 
 构建后用 `python scripts/check-release.py dist/0.2.0` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
 
@@ -115,14 +133,7 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 ## 实时网络监控
 
-管理台每 5 秒读取节点、房间及成员监控。采样保留最近 60 秒，15 秒无更新视为陈旧；延迟/丢包来自最近 60 秒内的实际 UDP 探测。监控只存当前控制实例内存，重启清空，不写入 PostgreSQL、审计或幂等记录；多实例分别收集各自收到的样本，完整窗口需将客户端与管理台指向同一个实例。
-
-- 节点展示已建立隧道数、上传/下载速率、窗口流量、逐对端 RTT/丢包及实际路径。Linux 节点以只读包头观察统计本机 Nebula UDP 端口，包含握手、诊断与中继转发，需要 `CAP_NET_RAW`；模板已加入，旧节点须更新容器能力或 systemd 单元。缺少权限或采集丢包时流量显示未知。
-- 成员流量来自系统隧道网卡计数，包含游戏与诊断；计数器重置、重启或采样断档时不推算速率。房间连接按成员对去重，不含基础设施隧道；房间流量为成员接口之和，发送计上传、接收计下载，同时显示上报覆盖人数。
-- 成员详情列出真实观察到的出口 IP:端口、观察方、国家/地区和逐链路 P2P/中继。NAT 对不同目标可使用多个端口，无观察时显示未知，不用 HTTP 来源、配置入口或中继地址冒充成员出口。
-- 国家/省州默认自动下载 DB-IP City Lite 并在本地查询，无需手动下载。每 24 小时检查月度更新，失败保留旧库并每小时重试；首次就绪前、私网或未收录地址显示未知。支持 `--geoip-url` / `NODELANE_GEOIP_URL` 配置 HTTPS `.mmdb.gz` 镜像；显式 `--geoip-db` / `NODELANE_GEOIP_DB` 使用本地库并停用自动下载。见 [部署指南](docs/deployment.md)。
-
-单次最多上报 128 个对端，节点超过时轮转；总连接数仍来自完整 hostmap。每实例最多接纳 1024 个上报身份，内存按保守估计限制为 64 MiB，满载返回 429，不挤掉已接收窗口。监控是认证设备的测量报告，不参与房间授权、地址分配或撤销决策。
+管理台展示节点、房间和成员的实际链路、RTT/丢包、流量趋势及观察到的出口和地区；无有效观测时显示未知。采样与统计口径见 [架构说明](docs/architecture.md#监控)，Linux 采集权限、GeoIP 自动下载及本地库配置见 [部署指南](docs/deployment.md#监控与-ip-归属地)。
 
 ## Docker 双客户端回归
 
@@ -134,6 +145,6 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 每次运行创建唯一 Compose 项目。临时密钥、身份和数据库保存在容器临时存储中，只有 HTTPS 公钥证书共享给客户端；邀请码和登记令牌不写入日志。退出时清理该次容器、网络、证书卷和带本次唯一标签的测试镜像，检查结果与构建/验证日志保存在 `.local/nodelane-test-*/`。源码配置位于 `deploy/test/`，不会放入发布包。
 
-部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/0.2.0/nodelane-room-0.2.0-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
+部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/0.2.0/nodelane-room-0.2.0-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。`--extended` 额外验证真实十分钟证书续签与断控到期。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
 
 源码入口见 [文件索引](docs/files.md)，调用方与权限分工见 [架构说明](docs/architecture.md)，接口见 [OpenAPI](docs/openapi.yaml)。V2 不包含玩家 GUI、多管理员角色、TOTP、云资源自动创建或其他游戏的自动发现。

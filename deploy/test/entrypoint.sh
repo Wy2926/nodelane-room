@@ -22,7 +22,7 @@ case "$1" in
     ip route replace 224.0.0.0/4 dev eth0
     python3 /opt/test/peer.py serve &
     peer_pid=$!
-    nodelane --state-dir /state/client daemon &
+    nlroom-service --state-dir /state/client daemon &
     agent_pid=$!
     cleanup() {
       kill "$agent_pid" "$peer_pid" 2>/dev/null || true

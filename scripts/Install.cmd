@@ -5,5 +5,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo Installation complete. Open NodeLane.cmd to use the client.
+echo Installation complete. Open NodeLaneRoom.cmd to use the client CLI.
 pause

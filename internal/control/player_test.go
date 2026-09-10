@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/client"
+	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
 )
@@ -125,7 +126,7 @@ func TestKickRevokesAllRotatedCertificatesAndInvitation(t *testing.T) {
 func TestAuthenticationReplayAndIdentityBinding(t *testing.T) {
 	s, _ := database(t)
 	ctx := context.Background()
-	i, err := client.NewIdentity("http://127.0.0.1", "alice")
+	i, err := device.NewIdentity("http://127.0.0.1", "alice")
 	must(t, err)
 	pub := ed25519.PrivateKey(i.PrivateKey).Public().(ed25519.PublicKey)
 	in := model.ChallengeRequest{DeviceID: i.ID(), Name: i.Name, PublicKey: pub}

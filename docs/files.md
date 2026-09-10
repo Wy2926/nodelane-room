@@ -1,9 +1,10 @@
 # 文件索引
 
-相对项目根目录，缩进表示层级；每行名称后为职责。列出维护文件，产物与缓存只标目录，不展开内容。
+按任务检索路径或职责，无需通读。相对项目根目录，缩进表示层级；维护文件每项一行，产物与缓存不展开。
 
 ```text
 .dockerignore 镜像构建排除项
+.gitattributes Linux 脚本与生成契约的固定 LF 换行
 .github/ CI 配置
   workflows/ 自动检查流程
     check.yml Windows 检查、Linux 数据库与 race 测试
@@ -14,8 +15,10 @@ AGENTS.md 开发约束与索引维护规则
 cmd/ 可执行程序入口
   nlroom-node/ Linux lighthouse/relay 命令
     main.go 登记、运行、诊断与原生安装管理
-  nodelane/ Windows CLI 与后台服务
-    main.go 玩家命令、输出与服务入口
+  nlroom-cli/ Windows/Linux 开发与诊断 CLI
+    main.go 玩家命令、机器可读输出与本机服务调用
+  nlroom-service/ Windows/Linux 玩家网络后台
+    main.go 后台生命周期与 Windows 服务管理入口
   nodelane-server/ Linux 控制面命令
     main.go 控制实例启动、隐藏入口查询、初始化码与管理员恢复
 deploy/ 部署模板与测试环境
@@ -44,24 +47,28 @@ deploy/ 部署模板与测试环境
 dist/ 构建、安装包与镜像发布产物
 Dockerfile 从源码构建控制面与节点镜像
 docs/ 协议、部署与验收说明
-  architecture.md 代码和接口分工、协议与安全边界
+  architecture.md 包依赖、接口分工、监控口径与协议安全边界
+  client.md 品牌与进程命名、GUI 技术选型和跨平台实施边界
   deployment.md V2 部署与维护步骤
   files.md 文件层级与职责索引
   manual-v2-validation.md V2 人工及环境验收清单
   nebula-race-review.md 固定补丁原理与未处理的上游竞争
   openapi.yaml HTTP API 与数据结构契约
-  validation.md 源码检查、历史发布证据与待验收项
+  validation.md 最近检查范围、复现入口、必要历史证据与待验收项
 go.mod 模块依赖与 Nebula 补丁锁定
 go.sum 依赖校验和
 internal/ 产品内部实现
   agent/ 玩家与节点后台状态协调
     health.go 存活与就绪检查
-    local.go 本机服务接口与调用
+    local.go 本机 RPC 服务、玩家命令分派与后台启停
+    network.go 授权快照、凭据续签、Nebula 与发现生命周期
     node.go 节点登记、配置同步、续签与状态
     node_doctor.go 节点诊断检查
     node_local.go 节点本机命令与脱敏日志缓冲
-    runtime.go 玩家房间、证书、数据面与发现生命周期
+    player.go 玩家初始化、房间操作与游戏端口登记
+    runtime.go 共享运行状态、构造、持久化与后台主循环
     runtime_test.go 控制请求阻塞时的凭据到期测试
+    status.go 玩家连接状态、实际探测与本机诊断
     telemetry.go 节点与玩家的短期监控采集和独立上报
     traffic_linux.go Linux 隧道网卡上传下载查询
     traffic_windows.go Windows IP Helper 隧道网卡计数查询
@@ -70,8 +77,7 @@ internal/ 产品内部实现
     traffic_udp_linux_test.go 真实 UDP 双向字节计数与去重测试
     traffic_udp_other.go 非 Linux 平台 UDP 观察器占位
   client/ 控制面 API 客户端
-    api.go 设备身份、认证、幂等请求与 SSE 恢复
-    api_test.go 控制地址校验测试
+    api.go 控制面认证、幂等请求与 SSE 恢复
     enrollment.go 基础设施节点登记认证
   control/ 按调用方分文件的 HTTP API 与共享事务状态
     admin_audit.go 管理事件持久化与失败写操作审计
@@ -133,6 +139,9 @@ internal/ 产品内部实现
     telemetry.go 有界内存监控窗口、校验与过期清理
     telemetry_http.go 玩家和节点监控上报及管理员查询
     telemetry_test.go 监控授权、非持久化、过期和并发测试
+  device/ 设备身份与持久化配置
+    identity.go 设备身份生成、标识与控制地址校验
+    identity_test.go 控制地址校验测试
   engine/ Nebula 数据面薄封装
     config.go 配置校验、生成与地址冲突入口
     engine.go 数据面生命周期、重载、撤销与真实路径查询
@@ -145,6 +154,10 @@ internal/ 产品内部实现
     adapter.go 适配器接口与发现事件
     minecraft.go LAN 公告、授权发现、本机代理与组播回环
     minecraft_test.go 公告解析、授权、过期与代理清理测试
+  localapi/ 本机服务协议与调用客户端
+    client.go 经 Named Pipe/Unix socket 调用本机 RPC
+    client_unix_test.go Unix socket 请求、响应与错误兼容测试
+    protocol.go 本机请求与节点日志响应类型
   model/ 共享协议类型
     model.go 设备、房间、凭据、端点与状态类型
     node.go 节点配置、登记、操作与同步类型
@@ -169,13 +182,15 @@ internal/ 产品内部实现
 README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
   __pycache__/ Python 字节码缓存
+  architecture/ Go 包依赖规范检查
+    boundaries_test.go 跨平台生产导入白名单、数据库与数据面归属检查
   build-images.ps1 校验发布包并构建镜像，支持显式推送
   build.ps1 Windows/Linux 多架构发布包构建
   build.sh Linux 可执行文件构建
   check-release.py 归档校验和、内容、架构与权限检查
   Install.cmd Windows 双击安装入口
   install.ps1 Windows 安装、权限设置与服务就绪检查
-  NodeLane.cmd 玩家命令行启动入口
+  NodeLaneRoom.cmd 玩家开发命令行启动入口
   openapi/ API 契约生成工具
     main.go 更新协议类型、管理与节点接口及调用方分组
     main_test.go 契约重复生成稳定性与引用完整性检查

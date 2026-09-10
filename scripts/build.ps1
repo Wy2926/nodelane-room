@@ -37,8 +37,8 @@ try {
       Remove-Item -LiteralPath $resolvedBundle -Recurse -Force
     }
     New-Item -ItemType Directory -Force -Path $bundle | Out-Null
-    $commands = @('nodelane', 'nodelane-server', 'nlroom-node')
-    if ($env:GOOS -eq 'windows') { $commands = @('nodelane') }
+    $commands = @('nlroom-cli', 'nlroom-service', 'nodelane-server', 'nlroom-node')
+    if ($env:GOOS -eq 'windows') { $commands = @('nlroom-cli', 'nlroom-service') }
     foreach ($command in $commands) {
       $filename = $command
       if ($env:GOOS -eq 'windows') { $filename += '.exe' }
@@ -85,7 +85,7 @@ try {
       New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
       Copy-Item -LiteralPath (Join-Path $moduleDir "dist/windows/wintun/bin/$($env:GOARCH)/wintun.dll") -Destination $driverDir -Force
       Get-ChildItem -LiteralPath (Join-Path $moduleDir 'dist/windows/wintun') -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE|PATENTS)' } | Copy-Item -Destination (Join-Path $bundle 'dist/windows/wintun') -Force
-      foreach ($script in @('install.ps1','uninstall.ps1','setup.ps1','Install.cmd','NodeLane.cmd')) {
+      foreach ($script in @('install.ps1','uninstall.ps1','setup.ps1','Install.cmd','NodeLaneRoom.cmd')) {
         Copy-Item -LiteralPath (Join-Path $root "scripts/$script") -Destination $bundle -Force
       }
       Compress-Archive -Path "$bundle/*" -DestinationPath (Join-Path $release "$name.zip") -Force

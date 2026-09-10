@@ -6,66 +6,20 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
-type Identity struct {
-	Server        string                  `json:"server"`
-	Name          string                  `json:"name"`
-	PrivateKey    []byte                  `json:"private_key"`
-	RoomID        string                  `json:"room_id,omitempty"`
-	NodeID        string                  `json:"node_id,omitempty"`
-	Generation    int64                   `json:"generation,omitempty"`
-	Node          bool                    `json:"node"`
-	Ports         []model.EndpointRequest `json:"ports,omitempty"`
-	CAFingerprint string                  `json:"ca_fingerprint,omitempty"`
-}
-
-func NewIdentity(server, name string) (Identity, error) {
-	if err := ValidateURL(server); err != nil {
-		return Identity{}, err
-	}
-	if !model.ValidLabel(name, 80) {
-		return Identity{}, errors.New("name must contain 1-80 bytes")
-	}
-	_, key, err := ed25519.GenerateKey(rand.Reader)
-	return Identity{Server: strings.TrimRight(server, "/"), Name: name, PrivateKey: key}, err
-}
-func ValidateURL(server string) error {
-	u, err := url.Parse(server)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
-		return errors.New("server must be an HTTPS origin")
-	}
-	if u.Scheme == "https" {
-		return nil
-	}
-	ip := net.ParseIP(u.Hostname())
-	if u.Scheme == "http" && (u.Hostname() == "localhost" || ip != nil && ip.IsLoopback()) {
-		return nil
-	}
-	return errors.New("HTTP is allowed only on loopback; use HTTPS for remote servers")
-}
-func (i Identity) ID() string {
-	if len(i.PrivateKey) != ed25519.PrivateKeySize {
-		return ""
-	}
-	p := ed25519.PrivateKey(i.PrivateKey).Public().(ed25519.PublicKey)
-	h := sha256.Sum256(p)
-	return hex.EncodeToString(h[:])
-}
 func ID() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -89,13 +43,13 @@ func IsDenied(err error) bool {
 }
 
 type API struct {
-	Identity Identity
+	Identity device.Identity
 	HTTP     *http.Client
 	mu       sync.Mutex
 	session  model.Session
 }
 
-func NewAPI(i Identity) *API {
+func NewAPI(i device.Identity) *API {
 	return &API{Identity: i, HTTP: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func (a *API) Authenticate(ctx context.Context) error { _, err := a.login(ctx); return err }
