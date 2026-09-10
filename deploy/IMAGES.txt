@@ -1,0 +1,12 @@
+NodeLane Room 0.2.0
+
+2026-09-10 已发布，远端 OCI manifest index 摘要已核对：
+docker.nodelane.net/nodelane-room-control:0.2.0
+docker.nodelane.net/nodelane-room-control@sha256:702e607ae76f1285540882efb323d676e644029c37f75e98f640962c76abd580
+
+docker.nodelane.net/nodelane-room-node:0.2.0
+docker.nodelane.net/nodelane-room-node@sha256:205073b0cc61fbf65f284289c3e275a6bdf6d12da74f741286a2e6aa6705d229
+
+两个镜像均包含 linux/amd64、linux/arm64，与已校验的 0.2.0 发布包程序一致。
+仅发布 0.2.0 标签，没有创建 latest 标签。
+自行构建使用 scripts/build-images.ps1；只有显式 -Push 才推送。

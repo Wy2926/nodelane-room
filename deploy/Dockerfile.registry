@@ -1,0 +1,28 @@
+# Build context is prepared by scripts/build-images.ps1 from verified release payloads.
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home nodelane
+ARG TARGETARCH
+ARG VERSION=0.2.0
+COPY ${TARGETARCH}/THIRD_PARTY_NOTICES.txt /usr/share/doc/nodelane/THIRD_PARTY_NOTICES.txt
+COPY ${TARGETARCH}/licenses /usr/share/doc/nodelane/licenses
+COPY ${TARGETARCH}/BUILD.txt /usr/share/doc/nodelane/BUILD.txt
+LABEL org.opencontainers.image.title="NodeLane Room" org.opencontainers.image.version="${VERSION}"
+WORKDIR /app
+
+FROM runtime AS node
+RUN mkdir -p /var/lib/nlroom-node && chmod 700 /var/lib/nlroom-node
+COPY --chmod=0755 ${TARGETARCH}/nlroom-node /usr/local/bin/nlroom-node
+ENV NLROOM_DEPLOYMENT=container
+EXPOSE 4242/udp
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s CMD curl --fail --silent http://127.0.0.1:9090/healthz || exit 1
+ENTRYPOINT ["nlroom-node"]
+CMD ["run"]
+
+FROM runtime AS control
+COPY releases/ /opt/nodelane/releases/
+COPY --chmod=0755 ${TARGETARCH}/nodelane-server /usr/local/bin/nodelane-server
+USER 10001:10001
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s CMD curl --fail --silent http://127.0.0.1:8080/readyz || exit 1
+ENTRYPOINT ["nodelane-server"]
+CMD ["serve", "--listen", "0.0.0.0:8080", "--behind-proxy"]

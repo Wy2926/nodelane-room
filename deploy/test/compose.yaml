@@ -1,0 +1,108 @@
+# Two player containers, plus their private test infrastructure. No host ports.
+x-runtime: &runtime
+  image: nodelane-test:${NODELANE_TEST_RUN:?use scripts/test-docker.py}
+  build:
+    context: ../..
+    dockerfile: deploy/test/Dockerfile
+    target: runtime
+  init: true
+  environment:
+    SSL_CERT_FILE: /trust/control.crt
+  volumes:
+    - trust:/trust:ro
+  tmpfs:
+    - /state:mode=0700
+  sysctls:
+    net.ipv4.ip_forward: '0'
+
+x-client: &client
+  <<: *runtime
+  command: [client]
+  cap_add: [NET_ADMIN]
+  devices: [/dev/net/tun:/dev/net/tun]
+  healthcheck:
+    test: [CMD, curl, --fail, --silent, http://127.0.0.1:9080/ready]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+
+services:
+  db:
+    image: postgres:18.6
+    environment:
+      POSTGRES_USER: nodelane
+      POSTGRES_PASSWORD: ${NODELANE_TEST_DB_PASSWORD:?use scripts/test-docker.py}
+      POSTGRES_DB: nodelane_test
+    tmpfs:
+      - /var/lib/postgresql
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U nodelane -d nodelane_test']
+      interval: 2s
+      timeout: 2s
+      retries: 40
+  control:
+    <<: *runtime
+    command: [control]
+    environment:
+      DATABASE_URL: postgres://nodelane:${NODELANE_TEST_DB_PASSWORD}@db:5432/nodelane_test?sslmode=disable
+    volumes:
+      - trust:/trust
+    networks: [backend, player-a, player-b]
+    depends_on:
+      db: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --cacert, /trust/control.crt, https://control:8443/readyz]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+  relay:
+    <<: *runtime
+    command: [relay]
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    networks: [player-a, player-b]
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:9090/readyz]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+  alice:
+    <<: *client
+    environment:
+      SSL_CERT_FILE: /trust/control.crt
+      BLOCK_SUBNET: 172.30.82.0/24
+    networks:
+      player-a: {ipv4_address: 172.30.81.10}
+  bob:
+    <<: *client
+    environment:
+      SSL_CERT_FILE: /trust/control.crt
+      BLOCK_SUBNET: 172.30.81.0/24
+    networks:
+      player-b: {ipv4_address: 172.30.82.10}
+  verify:
+    profiles: [verify]
+    image: nodelane-test-source:${NODELANE_TEST_RUN}
+    build:
+      context: ../..
+      dockerfile: deploy/test/Dockerfile
+      target: source
+    environment:
+      NODELANE_TEST_DATABASE_URL: postgres://nodelane:${NODELANE_TEST_DB_PASSWORD}@db:5432/nodelane_test?sslmode=disable
+    networks: [backend]
+
+networks:
+  player-a:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.81.0/24}]
+  player-b:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.82.0/24}]
+  backend:
+    internal: true
+
+volumes:
+  trust: {}

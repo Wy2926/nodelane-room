@@ -1,0 +1,26 @@
+# V2 容器部署，与 curl 原生安装独立。启动后在终端执行 nlroom-node enroll。
+name: ${NODE_PROJECT_NAME:-nlroom-node}
+services:
+  node:
+    image: ${NODELANE_REGISTRY:-docker.nodelane.net}/nodelane-room-node:${NODELANE_VERSION:-0.2.0}
+    user: '0:0'
+    command: [run, --server, '${NODE_CONTROL_URL:?set NODE_CONTROL_URL}', --listen-port, '${NODE_PORT:-4242}']
+    environment:
+      NLROOM_DEPLOYMENT: container
+      NLROOM_MAPPED_PORT: ${NODE_PORT:-4242}
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    security_opt: ['no-new-privileges:true']
+    devices: ['/dev/net/tun:/dev/net/tun']
+    volumes: ['${NODE_STATE_DIR:-./state}:/var/lib/nlroom-node']
+    ports: ['${NODE_PORT:-4242}:${NODE_PORT:-4242}/udp']
+    read_only: true
+    tmpfs: ['/tmp:mode=1777,size=16m']
+    sysctls: {net.ipv4.ip_forward: '0'}
+    stop_grace_period: 30s
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:9090/healthz]
+      interval: 15s
+      timeout: 3s
+      retries: 3

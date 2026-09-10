@@ -1,0 +1,13 @@
+/bin/
+/dist/
+/.local/
+*.log
+*.test
+coverage.out
+__pycache__/
+*.pyc
+*.token
+.env
+*.key
+*.crt
+*.db

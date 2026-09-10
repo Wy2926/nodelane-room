@@ -1,0 +1,33 @@
+NodeLane Room 0.2.0 全新部署
+
+0.2.0 控制面和节点镜像已发布至 docker.nodelane.net，支持 linux/amd64、linux/arm64。
+配置完成后执行对应编排的 docker compose pull，再初始化并启动；摘要见 IMAGES.txt。
+
+控制面：已有 PostgreSQL/反代用 compose.host.yaml + .env.host.example；
+全套新建用 compose.yaml + .env.example + Caddyfile。不要合并两套。
+填写 PUBLIC_URL、数据库与网络，使用全新数据库和 CA。
+创建 secrets 目录（0700，UID/GID 10001），显式 run ca-init，然后 up -d --wait。
+在 control-a 终端执行 nodelane-server admin bootstrap，使用 10 分钟初始化码
+打开 PUBLIC_URL/admin 设置管理员密码。账号密码与玩家身份分离。
+
+管理台创建节点，填写真实公网域名/IP:UDP端口，默认4242、两个角色开启。
+生成30分钟一次性临时接入密钥。明文仅显示一次，丢失则重新生成。
+
+原生节点：在支持的 Debian/Ubuntu systemd 宿主 root 终端执行
+curl -fsSL https://你的控制域名/install/node.sh | bash -s -- --server https://你的控制域名
+非默认池附加 --network 参数。脚本隐藏读取密钥，不会操作 Docker，容器内拒绝。
+
+容器节点：单独使用 compose.node.yaml + .env.node.example 或管理台生成 YAML。
+配置控制 URL、UDP 端口和持久身份目录（root:root、0700）；挂载 /dev/net/tun，只需 NET_ADMIN。
+docker compose -f compose.node.yaml up -d --wait
+docker compose -f compose.node.yaml exec node nlroom-node enroll
+未登记容器保持运行。随后 nlroom-node status / doctor；readyz 表示隧道就绪。
+密钥不写进 YAML、环境变量或命令参数。
+
+节点常用命令：status --watch、doctor、config、config apply 版本、logs --follow、restart。
+原生 service/update/uninstall 管理 systemd/程序，容器使用 Compose/1Panel。
+证书自动续签，到期失联停止。替换服务器先在管理台撤销旧绑定并签发新密钥。
+端口变更先修改本机放行或 YAML 映射，再本机 config apply 对应版本。
+
+Windows 使用 0.2.0 安装包，全新身份连接 /v2；不要复用 V1 状态。
+源码 docs/deployment.md 给出完整新部署步骤；docs/manual-v2-validation.md 是人工验收清单。

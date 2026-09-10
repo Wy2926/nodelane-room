@@ -1,0 +1,7 @@
+# 可选：让 compose.host.yaml 的全部服务加入已有的 Docker 网络。
+# CLI：docker compose -f compose.host.yaml -f compose.network.yaml up -d --wait
+# 1Panel 单文件编辑器：把下面 networks 整段放入现有编排，与 services 同级。
+networks:
+  default:
+    external: true
+    name: ${CONTROL_DOCKER_NETWORK:-1panel-network}

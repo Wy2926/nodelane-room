@@ -1,0 +1,24 @@
+# Copied to the Linux release root. Build from the bundled binaries; no Go or source tree required.
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home nodelane
+COPY THIRD_PARTY_NOTICES.txt /usr/share/doc/nodelane/THIRD_PARTY_NOTICES.txt
+COPY licenses /usr/share/doc/nodelane/licenses
+WORKDIR /app
+
+FROM runtime AS node
+RUN mkdir -p /var/lib/nlroom-node && chmod 700 /var/lib/nlroom-node
+COPY --chmod=0755 nlroom-node /usr/local/bin/nlroom-node
+ENV NLROOM_DEPLOYMENT=container
+EXPOSE 4242/udp
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s CMD curl --fail --silent http://127.0.0.1:9090/healthz || exit 1
+ENTRYPOINT ["nlroom-node"]
+CMD ["run"]
+
+FROM runtime AS control
+COPY releases/ /opt/nodelane/releases/
+COPY --chmod=0755 nodelane-server /usr/local/bin/nodelane-server
+USER 10001:10001
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s CMD curl --fail --silent http://127.0.0.1:8080/readyz || exit 1
+ENTRYPOINT ["nodelane-server"]
+CMD ["serve", "--listen", "0.0.0.0:8080", "--behind-proxy"]

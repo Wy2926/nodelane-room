@@ -1,0 +1,2075 @@
+components:
+    responses:
+        Error:
+            content:
+                application/json:
+                    schema:
+                        $ref: '#/components/schemas/Error'
+            description: 'JSON error; 429 includes Retry-After: 60'
+    schemas:
+        AdminEvent:
+            properties:
+                actor:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                detail:
+                    additionalProperties: true
+                    type: object
+                id:
+                    format: int64
+                    type: integer
+                kind:
+                    type: string
+                target:
+                    type: string
+            required:
+                - id
+                - actor
+                - kind
+                - target
+                - detail
+                - created_at
+            type: object
+        AdminRoomSnapshot:
+            properties:
+                endpoints:
+                    items:
+                        $ref: '#/components/schemas/Endpoint'
+                    type: array
+                members:
+                    items:
+                        $ref: '#/components/schemas/Member'
+                    type: array
+                room:
+                    $ref: '#/components/schemas/Room'
+                server_time:
+                    format: date-time
+                    type: string
+            required:
+                - room
+                - members
+                - endpoints
+                - server_time
+            type: object
+        AdminSnapshot:
+            properties:
+                ca_expires_at:
+                    format: date-time
+                    type: string
+                deployment_id:
+                    type: string
+                events:
+                    items:
+                        $ref: '#/components/schemas/AdminEvent'
+                    type: array
+                network:
+                    type: string
+                nodes:
+                    items:
+                        $ref: '#/components/schemas/Node'
+                    type: array
+                operations:
+                    items:
+                        $ref: '#/components/schemas/NodeOperation'
+                    type: array
+                revision:
+                    format: int64
+                    type: integer
+                rooms:
+                    items:
+                        $ref: '#/components/schemas/Room'
+                    type: array
+                server_time:
+                    format: date-time
+                    type: string
+                version:
+                    type: string
+            required:
+                - revision
+                - server_time
+                - version
+                - network
+                - deployment_id
+                - ca_expires_at
+                - nodes
+                - rooms
+                - operations
+                - events
+            type: object
+        Challenge:
+            additionalProperties: false
+            properties:
+                id:
+                    type: string
+                nonce:
+                    description: Standard base64
+                    format: byte
+                    type: string
+            required:
+                - id
+                - nonce
+            type: object
+        ChallengeRequest:
+            additionalProperties: false
+            properties:
+                device_id:
+                    pattern: ^[0-9a-f]{64}$
+                    type: string
+                name:
+                    maxLength: 80
+                    type: string
+                public_key:
+                    description: Standard base64
+                    format: byte
+                    type: string
+            required:
+                - device_id
+                - name
+                - public_key
+            type: object
+        Empty:
+            additionalProperties: false
+            properties: {}
+            required: []
+            type: object
+        Endpoint:
+            properties:
+                device_id:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                motd:
+                    type: string
+                port:
+                    format: int64
+                    type: integer
+                protocol:
+                    type: string
+            required:
+                - id
+                - device_id
+                - protocol
+                - port
+                - expires_at
+            type: object
+        EndpointRequest:
+            additionalProperties: false
+            properties:
+                motd:
+                    maxLength: 512
+                    type: string
+                port:
+                    description: 4243 is reserved
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    enum:
+                        - tcp
+                        - udp
+                    type: string
+            required:
+                - protocol
+                - port
+            type: object
+        EnrollmentChallengeRequest:
+            additionalProperties: false
+            properties:
+                device_id:
+                    type: string
+                key:
+                    type: string
+                name:
+                    type: string
+                public_key:
+                    format: byte
+                    type: string
+            required:
+                - key
+                - device_id
+                - name
+                - public_key
+            type: object
+        Error:
+            additionalProperties: false
+            properties:
+                code:
+                    type: string
+                message:
+                    type: string
+            required:
+                - code
+                - message
+            type: object
+        Invitation:
+            additionalProperties: false
+            properties:
+                code:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+            required:
+                - code
+                - expires_at
+            type: object
+        JoinRequest:
+            additionalProperties: false
+            properties:
+                code:
+                    type: string
+            required:
+                - code
+            type: object
+        Lease:
+            properties:
+                ca:
+                    type: string
+                certificate:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+                fingerprint:
+                    type: string
+                ip:
+                    type: string
+                network:
+                    type: string
+                node:
+                    $ref: '#/components/schemas/Node'
+                room_id:
+                    type: string
+            required:
+                - ip
+                - network
+                - ca
+                - certificate
+                - fingerprint
+                - expires_at
+            type: object
+        LeaseRequest:
+            properties:
+                public_key:
+                    format: byte
+                    type: string
+                revision:
+                    format: int64
+                    type: integer
+            required:
+                - public_key
+            type: object
+        Member:
+            properties:
+                device_id:
+                    type: string
+                ip:
+                    type: string
+                last_seen:
+                    format: date-time
+                    type: string
+                name:
+                    type: string
+            required:
+                - device_id
+                - name
+                - ip
+                - last_seen
+            type: object
+        MemberRequest:
+            additionalProperties: false
+            properties:
+                device_id:
+                    type: string
+            required:
+                - device_id
+            type: object
+        Node:
+            properties:
+                address:
+                    type: string
+                device_id:
+                    type: string
+                draining:
+                    type: boolean
+                generation:
+                    format: int64
+                    type: integer
+                id:
+                    type: string
+                ip:
+                    type: string
+                last_seen:
+                    format: date-time
+                    type: string
+                lighthouse:
+                    type: boolean
+                name:
+                    type: string
+                notes:
+                    type: string
+                region:
+                    type: string
+                relay:
+                    type: boolean
+                report:
+                    $ref: '#/components/schemas/NodeReport'
+                revision:
+                    format: int64
+                    type: integer
+                state:
+                    type: string
+            required:
+                - id
+                - device_id
+                - generation
+                - revision
+                - state
+                - notes
+                - report
+                - name
+                - region
+                - ip
+                - address
+                - lighthouse
+                - relay
+                - draining
+                - last_seen
+            type: object
+        NodeConfig:
+            additionalProperties: false
+            properties:
+                address:
+                    type: string
+                lighthouse:
+                    type: boolean
+                name:
+                    type: string
+                notes:
+                    type: string
+                region:
+                    type: string
+                relay:
+                    type: boolean
+            required:
+                - name
+                - region
+                - address
+                - lighthouse
+                - relay
+                - notes
+            type: object
+        NodeOperation:
+            properties:
+                action:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                error:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+                generation:
+                    format: int64
+                    type: integer
+                id:
+                    type: string
+                node_id:
+                    type: string
+                revision:
+                    format: int64
+                    type: integer
+                state:
+                    type: string
+            required:
+                - id
+                - node_id
+                - generation
+                - revision
+                - action
+                - state
+                - created_at
+                - expires_at
+            type: object
+        NodeProbe:
+            properties:
+                address:
+                    type: string
+                at:
+                    format: date-time
+                    type: string
+                device_id:
+                    type: string
+                loss_percent:
+                    format: double
+                    type: number
+                mode:
+                    type: string
+                remote:
+                    type: string
+                rtt_ms:
+                    format: double
+                    type: number
+            required:
+                - device_id
+                - address
+                - mode
+                - at
+            type: object
+        NodeReport:
+            properties:
+                applied_config:
+                    $ref: '#/components/schemas/NodeConfig'
+                applied_revision:
+                    format: int64
+                    type: integer
+                engine:
+                    type: string
+                error:
+                    type: string
+                last_renewal:
+                    format: date-time
+                    type: string
+                lease_expires_at:
+                    format: date-time
+                    type: string
+                probes:
+                    items:
+                        $ref: '#/components/schemas/NodeProbe'
+                    type: array
+                version:
+                    type: string
+            required:
+                - version
+                - engine
+                - applied_revision
+                - lease_expires_at
+                - last_renewal
+                - probes
+            type: object
+        NodeSync:
+            properties:
+                node:
+                    $ref: '#/components/schemas/Node'
+                operations:
+                    items:
+                        $ref: '#/components/schemas/NodeOperation'
+                    type: array
+                snapshot:
+                    $ref: '#/components/schemas/Snapshot'
+            required:
+                - node
+                - snapshot
+                - operations
+            type: object
+        NodeSyncRequest:
+            additionalProperties: false
+            properties:
+                generation:
+                    format: int64
+                    type: integer
+                report:
+                    $ref: '#/components/schemas/NodeReport'
+                results:
+                    items:
+                        $ref: '#/components/schemas/OperationResult'
+                    type: array
+            required:
+                - generation
+                - report
+                - results
+            type: object
+        OK:
+            additionalProperties: false
+            properties:
+                ok:
+                    type: boolean
+            required:
+                - ok
+            type: object
+        OperationResult:
+            properties:
+                error:
+                    type: string
+                id:
+                    type: string
+                state:
+                    type: string
+            required:
+                - id
+                - state
+            type: object
+        Room:
+            properties:
+                capacity:
+                    format: int64
+                    type: integer
+                closed:
+                    type: boolean
+                expires_at:
+                    format: date-time
+                    type: string
+                game:
+                    type: string
+                id:
+                    type: string
+                name:
+                    type: string
+                owner_id:
+                    type: string
+                revision:
+                    format: int64
+                    type: integer
+            required:
+                - id
+                - name
+                - owner_id
+                - game
+                - revision
+                - capacity
+                - expires_at
+                - closed
+            type: object
+        RoomRequest:
+            additionalProperties: false
+            properties:
+                game:
+                    enum:
+                        - minecraft-java
+                        - custom
+                    type: string
+                name:
+                    maxLength: 120
+                    type: string
+            required:
+                - name
+                - game
+            type: object
+        RoomResult:
+            additionalProperties: false
+            properties:
+                invitation:
+                    $ref: '#/components/schemas/Invitation'
+                room:
+                    $ref: '#/components/schemas/Room'
+            required:
+                - room
+            type: object
+        Session:
+            additionalProperties: false
+            properties:
+                device_id:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+                token:
+                    type: string
+            required:
+                - token
+                - expires_at
+                - device_id
+            type: object
+        Snapshot:
+            properties:
+                blocklist:
+                    items:
+                        type: string
+                    type: array
+                endpoints:
+                    items:
+                        $ref: '#/components/schemas/Endpoint'
+                    type: array
+                members:
+                    items:
+                        $ref: '#/components/schemas/Member'
+                    type: array
+                nodes:
+                    items:
+                        $ref: '#/components/schemas/Node'
+                    type: array
+                room:
+                    $ref: '#/components/schemas/Room'
+                server_time:
+                    format: date-time
+                    type: string
+            required:
+                - members
+                - endpoints
+                - nodes
+                - blocklist
+                - server_time
+            type: object
+        VerifyRequest:
+            additionalProperties: false
+            properties:
+                id:
+                    type: string
+                signature:
+                    description: Standard base64
+                    format: byte
+                    type: string
+            required:
+                - id
+                - signature
+            type: object
+    securitySchemes:
+        AdminCookie:
+            description: 12 hour random session; 30 minute idle timeout. Secure, HttpOnly, SameSite=Strict. All admin writes also require exact Origin and X-CSRF-Token.
+            in: cookie
+            name: __Host-nlroom-admin
+            type: apiKey
+        Bearer:
+            description: One-hour device session from challenge verification
+            scheme: bearer
+            type: http
+        NodeBearer:
+            description: One-hour session scoped to the current nonrevoked node identity binding. Cannot authorize player/admin APIs.
+            scheme: bearer
+            type: http
+info:
+    description: 'Fresh V2 database and identities required. No V1 API. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
+    title: NodeLane Room V2
+    version: 0.2.0
+openapi: 3.0.3
+paths:
+    /healthz:
+        get:
+            operationId: health
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    status:
+                                        type: string
+                                required:
+                                    - status
+                                type: object
+                    description: Success
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    status:
+                                        type: string
+                                required:
+                                    - status
+                                type: object
+                    description: Success
+            security: []
+            summary: Process liveness
+            tags:
+                - Operations
+    /install/{file}:
+        get:
+            parameters:
+                - in: path
+                  name: file
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        '*/*':
+                            schema:
+                                format: binary
+                                type: string
+                        application/json:
+                            schema:
+                                additionalProperties: true
+                                type: object
+                        text/*:
+                            schema:
+                                type: string
+                    description: Raw file bytes; Content-Type depends on the selected file. manifest.json is a JSON object, scripts/checksums are text, and archives are gzip data.
+                "404":
+                    description: Unknown or unavailable release file
+            security: []
+            summary: Read-only node.sh, manifest.json, SHA256SUMS or exact-version native archive
+            tags:
+                - Operations
+    /metrics:
+        get:
+            operationId: metrics
+            responses:
+                "200":
+                    content:
+                        text/plain:
+                            schema:
+                                type: string
+                    description: Counters and gauges
+            security: []
+            summary: Prometheus metrics; restrict to monitoring network
+            tags:
+                - Operations
+    /readyz:
+        get:
+            operationId: ready
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    status:
+                                        type: string
+                                required:
+                                    - status
+                                type: object
+                    description: Success
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    status:
+                                        type: string
+                                required:
+                                    - status
+                                type: object
+                    description: Success
+            security: []
+            summary: Database and CA readiness
+            tags:
+                - Operations
+    /v2/admin/bootstrap:
+        post:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                code:
+                                    maxLength: 64
+                                    minLength: 64
+                                    type: string
+                                password:
+                                    description: 12–128 UTF-8 bytes, not characters
+                                    format: password
+                                    type: string
+                                username:
+                                    type: string
+                            required:
+                                - username
+                                - password
+                                - code
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Consume the 10 minute console bootstrap code and create the single administrator
+            tags:
+                - Admin
+    /v2/admin/events:
+        get:
+            description: Each event is named snapshot, with AdminSnapshot JSON data and its durable revision as id. Last-Event-ID is accepted; old, pruned or future cursors recover via the complete current snapshot. Does not replay secrets. Session validity checked on each event.
+            parameters:
+                - in: header
+                  name: Last-Event-ID
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/event-stream:
+                            schema:
+                                type: string
+                    description: SSE snapshot stream
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: SSE full authoritative snapshots with durable event IDs; reconnect every five minutes
+            tags:
+                - Admin
+    /v2/admin/login:
+        post:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                password:
+                                    description: 12–128 UTF-8 bytes, not characters
+                                    format: password
+                                    type: string
+                                username:
+                                    type: string
+                            required:
+                                - username
+                                - password
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    csrf:
+                                        type: string
+                                    username:
+                                        type: string
+                                required:
+                                    - username
+                                    - csrf
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Login; rate limited to 8/IP and 30 total per minute
+            tags:
+                - Admin
+    /v2/admin/logout:
+        post:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties: {}
+                            required: []
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Revoke current session
+            tags:
+                - Admin
+    /v2/admin/nodes:
+        post:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NodeConfig'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Node'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Pre-create an authorized logical node
+            tags:
+                - Admin
+    /v2/admin/nodes/{node}:
+        put:
+            parameters:
+                - in: path
+                  name: node
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                config:
+                                    $ref: '#/components/schemas/NodeConfig'
+                                revision:
+                                    type: integer
+                            required:
+                                - config
+                                - revision
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Node'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Optimistic desired configuration update; invalidates pending keys
+            tags:
+                - Admin
+    /v2/admin/nodes/{node}/actions:
+        post:
+            parameters:
+                - in: path
+                  name: node
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                action:
+                                    enum:
+                                        - drain
+                                        - disable
+                                        - resume
+                                        - restart
+                                        - replace
+                                        - revoke
+                                        - revoke-key
+                                    type: string
+                            required:
+                                - action
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NodeOperation'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Create generation-bound node lifecycle operation
+            tags:
+                - Admin
+    /v2/admin/nodes/{node}/compose:
+        get:
+            parameters:
+                - in: path
+                  name: node
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/yaml:
+                            schema:
+                                type: string
+                    description: Compose YAML attachment
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Download versioned node Compose without enrollment secrets
+            tags:
+                - Admin
+    /v2/admin/nodes/{node}/key:
+        post:
+            parameters:
+                - in: path
+                  name: node
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties: {}
+                            required: []
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    expires_in:
+                                        enum:
+                                            - 1800
+                                        type: integer
+                                    key:
+                                        type: string
+                                required:
+                                    - key
+                                    - expires_in
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Issue one-use temporary key; replaces prior key, plaintext shown only once and never cached
+            tags:
+                - Admin
+    /v2/admin/password:
+        post:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                current:
+                                    type: string
+                                password:
+                                    description: 12–128 UTF-8 bytes, not characters
+                                    format: password
+                                    type: string
+                            required:
+                                - current
+                                - password
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Change password and revoke every admin session
+            tags:
+                - Admin
+    /v2/admin/rooms/{room}:
+        get:
+            parameters:
+                - in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AdminRoomSnapshot'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Inspect room members and registered endpoints in one consistent snapshot
+            tags:
+                - Admin
+    /v2/admin/rooms/{room}/actions:
+        post:
+            parameters:
+                - in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                action:
+                                    enum:
+                                        - close
+                                        - kick
+                                    type: string
+                                device_id:
+                                    type: string
+                            required:
+                                - action
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Room'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Close room or kick a member and revoke authorization
+            tags:
+                - Admin
+    /v2/admin/session:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    csrf:
+                                        type: string
+                                    username:
+                                        type: string
+                                required:
+                                    - username
+                                    - csrf
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Restore current session and stable CSRF token
+            tags:
+                - Admin
+    /v2/admin/snapshot:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/AdminSnapshot'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Current shared deployment, nodes, rooms, operations and recent audit snapshot
+            tags:
+                - Admin
+    /v2/auth/challenge:
+        post:
+            operationId: challenge
+            parameters: []
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ChallengeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Challenge'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Request a one-minute single-use challenge
+            tags:
+                - Player
+    /v2/auth/verify:
+        post:
+            operationId: verify
+            parameters: []
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/VerifyRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Session'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce
+            tags:
+                - Player
+    /v2/node/auth/challenge:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ChallengeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Challenge'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Authenticate an existing binding, including interrupted enrollment recovery
+            tags:
+                - Node
+    /v2/node/auth/verify:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/VerifyRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Session'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Verify node-scoped Ed25519 proof
+            tags:
+                - Node
+    /v2/node/enrollment/challenge:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EnrollmentChallengeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Challenge'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Validate temporary key before creating a challenge; no public requests
+            tags:
+                - Node
+    /v2/node/enrollment/complete:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/VerifyRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Session'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Prove persisted identity and atomically consume key and bind address
+            tags:
+                - Node
+    /v2/node/lease:
+        post:
+            parameters:
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LeaseRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Lease'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - NodeBearer: []
+            summary: Issue/renew <=10 minute Nebula certificate; disabled/revoked bindings denied
+            tags:
+                - Node
+    /v2/node/sync:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NodeSyncRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/NodeSync'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - NodeBearer: []
+            summary: 5 second heartbeat, desired configuration and idempotent operation feedback
+            tags:
+                - Node
+    /v2/rooms:
+        post:
+            operationId: createRoom
+            parameters:
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RoomRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RoomResult'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Create a 24-hour room and join as owner
+            tags:
+                - Player
+    /v2/rooms/{room}:
+        get:
+            operationId: roomSnapshot
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Snapshot'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Read an atomic versioned room snapshot
+            tags:
+                - Player
+    /v2/rooms/{room}/close:
+        post:
+            operationId: closeRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Empty'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Room'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Close the room and revoke all members; owner only
+            tags:
+                - Player
+    /v2/rooms/{room}/endpoints:
+        post:
+            operationId: endpointsRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EndpointRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Endpoint'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Register or refresh a 45-second game endpoint
+            tags:
+                - Player
+    /v2/rooms/{room}/events:
+        get:
+            description: text/event-stream. Replays up to 256 durable change notifications after the cursor, then sends an authoritative snapshot (also for pruned/future cursors). Full snapshots every five seconds. Connections end after five minutes; reconnect with the last snapshot revision. Changes invalidate cached state; do not apply them as authorization deltas.
+            operationId: roomEvents
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Last room revision received
+                  in: header
+                  name: Last-Event-ID
+                  schema:
+                    format: int64
+                    type: integer
+            responses:
+                "200":
+                    content:
+                        text/event-stream:
+                            schema:
+                                type: string
+                    description: 'SSE events: id=<revision>; event=change with {kind}, or event=snapshot with Snapshot JSON'
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Resume invalidation events and full snapshots
+            tags:
+                - Player
+    /v2/rooms/{room}/heartbeat:
+        post:
+            operationId: heartbeatRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Empty'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OK'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Refresh current membership heartbeat
+            tags:
+                - Player
+    /v2/rooms/{room}/invite:
+        post:
+            operationId: inviteRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Empty'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Invitation'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Rotate 30-minute invitation; owner only
+            tags:
+                - Player
+    /v2/rooms/{room}/kick:
+        post:
+            operationId: kickRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MemberRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Room'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Remove and ban a member; revoke all their certificates
+            tags:
+                - Player
+    /v2/rooms/{room}/lease:
+        post:
+            operationId: leaseRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LeaseRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Lease'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Issue or renew a room certificate
+            tags:
+                - Player
+    /v2/rooms/{room}/leave:
+        post:
+            operationId: leaveRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/Empty'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Room'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Revoke membership; ownership may remain
+            tags:
+                - Player
+    /v2/rooms/{room}/transfer:
+        post:
+            operationId: transferRoom
+            parameters:
+                - description: Room ID
+                  in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MemberRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Room'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Transfer ownership to an active member; game world stays on its host
+            tags:
+                - Player
+    /v2/rooms/join:
+        post:
+            operationId: joinRoom
+            parameters:
+                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
+                  in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/JoinRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RoomResult'
+                    description: Success
+                default:
+                    $ref: '#/components/responses/Error'
+            summary: Join with an unexpired invitation
+            tags:
+                - Player
+security:
+    - Bearer: []
+servers:
+    - url: https://room.example.com
+tags:
+    - name: Player
+    - name: Admin
+    - name: Node
+    - name: Operations

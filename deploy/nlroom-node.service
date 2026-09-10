@@ -1,0 +1,28 @@
+[Unit]
+Description=NodeLane Room V2 node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nlroom-node
+Group=nlroom-node
+StateDirectory=nlroom-node
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/nlroom-node run --config-file /etc/nlroom-node/config.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

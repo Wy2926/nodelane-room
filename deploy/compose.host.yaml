@@ -1,0 +1,58 @@
+# 已有 PostgreSQL、HTTPS 证书和反向代理，通过宿主机地址/端口接入。
+# 独立使用此文件，不与 compose.yaml 合并；.env 来自 .env.host.example。
+name: ${CONTROL_PROJECT_NAME:-nodelane-room}
+x-control: &control
+  image: ${NODELANE_REGISTRY:-docker.nodelane.net}/nodelane-room-control:${NODELANE_VERSION:-0.2.0}
+  command: [serve, --network, '${NODELANE_NETWORK:-10.203.0.0/16}', --listen, '0.0.0.0:8080', --behind-proxy, --ca-cert, /run/nodelane/ca.crt, --ca-key, /run/nodelane/ca.key]
+  environment:
+    PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL to the public HTTPS origin}
+    DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to the existing PostgreSQL database}
+  # Linux 容器通过此名称访问宿主机；连接串也可使用已有私网 IP/DNS。
+  extra_hosts: ['host.docker.internal:host-gateway']
+  volumes:
+    - type: bind
+      source: ${CA_DIR:-./secrets}
+      target: /run/nodelane
+      read_only: true
+      bind: {create_host_path: false}
+  depends_on:
+    migrate: {condition: service_completed_successfully}
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  stop_grace_period: 20s
+
+services:
+  migrate:
+    # 外部数据库须先就绪；迁移失败会阻止两个副本启动。
+    <<: *control
+    command: [migrate, --network, '${NODELANE_NETWORK:-10.203.0.0/16}']
+    volumes: []
+    depends_on: {}
+    restart: 'no'
+    healthcheck: {disable: true}
+  control-a:
+    <<: *control
+    ports: ['${CONTROL_BIND_IP:?set CONTROL_BIND_IP to a host address reachable by the reverse proxy}:${CONTROL_PORT_A:-18080}:8080']
+  control-b:
+    <<: *control
+    ports: ['${CONTROL_BIND_IP:?set CONTROL_BIND_IP to a host address reachable by the reverse proxy}:${CONTROL_PORT_B:-18081}:8080']
+  ca-init:
+    # 只在首次显式 run；使用镜像 UID 10001，不覆盖已有 Nebula CA。
+    <<: *control
+    profiles: [setup]
+    command: [ca, init, --dir, /out, --network, '${NODELANE_NETWORK:-10.203.0.0/16}']
+    environment: {}
+    volumes:
+      - type: bind
+        source: ${CA_DIR:-./secrets}
+        target: /out
+        bind: {create_host_path: false}
+    depends_on: {}
+    restart: 'no'
+    healthcheck: {disable: true}
+
+# 默认 bridge 需要访问宿主机数据库，不能设置 internal: true。
+# 不创建或接管 PostgreSQL、反向代理、HTTPS 证书卷。
+# 加入已有 1panel-network：按 compose.network.yaml 的说明设置默认网络。

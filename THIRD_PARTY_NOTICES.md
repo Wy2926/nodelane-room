@@ -1,0 +1,5 @@
+# Third-party components
+
+NodeLane Room links Nebula (MIT), based on official `github.com/slackhq/nebula v1.11.1` with an authorized handshake cache race fix from `github.com/Wy2926/nebula`, commit `d929786cba7f`. `go.mod` pins the exact replacement version; the fork retains the upstream module path, dependencies and license. See the fork's `NODELANE_PATCH.md` for the change and its limits. NodeLane does not add TURN. Windows bundles the unchanged upstream Wintun binary from that resolved module, with its license files retained. Wintun has its own distribution terms; do not replace it with an unverified download.
+
+`go.mod` and `go.sum` record dependencies and checksums. Release archives include `licenses/modules.txt` and available top-level LICENSE/COPYING/NOTICE/PATENTS files from every resolved dependency, plus the Wintun distribution files. Build with `go mod verify`. Review all included notices before redistributing a commercial installer. NodeLane executable code signing is a separate release step.

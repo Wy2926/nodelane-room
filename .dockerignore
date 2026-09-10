@@ -1,0 +1,10 @@
+.git
+.local
+dist
+secrets
+**/*.key
+**/identity.bin
+.env
+deploy/.env
+**/*.token
+**/__pycache__
