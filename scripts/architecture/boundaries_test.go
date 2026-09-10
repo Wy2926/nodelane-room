@@ -1,15 +1,40 @@
 package architecture
 
 import (
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+// UI icons stay in the desktop bundle; they add no native or network provider.
+func TestDesktopDependencies(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "desktop", "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pkg struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		t.Fatal(err)
+	}
+	allowed := []string{"react", "react-dom", "@tauri-apps/api", "@tauri-apps/plugin-autostart", "@tauri-apps/plugin-clipboard-manager", "@phosphor-icons/react"}
+	for name, version := range pkg.Dependencies {
+		if !slices.Contains(allowed, name) {
+			t.Errorf("desktop: review dependency boundary for %s", name)
+		}
+		if version == "" || strings.ContainsAny(version, "^~*><| ") {
+			t.Errorf("desktop: %s must use a pinned version", name)
+		}
+	}
+}
 
 // Production imports only: integration tests may act as another process's client.
 // Parse every platform's sources so Windows and Linux enforce the same boundaries.

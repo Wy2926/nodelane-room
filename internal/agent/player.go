@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/client"
@@ -15,11 +15,11 @@ func (r *Runtime) Init(ctx context.Context, server, name string) (string, error)
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.api != nil {
-		return "", errors.New("device is already initialized")
+		return "", localapi.Failure("already_initialized", "device is already initialized")
 	}
 	i, err := device.NewIdentity(server, name)
 	if err != nil {
-		return "", err
+		return "", localapi.Failure("invalid_request", err.Error())
 	}
 	a := client.NewAPI(i)
 	if err = a.Authenticate(ctx); err != nil {
@@ -37,10 +37,10 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.api == nil {
-		return nil, errors.New("run nodelane init first")
+		return nil, localapi.Failure("unconfigured", "run nlroom-cli init first")
 	}
 	if r.identity.Node {
-		return nil, errors.New("infrastructure identity cannot operate player rooms")
+		return nil, localapi.Failure("forbidden", "infrastructure identity cannot operate player rooms")
 	}
 	if room == "" {
 		room = r.identity.RoomID
@@ -53,7 +53,7 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 		path = "/v2/rooms/join"
 	}
 	if room == "" && action != "create" && action != "join" {
-		return nil, errors.New("no selected room")
+		return nil, localapi.Failure("no_room", "no selected room")
 	}
 	var out json.RawMessage
 	if err := r.api.Call(ctx, "POST", path, body, &out); err != nil {
@@ -94,13 +94,13 @@ func (r *Runtime) Members(ctx context.Context, room string) (model.Snapshot, err
 	defer r.op.Unlock()
 	var s model.Snapshot
 	if r.api == nil {
-		return s, errors.New("run init first")
+		return s, localapi.Failure("unconfigured", "run init first")
 	}
 	if room == "" {
 		room = r.identity.RoomID
 	}
 	if room == "" {
-		return s, errors.New("no selected room")
+		return s, localapi.Failure("no_room", "no selected room")
 	}
 	err := r.api.Call(ctx, "GET", "/v2/rooms/"+room, nil, &s)
 	return s, err
@@ -110,10 +110,37 @@ func (r *Runtime) Games(ctx context.Context) ([]model.Game, error) {
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.api == nil {
-		return nil, errors.New("run init first")
+		return nil, localapi.Failure("unconfigured", "run init first")
 	}
 	var out []model.Game
 	err := r.api.Call(ctx, "GET", "/v2/games", nil, &out)
+	return out, err
+}
+
+func (r *Runtime) OwnedRooms(ctx context.Context) ([]model.Room, error) {
+	r.op.Lock()
+	api := r.api
+	r.op.Unlock()
+	if api == nil {
+		return nil, localapi.Failure("unconfigured", "请先初始化设备")
+	}
+	var out []model.Room
+	err := api.Call(ctx, "GET", "/v2/rooms", nil, &out)
+	return out, err
+}
+
+func (r *Runtime) ManageRoom(ctx context.Context, room string) (model.RoomManagement, error) {
+	var out model.RoomManagement
+	if !validLocalID(room, false) {
+		return out, localapi.Failure("invalid_request", "invalid room ID")
+	}
+	r.op.Lock()
+	api := r.api
+	r.op.Unlock()
+	if api == nil {
+		return out, localapi.Failure("unconfigured", "请先初始化设备")
+	}
+	err := api.Call(ctx, "GET", "/v2/rooms/"+room+"/manage", nil, &out)
 	return out, err
 }
 
@@ -121,20 +148,20 @@ func (r *Runtime) SetPort(ctx context.Context, in model.EndpointRequest, remove 
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.identity.RoomID == "" {
-		return errors.New("join a room first")
+		return localapi.Failure("no_room", "join a room first")
 	}
 	if (in.Protocol != "tcp" && in.Protocol != "udp") || in.Port == 0 || in.Port == model.ProbePort {
-		return errors.New("invalid game port")
+		return localapi.Failure("invalid_request", "invalid game port")
 	}
 	var snap model.Snapshot
 	if r.api == nil {
-		return errors.New("run init first")
+		return localapi.Failure("unconfigured", "run init first")
 	}
 	if err := r.api.Call(ctx, "GET", "/v2/rooms/"+r.identity.RoomID, nil, &snap); err != nil {
 		return err
 	}
 	if snap.Room == nil || snap.Room.Game != "custom" {
-		return errors.New("自定义端口仅适用于通用游戏；当前游戏端口由服务端配置")
+		return localapi.Failure("configured_ports", "自定义端口仅适用于通用游戏；当前游戏端口由服务端配置")
 	}
 	i := r.identity
 	i.Ports = append([]model.EndpointRequest(nil), i.Ports...)
@@ -148,7 +175,7 @@ func (r *Runtime) SetPort(ctx context.Context, in model.EndpointRequest, remove 
 		}
 	}
 	if !remove && len(i.Ports) >= 32 {
-		return errors.New("at most 32 explicit ports are supported")
+		return localapi.Failure("port_limit", "at most 32 explicit ports are supported")
 	}
 	if !remove {
 		i.Ports = append(i.Ports, in)

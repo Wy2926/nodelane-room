@@ -48,6 +48,7 @@ type Runtime struct {
 	probeBusy        atomic.Bool
 	engineGeneration uint64
 	registered       map[string]time.Time
+	imageSlots       chan struct{}
 	wake             chan struct{}
 	watchRoom        string
 	watchCancel      context.CancelFunc
@@ -56,7 +57,7 @@ type Runtime struct {
 }
 
 func New(dir string, log *slog.Logger) (*Runtime, error) {
-	r := &Runtime{dir: dir, log: log, engine: engine.New(log), registered: map[string]time.Time{}, wake: make(chan struct{}, 1), status: model.Status{Control: "unconfigured", Engine: "stopped", Peers: []model.Peer{}}}
+	r := &Runtime{dir: dir, log: log, engine: engine.New(log), imageSlots: make(chan struct{}, 2), registered: map[string]time.Time{}, wake: make(chan struct{}, 1), status: model.Status{Control: "unconfigured", Engine: "stopped", Peers: []model.Peer{}}}
 	i, err := platform.LoadIdentity(dir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -67,7 +68,7 @@ func New(dir string, log *slog.Logger) (*Runtime, error) {
 		}
 		r.identity = i
 		r.api = client.NewAPI(i)
-		r.status.DeviceID = i.ID()
+		r.setPublicIdentity(i)
 	}
 	return r, nil
 }
@@ -98,10 +99,16 @@ func (r *Runtime) persist(i device.Identity) error {
 		return err
 	}
 	r.identity = i
+	r.setPublicIdentity(i)
+	return nil
+}
+
+func (r *Runtime) setPublicIdentity(i device.Identity) {
 	r.stateMu.Lock()
 	r.status.DeviceID = i.ID()
+	r.status.Server, r.status.Name, r.status.SelectedRoom = i.Server, i.Name, i.RoomID
+	r.status.Ports = append([]model.EndpointRequest{}, i.Ports...)
 	r.stateMu.Unlock()
-	return nil
 }
 
 func (r *Runtime) Run(ctx context.Context) error {

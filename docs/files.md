@@ -44,11 +44,96 @@ deploy/ 部署模板与测试环境
     Dockerfile 测试程序与工具镜像
     entrypoint.sh 测试角色启动与容器内网络隔离
     peer.py 通用 TCP/UDP 联机测试辅助服务
+desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
+  index.html 正式桌面前端入口
+  preview.html 仅开发使用的交互式界面预览入口
+  icon.svg 既有 NodeLane 客户端品牌图标
+  package.json 锁定前端运行依赖、图标与构建测试命令
+  package-lock.json npm 精确依赖与完整性锁定
+  tsconfig.json 客户端严格类型检查
+  vite.config.ts 本地开发与 Vitest 配置
+  public/ 随包客户端静态资源
+    assets/ 原创主机氛围素材
+      console-ambient.png 银蓝丝带背景与缺图回退
+  src/ 客户端界面、样式与本机调用
+    main.tsx 正式客户端挂载
+    preview.tsx 独立开发预览夹具，模拟交互并明确无真实网络
+    test-setup.ts DOM 测试环境与对话框模拟
+    app/ 应用编排与系统导航
+      App.tsx 本机状态、页面与房间弹窗组合
+      App.test.tsx 房间流程、成员菜单、失败保护、键盘与默认线上地址测试
+      Shell.tsx 主机顶部导航、玩家信息与底部控制中心
+      navigation.ts 页面标识与中文标题
+      Feedback.tsx 服务故障、忙碌与操作反馈
+      use-actions.ts 操作互斥、复制与确认管理
+    styles/ 午夜主题共享样式
+      tokens.css 色彩、字阶、间距、尺寸、材质、焦点与动效令牌
+      index.css 全客户端样式入口
+      base.css 控件、排版、焦点与减少动态效果
+      layout.css 主机舞台、导航、控制栏与响应式布局
+      forms.css 输入、模态弹窗、邀请码与端口样式
+      feedback.css 错误、提示、空状态与开发预览标识
+    native/ 真实 Tauri 本机桥接
+      api.ts 玩家 IPC、错误文案、剪贴板与生命周期命令
+      use-service.ts 不重叠状态轮询、退避与原生通知
+    shared/ 共用数据与简单 UI
+      model.ts 玩家、游戏、房间与本机请求类型
+      time.ts 时间与状态新鲜度格式化
+      ui/ 跨页面控件
+        Empty.tsx 空状态与加载说明
+        Modal.tsx 原生对话框、焦点和 Escape 行为
+        PlayerAvatar.tsx 跨页面复用的玩家字母头像与氛围材质
+        PortList.tsx 授权端口列表
+    features/ 按玩家流程组织的页面
+      catalog/ 服务端游戏目录与主机游戏选择
+        GameLibrary.tsx 横向封面、键盘选择、搜索与联机入口
+        Artwork.tsx 本机游戏图像展示与原创素材回退
+        artwork-loader.ts 有界图像请求和缓存
+        use-catalog.ts 目录、管理房间与陈旧状态加载
+        catalog.css 游戏封面焦点和沉浸式信息舞台
+      rooms/ 联机房间与成员
+        RoomPage.tsx 欢迎主屏、房间选择、成员与连接布局
+        RoomHero.tsx 当前游戏背景、房间状态及权限操作
+        Members.tsx 玩家名片、虚拟 IP、实测链路与折叠管理菜单
+        Connection.tsx 游戏连接说明、只读配置与通用端口管理
+        use-room.ts 当前房间、管理快照与新鲜度判断
+        rooms.css 欢迎舞台、房间卡片与连接布局
+        members.css 玩家卡片、角色、菜单和实测链路样式
+        dialogs/ 房间交互弹窗
+          types.ts 弹窗状态类型
+          RoomDialogs.tsx 房间弹窗调度与错误反馈
+          CreateRoom.tsx 已选游戏的建房表单
+          JoinRoom.tsx 邀请码入房表单
+          Invitation.tsx 临时邀请码及复制
+          Confirmation.tsx 权限操作和离房退出确认
+      device/ 初始化与桌面偏好
+        Setup.tsx 默认线上控制端、设备昵称与首次使用
+        Settings.tsx 设备信息、主机主题、开机启动与退出
+        device.css 欢迎界面与主机系统设置样式
+      diagnostics/ 真实网络诊断
+        Diagnostics.tsx 状态检查、手动诊断与脱敏复制
+        diagnostics.css 网络状态与诊断结果样式
+  src-tauri/ 原生窗口、托盘与受限本机 IPC 桥接
+    Cargo.toml 原生依赖与程序信息
+    Cargo.lock Rust 精确依赖锁定
+    build.rs Tauri 构建入口
+    tauri.conf.json 桌面窗口、资源与 CSP 边界
+    capabilities/ 受限桌面命令能力
+      main.json 主窗口允许调用的本机功能
+    permissions/ 本机命令权限与生成配置
+    icons/ 原生窗口及安装图标
+    src/ 原生程序实现
+      main.rs 窗口、托盘、通知与生命周期
+      ipc/ 有界玩家服务桥接
+        mod.rs 桥接命令入口
+        protocol.rs 玩家请求校验与类型
+        transport.rs Named Pipe 与 Unix socket 通信
+        tests.rs 桥接请求与边界测试
 dist/ 构建、安装包与镜像发布产物
 Dockerfile 从源码构建控制面与节点镜像
 docs/ 协议、部署与验收说明
   architecture.md 包依赖、接口分工、监控口径与协议安全边界
-  client.md 品牌与进程命名、GUI 技术选型和跨平台实施边界
+  client.md 桌面首版需求、进程命名、GUI 选型与跨平台实施边界
   deployment.md V2 部署与维护步骤
   files.md 文件层级与职责索引
   game-network.md 通用单播、广播与组播 LAN 发现规划和验收边界
@@ -187,7 +272,7 @@ README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
   __pycache__/ Python 字节码缓存
   architecture/ Go 包依赖规范检查
-    boundaries_test.go 跨平台生产导入白名单、数据库与数据面归属检查
+    boundaries_test.go 跨平台生产导入、数据库与数据面归属及客户端运行依赖边界
   build-images.ps1 校验发布包并构建镜像，支持显式推送
   build.ps1 Windows/Linux 多架构发布包构建
   build.sh Linux 可执行文件构建

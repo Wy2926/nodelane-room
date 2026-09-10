@@ -13,3 +13,6 @@ __pycache__/
 *.db
 node_modules/
 /internal/control/adminweb/dist/
+/desktop/dist/
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/

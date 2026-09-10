@@ -19,6 +19,18 @@
 
 上述程序来自提交 `f32b411d03bd3fd062a3e216241610f983ff8d2c`。两份 `0.2.0` 镜像已推送至 `docker.nodelane.net`；远端 OCI index 摘要与本地已测镜像一致，均含 amd64、arm64。标签、固定摘要和源码提交见 [IMAGES.txt](../deploy/IMAGES.txt)，远端核对日志：[控制面](../.local/fresh-control-remote.log)、[节点](../.local/fresh-node-remote.log)。
 
+## 客户端主机主题（2026-09-10）
+
+桌面 UI 采用 PS5 主屏幕与控制中心的视觉语言，未使用管理台设计。本次提交同时纳入首版 Tauri 客户端所依赖的公开状态、房间管理查询、受限图片 IPC、安装用户绑定和打包支持；Nebula 固定版本未变。
+
+- Node.js 24.21.0 下 `npm run build`、9 项前端交互测试通过；覆盖陈旧目录拒绝建房、配置端口只读、离房失败不退出、建房防重复、游戏键盘选择与搜索、默认线上地址，以及成员菜单、确认返回焦点、真实零测量值和陈旧数据禁用操作。
+- Windows 原生 `cargo build --locked --release --features custom-protocol` 与 2 项 Rust 桥接测试通过，生成 `dist/desktop/nlroom-windows-amd64-console.exe`（11,264,512 字节，未签名，仅 GUI）。未安装或启动宿主服务。证据：[前端构建](../.local/console-ui-build.log)、[交互测试](../.local/console-ui-test.log)、[原生构建](../.local/console-ui-native-build.log)、[桥接测试](../.local/console-ui-native-test.log)。
+- 提交前 Windows `gofmt`、`go vet ./...`、`go test ./...` 通过；Windows 未配置测试数据库。证据：[vet](../.local/console-ui-go-vet.log)、[测试](../.local/console-ui-go-test.log)。
+- `python scripts/test-docker.py --verify` 通过：Linux 独立 PostgreSQL 下 vet、全量普通测试、`go test -race -count=1 ./...`，以及真实 TUN/Nebula 双向通信、默认拒绝、端口替换与撤销、离房、关房、踢人与跨房隔离均通过；测试容器、卷、网络及本轮镜像已清理。[结果](../.local/nodelane-test-20260910-230830-1cec92/results.json)、[回归日志](../.local/console-ui-docker-test.log)。源码测试镜像带入桌面依赖清单以执行新增依赖边界检查。
+- 在内置浏览器检查桌面主屏、横向游戏库、建房与邀请、房间详情、设置与诊断，以及 760×560 最小窗口和 390×844 窄屏首次使用。1280×720 下主操作完整可见；控制台无 error/warn。预览明确标注示例数据，未建立隧道或产生实测 RTT；不作为线上联机或原生 WebView 验收。[截图与视觉检查](../.local/console-ui/design-qa.md)。
+- 线上地址已作为首次使用默认值，当前浏览器访问该站被阻止，本轮未验证线上控制端连接。既有身份不会被切换。
+- 用户确认房间、成员名片、个人入口与设置的最终 UI；1120×760 默认窗口中成员卡片底边 670px，固定控制栏顶边 682px。菜单 Escape 返回入口、转让前确认和偏好开关已在开发预览操作；预览开关不修改宿主设置。
+
 ## 未验收与限制
 
 - 最近一轮未配置 `NODELANE_TEST_GEOIP_DB`，两个依赖官方 MMDB 样本的测试跳过；此前样本测试通过的记录见下表。
@@ -26,7 +38,7 @@
 - Linux 隔离回归未启用外网 Steam 烟测；实际下载在 Windows 单独执行。管理台测试使用 DOM 环境，尚未完成真实浏览器从登录到导入、配置、展示的整段人工验收。
 - 未完成生产管理页面端到端交互、实际 1Panel、Debian/Ubuntu systemd 安装与重复安装、跨版本更新回退及卸载。
 - 未完成 Windows 服务安装/升级、Named Pipe 与 SID/ACL 真机联调、驱动、ARM 真机、跨服务器公网 UDP、双机不同 NAT、Minecraft Java 1.21.1 本体、长期稳定性及真实丢包验收。容器、协议模拟器和 ARM 仿真不能替代这些场景；步骤见 [人工及环境验收](manual-v2-validation.md)。
-- GUI、Linux 普通用户控制 root 服务的安装与 UID 授权、移动端 VPN 接入尚未实现或验证，规划见 [客户端设计](client.md)。
+- GUI 已有实现和浏览器界面检查；Windows/Linux 原生服务、安装身份、UID 授权及系统 WebView 的完整真机验收仍未完成，移动端 VPN 接入尚未验证，边界见 [客户端设计](client.md)。
 - 已授权握手补丁及未处理的 Nebula 竞争见 [补丁边界](nebula-race-review.md)；NodeLane 全量 race 通过不代表 Nebula 全仓库无竞争。
 
 ## 复现

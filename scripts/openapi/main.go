@@ -105,6 +105,8 @@ func run() error {
 	for _, v := range []any{model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.EndpointRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
 		schema(reflect.TypeOf(v))
 	}
+	schema(reflect.TypeOf(model.RoomManagement{}))
+	schema(reflect.TypeOf(model.Status{}))
 	schemes := components["securitySchemes"].(map[string]any)
 	schemes["AdminCookie"] = M{"type": "apiKey", "in": "cookie", "name": "__Host-nlroom-admin", "description": "12 hour random session; 30 minute idle timeout. Secure, HttpOnly, SameSite=Strict. All admin writes also require exact Origin and X-CSRF-Token."}
 	schemes["NodeBearer"] = M{"type": "http", "scheme": "bearer", "description": "One-hour session scoped to the current nonrevoked node identity binding. Cannot authorize player/admin APIs."}
@@ -155,6 +157,17 @@ func run() error {
 		paths[path].(map[string]any)[method] = op
 	}
 	delete(paths, "/v2/admin/bootstrap")
+	add("/v2/rooms", "get", "This player's owned, open, unexpired rooms; newest expiry first, at most 500", "Bearer", nil, M{"type": "array", "items": ref("Room")}, false)
+	add("/v2/rooms/{room}/manage", "get", "Owner-only consistent room, game, member and endpoint view, including after leaving; never grants tunnel authority", "Bearer", nil, ref("RoomManagement"), false)
+	doc["x-local-api"] = M{
+		"transport":        "HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener",
+		"protocol_version": 1,
+		"rpc": M{"method": "POST", "path": "/rpc", "max_request_bytes": 65536, "max_response_bytes": 4 << 20,
+			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "port", "remove-port", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
+			"error":     object(M{"code": str, "error": str}, "code", "error"),
+			"responses": M{"status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": M{"type": "array", "items": ref("Room")}, "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
+		"images": M{"method": "GET", "path": "/game-images/{game}/{kind}", "kind": []string{"cover", "background"}, "max_response_bytes": 5 << 20, "description": "Public JPEG/PNG fetched only from the configured control origin, without session or redirects; at most two concurrent downloads; never part of status."},
+	}
 	add("/v2/games", "get", "Enabled server game catalog; custom permits client-defined ports", "Bearer", nil, M{"type": "array", "items": ref("Game")}, false)
 	add("/v2/games/{game}/images/{image}", "get", "Downloaded public game artwork; image is cover or background", "", nil, str, false)
 	paths["/v2/games/{game}/images/{image}"].(M)["get"].(M)["responses"] = M{"200": M{"description": "Validated JPEG/PNG from shared PostgreSQL, at most 5 MiB", "content": M{"image/jpeg": M{"schema": M{"type": "string", "format": "binary"}}, "image/png": M{"schema": M{"type": "string", "format": "binary"}}}}, "404": M{"$ref": "#/components/responses/Error"}}

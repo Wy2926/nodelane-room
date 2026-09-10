@@ -1,0 +1,99 @@
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 18px 0;
+}
+input,
+select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: var(--input);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  min-height: var(--control-height);
+}
+input::placeholder {
+  color: var(--muted);
+  opacity: 0.8;
+}
+input[type="checkbox"] {
+  min-height: auto;
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+dialog {
+  width: min(490px, calc(100vw - 40px));
+  padding: var(--space-8);
+  max-height: 90vh;
+  overflow: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  background: var(--panel-raised);
+  box-shadow: var(--shadow-dialog);
+  backdrop-filter: blur(var(--blur-panel));
+}
+dialog::backdrop {
+  background: #050a14b8;
+  backdrop-filter: blur(16px);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.dialog-head h2 {
+  margin: 0;
+}
+dialog form > .primary {
+  width: 100%;
+  margin-top: 12px;
+}
+.invitation {
+  font:
+    18px ui-monospace,
+    monospace;
+  letter-spacing: 1px;
+  padding: 20px;
+  overflow-wrap: anywhere;
+  border: 1px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  margin: 22px 0;
+}
+.confirm-description {
+  margin-bottom: 30px;
+}
+.port-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0;
+  font-size: 11px;
+}
+.port {
+  font-size: 11px;
+  border: 1px solid var(--line);
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--input);
+  font-variant-numeric: tabular-nums;
+}
+.port small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.tag {
+  font-size: 10px;
+  border-radius: 4px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 3px 6px;
+  white-space: nowrap;
+}

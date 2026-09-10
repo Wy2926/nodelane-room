@@ -642,6 +642,30 @@ components:
                 - id
                 - state
             type: object
+        Peer:
+            properties:
+                device_id:
+                    type: string
+                error:
+                    type: string
+                ip:
+                    type: string
+                loss_percent:
+                    format: double
+                    type: number
+                mode:
+                    type: string
+                name:
+                    type: string
+                rtt_ms:
+                    format: double
+                    type: number
+            required:
+                - device_id
+                - name
+                - ip
+                - mode
+            type: object
         Room:
             properties:
                 capacity:
@@ -675,6 +699,30 @@ components:
                 - capacity
                 - expires_at
                 - closed
+            type: object
+        RoomManagement:
+            properties:
+                endpoints:
+                    items:
+                        $ref: '#/components/schemas/Endpoint'
+                    type: array
+                game:
+                    $ref: '#/components/schemas/Game'
+                members:
+                    items:
+                        $ref: '#/components/schemas/Member'
+                    type: array
+                room:
+                    $ref: '#/components/schemas/Room'
+                server_time:
+                    format: date-time
+                    type: string
+            required:
+                - room
+                - game
+                - members
+                - endpoints
+                - server_time
             type: object
         RoomRequest:
             properties:
@@ -722,6 +770,8 @@ components:
                     items:
                         $ref: '#/components/schemas/Endpoint'
                     type: array
+                game:
+                    $ref: '#/components/schemas/Game'
                 members:
                     items:
                         $ref: '#/components/schemas/Member'
@@ -741,6 +791,70 @@ components:
                 - nodes
                 - blocklist
                 - server_time
+            type: object
+        Status:
+            properties:
+                control:
+                    type: string
+                device_id:
+                    type: string
+                endpoints:
+                    items:
+                        $ref: '#/components/schemas/Endpoint'
+                    type: array
+                engine:
+                    type: string
+                error:
+                    type: string
+                game:
+                    $ref: '#/components/schemas/Game'
+                ip:
+                    type: string
+                lease_expires_at:
+                    format: date-time
+                    type: string
+                members:
+                    items:
+                        $ref: '#/components/schemas/Member'
+                    type: array
+                name:
+                    type: string
+                peers:
+                    items:
+                        $ref: '#/components/schemas/Peer'
+                    type: array
+                ports:
+                    items:
+                        $ref: '#/components/schemas/EndpointRequest'
+                    type: array
+                protocol_version:
+                    format: int64
+                    type: integer
+                room:
+                    $ref: '#/components/schemas/Room'
+                selected_room:
+                    type: string
+                server:
+                    type: string
+                snapshot_at:
+                    format: date-time
+                    type: string
+                version:
+                    type: string
+            required:
+                - version
+                - protocol_version
+                - server
+                - name
+                - selected_room
+                - ports
+                - members
+                - endpoints
+                - snapshot_at
+                - device_id
+                - control
+                - engine
+                - peers
             type: object
         TelemetrySeries:
             properties:
@@ -2180,6 +2294,31 @@ paths:
             tags:
                 - Node
     /v2/rooms:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Room'
+                                type: array
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: This player's owned, open, unexpired rooms; newest expiry first, at most 500
+            tags:
+                - Player
         post:
             operationId: createRoom
             parameters:
@@ -2563,6 +2702,36 @@ paths:
             summary: Revoke membership; ownership may remain
             tags:
                 - Player
+    /v2/rooms/{room}/manage:
+        get:
+            parameters:
+                - in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RoomManagement'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Owner-only consistent room, game, member and endpoint view, including after leaving; never grants tunnel authority
+            tags:
+                - Player
     /v2/rooms/{room}/telemetry:
         post:
             parameters:
@@ -2682,3 +2851,81 @@ tags:
     - name: Admin
     - name: Node
     - name: Operations
+x-local-api:
+    images:
+        description: Public JPEG/PNG fetched only from the configured control origin, without session or redirects; at most two concurrent downloads; never part of status.
+        kind:
+            - cover
+            - background
+        max_response_bytes: 5242880
+        method: GET
+        path: /game-images/{game}/{kind}
+    protocol_version: 1
+    rpc:
+        error:
+            additionalProperties: false
+            properties:
+                code:
+                    type: string
+                error:
+                    type: string
+            required:
+                - code
+                - error
+            type: object
+        max_request_bytes: 65536
+        max_response_bytes: 4194304
+        method: POST
+        path: /rpc
+        request:
+            additionalProperties: false
+            properties:
+                action:
+                    enum:
+                        - init
+                        - status
+                        - games
+                        - rooms
+                        - manage
+                        - members
+                        - create
+                        - join
+                        - invite
+                        - kick
+                        - transfer
+                        - leave
+                        - close
+                        - port
+                        - remove-port
+                        - ping
+                        - doctor
+                    type: string
+                body:
+                    type: object
+                name:
+                    type: string
+                room:
+                    type: string
+                server:
+                    type: string
+                target:
+                    type: string
+            required:
+                - action
+            type: object
+        responses:
+            games:
+                items:
+                    $ref: '#/components/schemas/Game'
+                type: array
+            manage:
+                $ref: '#/components/schemas/RoomManagement'
+            members:
+                $ref: '#/components/schemas/Snapshot'
+            rooms:
+                items:
+                    $ref: '#/components/schemas/Room'
+                type: array
+            status:
+                $ref: '#/components/schemas/Status'
+    transport: HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener

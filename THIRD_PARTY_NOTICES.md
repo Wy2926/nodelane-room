@@ -29,3 +29,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## 桌面图标
+
+客户端使用 `@phosphor-icons/react 2.1.10`，MIT License，Copyright Phosphor Icons。许可随 npm 包与桌面依赖许可清单提供。开发预览中的游戏图片来自对应 Steam 商店的公开素材，版权归各游戏权利人；不随正式客户端打包。

@@ -1,5 +1,16 @@
 package model
 
+import "time"
+
+// RoomManagement contains player-visible management data, never tunnel authority.
+type RoomManagement struct {
+	Room       Room       `json:"room"`
+	Game       Game       `json:"game"`
+	Members    []Member   `json:"members"`
+	Endpoints  []Endpoint `json:"endpoints"`
+	ServerTime time.Time  `json:"server_time"`
+}
+
 // Game ports are expanded to individual registered endpoints, never an open
 // transport or an unrestricted firewall rule. PortEnd=0 means a single port.
 type GamePort struct {

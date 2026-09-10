@@ -1,0 +1,11 @@
+{
+  "identifier": "main",
+  "description": "Only the bundled player window may use bounded player IPC and desktop controls.",
+  "windows": ["main"],
+  "permissions": [
+    "allow-player-request", "allow-game-image", "allow-exit-app", "allow-notify-state",
+    "core:event:allow-listen", "core:event:allow-unlisten",
+    "clipboard-manager:allow-write-text",
+    "autostart:allow-enable", "autostart:allow-disable", "autostart:allow-is-enabled"
+  ]
+}

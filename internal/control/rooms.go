@@ -16,6 +16,59 @@ func readRoom(ctx context.Context, tx pgx.Tx, id string) (model.Room, error) {
 	err := tx.QueryRow(ctx, "SELECT r.id,r.name,r.owner_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game WHERE r.id=$1", id).Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName)
 	return r, noRows(err)
 }
+
+func (s *Store) OwnedRooms(ctx context.Context, device string) ([]model.Room, error) {
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	rows, err := tx.Query(ctx, "SELECT id FROM rooms WHERE owner_id=$1 AND NOT closed AND expires_at>now() ORDER BY expires_at DESC,id LIMIT 500", device)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	out := []model.Room{}
+	for _, id := range ids {
+		room, err := readRoom(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, room)
+	}
+	return out, nil
+}
+
+func (s *Store) RoomManagement(ctx context.Context, roomID, device string) (model.RoomManagement, error) {
+	out := model.RoomManagement{Members: []model.Member{}, Endpoints: []model.Endpoint{}}
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback(ctx)
+	if out.Room, err = readRoom(ctx, tx, roomID); err != nil {
+		return out, err
+	}
+	if out.Room.OwnerID != device {
+		return out, ErrForbidden
+	}
+	if err = tx.QueryRow(ctx, "SELECT now()").Scan(&out.ServerTime); err != nil {
+		return out, err
+	}
+	if out.Room.Closed || !out.Room.ExpiresAt.After(out.ServerTime) {
+		return out, ErrConflict
+	}
+	if out.Game, err = readGame(ctx, tx, out.Room.Game); err == nil {
+		out.Members, err = readRoomMembers(ctx, tx, roomID)
+	}
+	if err == nil {
+		out.Endpoints, err = readRoomEndpoints(ctx, tx, roomID)
+	}
+	return out, err
+}
 func (s *Store) available(ctx context.Context, tx pgx.Tx, device string) error {
 	var used bool
 	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM members WHERE device_id=$1 AND active) OR EXISTS(SELECT 1 FROM node_bindings WHERE device_id=$1)", device).Scan(&used)
@@ -275,6 +328,11 @@ func (s *Store) Snapshot(ctx context.Context, room, device string) (model.Snapsh
 			return out, err
 		}
 		out.Room = &r
+		g, err := readGame(ctx, tx, r.Game)
+		if err != nil {
+			return out, err
+		}
+		out.Game = &g
 		// Former members get only the tombstone needed to stop their own runtime.
 		if activeMember(ctx, tx, room, device) == nil && !r.Closed {
 			if out.Members, err = readRoomMembers(ctx, tx, room); err != nil {

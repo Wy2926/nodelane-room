@@ -1,0 +1,73 @@
+.room-toolbar { margin-bottom: var(--space-4); }
+.room-tabs { display: flex; overflow-x: auto; gap: var(--space-4); padding: 7px; margin: -7px -7px var(--space-3); }
+.room-tabs button { flex: 0 0 auto; max-width: 380px; min-width: 260px; gap: var(--space-3); text-align: left; border-radius: var(--radius-md); padding: 10px 14px 10px 10px; background: var(--card); border-color: var(--card-edge); backdrop-filter: blur(var(--blur-panel)); }
+.room-tabs button[aria-pressed="true"] { border-color: var(--line-strong); background: var(--card-active); box-shadow: var(--shadow-card); }
+.room-tab-cover { display: grid; place-items: center; width: 46px; height: 54px; flex-shrink: 0; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); color: var(--muted); }
+.room-tab-cover .art { display: block; width: 100%; height: 100%; object-fit: cover; }
+.room-tab-copy { min-width: 0; }
+.room-tab-copy strong { display: block; font-size: var(--text-sm); font-weight: var(--weight-regular); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-tab-copy small { display: block; margin-top: 7px; font-size: 10px; color: var(--muted); }
+.room-tab-state { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; align-self: flex-start; margin: 3px 0 0 var(--space-2); font-size: 9px; color: var(--muted); }
+.room-tabs button[aria-pressed="true"] .room-tab-state { color: var(--text); }
+.room-hero { min-height: 250px; display: flex; align-items: center; padding: var(--space-6) 0 var(--space-8); }
+.hero-content { min-width: 0; }
+.room-game-label { margin-left: var(--space-4); color: var(--muted); letter-spacing: 0.03em; }
+.hero-content h2 { font-size: var(--text-title); font-weight: var(--weight-title); line-height: 1.2; margin: var(--space-5) 0; overflow-wrap: anywhere; }
+.hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-5); margin-bottom: var(--space-8); font-size: var(--text-sm); color: var(--muted); }
+.pill { padding: 6px 12px; border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); }
+.room-columns { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: var(--space-6); align-items: start; }
+.connection { min-width: 0; }
+.connection-card { padding: var(--space-6); }
+.connection-intro { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-5); }
+.connection-intro > svg { flex-shrink: 0; color: var(--accent); }
+.connection-intro .eyebrow { font-size: 8px; letter-spacing: 0.1em; color: var(--subdued); }
+.connection-intro h3 { font-size: var(--text-lg); font-weight: var(--weight-title); margin: 7px 0 0; }
+.connection p { font-size: var(--text-xs); }
+.connection-ports { padding-top: var(--space-5); margin-top: var(--space-5); border-top: 1px solid var(--card-edge); }
+.connection-ports h3 { font-size: var(--text-xs); font-weight: var(--weight-regular); color: var(--muted); margin-bottom: var(--space-3); }
+.connection-ports > .hint:last-child { margin-bottom: 0; }
+.connection-help { border-top: 1px solid var(--card-edge); margin-top: var(--space-5); }
+.connection-help summary { font-size: var(--text-xs); padding: var(--space-4) 0 0; }
+.connection-help p { margin: var(--space-3) 0 0; }
+.port-form { display: grid; grid-template-columns: 85px minmax(70px, 1fr); gap: 10px; align-items: end; }
+.port-form button { grid-column: 1/-1; }
+.port-form label { margin: 0; font-size: var(--text-xs); }
+.port-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: var(--text-sm); }
+.port-row small { display: block; font-size: var(--text-xs); color: var(--muted); margin-top: 4px; }
+.room-welcome { padding-top: clamp(30px, 6vh, 80px); }
+.welcome-copy h2 { font-size: var(--text-display); font-weight: var(--weight-title); letter-spacing: 0.01em; line-height: 1.35; margin: 24px 0; }
+.welcome-copy h2 > span { color: var(--accent); }
+.welcome-copy p { font-size: 15px; color: var(--muted); margin-bottom: var(--space-8); }
+.welcome-copy .primary { min-width: 180px; justify-content: space-between; }
+.welcome-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 900px; gap: var(--space-5); margin-top: clamp(44px, 9vh, 100px); }
+.launch-card { justify-content: flex-start; gap: var(--space-5); background: var(--panel); backdrop-filter: blur(var(--blur-panel)); border-radius: var(--radius-md); padding: var(--space-6); text-align: left; }
+.launch-card > svg:first-child { color: var(--accent); }
+.launch-card > svg:last-child { margin-left: auto; color: var(--muted); }
+.launch-card strong, .launch-card small { display: block; }
+.launch-card strong { font-size: 17px; font-weight: 400; }
+.launch-card small { margin-top: 8px; color: var(--muted); font-size: var(--text-sm); }
+.launch-card:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--line-strong); }
+@media (max-height: 650px) and (min-width: 651px) { .room-hero { min-height: 220px; padding: 18px 0 28px; } .room-welcome { padding-top: 12px; } .welcome-copy h2 { font-size: 44px; margin: 18px 0; } .welcome-cards { margin-top: 32px; } }
+@media (max-width: 900px) { .room-columns { grid-template-columns: 1fr; } .launch-card { padding: 20px; gap: 14px; } }
+@media (max-width: 650px) { .hero-meta { gap: 12px; } .welcome-cards { grid-template-columns: 1fr; margin-top: 44px; } .welcome-copy h2 { font-size: 42px; } .room-welcome { padding-top: 28px; } .room-toolbar .actions { width: 100%; } }
+@media (max-width: 450px) { .room-tabs button { max-width: calc(100vw - 44px); min-width: 0; } .room-tab-state { flex-direction: column; } }
+@media (min-width: 901px) and (max-height: 900px) {
+  .shell[data-page="rooms"] main { padding-top: var(--space-3); }
+  .room-toolbar:not(:has(.actions)) { display: none; }
+  .room-tabs { margin-bottom: 0; }
+  .room-tabs button { padding: 8px 12px 8px 8px; }
+  .room-tab-cover { width: 36px; height: 44px; }
+  .room-hero { min-height: 0; padding: 12px 0 20px; }
+  .hero-content { display: grid; grid-template-columns: minmax(0, 1fr) auto; width: 100%; }
+  .hero-content > .eyebrow, .hero-content h2 { grid-column: 1 / -1; }
+  .hero-content h2 { font-size: 36px; margin: 10px 0 12px; }
+  .hero-meta { margin: 0; gap: var(--space-4); }
+  .hero-content > .actions { justify-content: flex-end; gap: var(--space-2); }
+  .hero-content > .actions button { padding: 10px 16px; font-size: var(--text-sm); }
+  .room-columns .system-heading { margin-bottom: var(--space-4); }
+  .connection-card { padding: var(--space-5) var(--space-5) var(--space-3); }
+  .connection-intro { margin-bottom: var(--space-4); }
+  .connection-ports { padding-top: var(--space-4); margin-top: var(--space-4); }
+  .connection-help { margin-top: var(--space-3); }
+  .connection-help summary { padding-top: var(--space-3); }
+}

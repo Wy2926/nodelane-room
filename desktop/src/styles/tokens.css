@@ -1,0 +1,32 @@
+/* Midnight — shared semantic tokens for the console client. */
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
+  font-size: 14px; font-synthesis: none;
+  --font-mono: "Cascadia Code", Consolas, monospace;
+  --text-xs: 11px; --text-sm: 12px; --text-md: 14px; --text-lg: 18px; --text-xl: 24px;
+  --text-title: clamp(32px, 3.4vw, 48px); --text-display: clamp(40px, 5.2vw, 72px);
+  --weight-regular: 400; --weight-title: 350; --weight-medium: 550;
+  --leading-body: 1.75; --leading-title: 1.16; --tracking-label: 0.18em;
+  --bg: #080d17; --surface: #111c2d; --panel: #152033d9; --panel-raised: #1b2940f5;
+  --input: #091321c9; --hover: #ffffff14;
+  --card: #101824b8; --card-active: #243246ad; --card-edge: #e0edff21;
+  --text: #f3f6fc; --muted: #adbbcf; --subdued: #8494ad;
+  --line: #b9d4ff24; --line-strong: #c5dcff4d;
+  --accent: #a9d3ff; --accent-soft: #8cbeff1a;
+  --primary: #f2f5fb; --on-primary: #142036;
+  --success: #8bd9bf; --warning: #f1cf91; --warning-surface: #332b1feb;
+  --danger: #ffafbf; --danger-surface: #352030eb;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+  --radius-sm: 6px; --radius-md: 12px; --radius-lg: 18px; --radius-pill: 999px;
+  --control-height: 46px; --page-gutter: clamp(24px, 5.5vw, 88px); --page-max: 1600px;
+  --header-height: 100px; --dock-height: 78px; --blur-panel: 24px;
+  --shadow: 0 18px 60px #00000030; --shadow-dialog: 0 32px 120px #00000080;
+  --shadow-card: inset 0 1px 0 #ffffff09, 0 12px 32px #0000001f;
+  --focus-ring: 0 0 0 3px var(--bg), 0 0 0 5px var(--text), 0 0 24px #9ecaff38;
+  --duration-fast: 140ms; --duration-normal: 240ms; --duration-scene: 600ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1); --layer-scene: -1; --layer-dock: 10; --layer-feedback: 30;
+  --scene-scrim: linear-gradient(90deg, #080d17f2 0%, #080d17a8 42%, #080d1726 100%), linear-gradient(0deg, #080d17 0%, #080d1700 65%, #080d1780 100%);
+  color: var(--text); background: var(--bg);
+}

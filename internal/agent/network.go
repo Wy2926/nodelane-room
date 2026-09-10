@@ -80,7 +80,14 @@ func (r *Runtime) step(ctx context.Context) error {
 			if client.IsDenied(err) {
 				r.netMu.Lock()
 				r.stopNetworkLocked()
+				r.snapshot = model.Snapshot{}
 				r.netMu.Unlock()
+				// A denied heartbeat is authoritative: the device no longer has
+				// room membership. Clear the local selection so it can join again.
+				i.RoomID, i.Ports = "", nil
+				if saveErr := r.persist(i); saveErr != nil {
+					return saveErr
+				}
 				r.setError("connected", err)
 				return nil
 			}

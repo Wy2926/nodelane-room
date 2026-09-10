@@ -11,6 +11,9 @@ import (
 )
 
 func DefaultDir() string {
+	if dir := desktopStateDir(); dir != "" {
+		return dir
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return ".nodelane"
@@ -18,6 +21,9 @@ func DefaultDir() string {
 	return filepath.Join(dir, "nodelane")
 }
 func SecureDir(dir string) error {
+	if dir == desktopStateDir() && dir != "" {
+		return secureDesktopState(dir)
+	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -26,6 +32,9 @@ func SecureDir(dir string) error {
 func protect(b []byte) ([]byte, error)   { return b, nil }
 func unprotect(b []byte) ([]byte, error) { return b, nil }
 func ListenLocal(dir string) (net.Listener, error) {
+	if l, handled, err := listenDesktop(dir); handled {
+		return l, err
+	}
 	if err := SecureDir(dir); err != nil {
 		return nil, err
 	}
@@ -53,6 +62,9 @@ func ListenLocal(dir string) (net.Listener, error) {
 	return l, nil
 }
 func DialLocal(ctx context.Context, dir string) (net.Conn, error) {
+	if c, handled, err := dialDesktop(ctx, dir); handled {
+		return c, err
+	}
 	return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(dir, "agent.sock"))
 }
 func Install(string, string) error {

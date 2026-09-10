@@ -11,6 +11,8 @@ import (
 )
 
 func (s *Server) registerPlayer(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v2/rooms", s.playerAuth(s.playerOwnedRooms))
+	mux.HandleFunc("GET /v2/rooms/{room}/manage", s.playerAuth(s.playerRoomManagement))
 	mux.HandleFunc("GET /v2/games", s.playerAuth(s.playerGames))
 	mux.HandleFunc("GET /v2/games/{game}/images/{image}", s.gameImage)
 	mux.HandleFunc("POST /v2/rooms/{room}/telemetry", s.playerAuth(s.playerTelemetry))

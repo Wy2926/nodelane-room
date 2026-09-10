@@ -31,18 +31,19 @@ func Call(ctx context.Context, dir string, in Request, out any) error {
 		return errors.New("cannot reach NodeLane service; install/start it or run nlroom-service daemon: " + err.Error())
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, (4<<20)+1))
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode != 200 {
-		var e struct {
-			Error string `json:"error"`
-		}
-		if json.Unmarshal(data, &e) != nil || e.Error == "" {
+		var e Error
+		if json.Unmarshal(data, &e) != nil || e.Message == "" {
 			return errors.New(string(data))
 		}
-		return errors.New(e.Error)
+		return &e
+	}
+	if len(data) > 4<<20 {
+		return Failure("response_too_large", "local response exceeds limit")
 	}
 	if out != nil {
 		return json.Unmarshal(data, out)

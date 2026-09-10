@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-player-request"
+description = "Enables the player_request command without any pre-configured scope."
+commands.allow = ["player_request"]
+
+[[permission]]
+identifier = "deny-player-request"
+description = "Denies the player_request command without any pre-configured scope."
+commands.deny = ["player_request"]

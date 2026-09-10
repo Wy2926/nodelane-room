@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notify-state"
+description = "Enables the notify_state command without any pre-configured scope."
+commands.allow = ["notify_state"]
+
+[[permission]]
+identifier = "deny-notify-state"
+description = "Denies the notify_state command without any pre-configured scope."
+commands.deny = ["notify_state"]

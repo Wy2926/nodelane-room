@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/platform"
 )
@@ -13,9 +14,14 @@ func (r *Runtime) Status() model.Status {
 	r.stateMu.Lock()
 	s := r.status
 	r.stateMu.Unlock()
+	s.Version, s.ProtocolVersion = model.Version, localapi.ProtocolVersion
 	r.netMu.Lock()
 	defer r.netMu.Unlock()
 	s.Room = r.snapshot.Room
+	s.Game = r.snapshot.Game
+	s.SnapshotAt = r.snapshot.ServerTime
+	s.Members = append([]model.Member{}, r.snapshot.Members...)
+	s.Endpoints = append([]model.Endpoint{}, r.snapshot.Endpoints...)
 	s.IP = r.lease.IP
 	s.LeaseExpiresAt = r.lease.ExpiresAt
 	s.Engine = "stopped"

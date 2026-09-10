@@ -7,6 +7,16 @@ import (
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
+func (s *Server) playerOwnedRooms(w http.ResponseWriter, r *http.Request, id string) {
+	out, err := s.Store.OwnedRooms(r.Context(), id)
+	s.result(w, out, err)
+}
+
+func (s *Server) playerRoomManagement(w http.ResponseWriter, r *http.Request, id string) {
+	out, err := s.Store.RoomManagement(r.Context(), r.PathValue("room"), id)
+	s.result(w, out, err)
+}
+
 func (s *Server) playerSnapshot(w http.ResponseWriter, r *http.Request, id string) {
 	out, err := s.Store.Snapshot(r.Context(), r.PathValue("room"), id)
 	s.result(w, out, err)

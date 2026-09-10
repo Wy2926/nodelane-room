@@ -75,6 +75,7 @@ type Node struct {
 }
 type Snapshot struct {
 	Room       *Room      `json:"room,omitempty"`
+	Game       *Game      `json:"game,omitempty"`
 	Members    []Member   `json:"members"`
 	Endpoints  []Endpoint `json:"endpoints"`
 	Nodes      []Node     `json:"nodes"`
@@ -146,12 +147,22 @@ type Peer struct {
 	Error       string   `json:"error,omitempty"`
 }
 type Status struct {
-	DeviceID       string    `json:"device_id"`
-	Control        string    `json:"control"`
-	Engine         string    `json:"engine"`
-	Error          string    `json:"error,omitempty"`
-	Room           *Room     `json:"room,omitempty"`
-	LeaseExpiresAt time.Time `json:"lease_expires_at,omitempty"`
-	IP             string    `json:"ip,omitempty"`
-	Peers          []Peer    `json:"peers"`
+	Version         string            `json:"version"`
+	ProtocolVersion int               `json:"protocol_version"`
+	Server          string            `json:"server"`
+	Name            string            `json:"name"`
+	SelectedRoom    string            `json:"selected_room"`
+	Ports           []EndpointRequest `json:"ports"`
+	Game            *Game             `json:"game,omitempty"`
+	Members         []Member          `json:"members"`
+	Endpoints       []Endpoint        `json:"endpoints"`
+	SnapshotAt      time.Time         `json:"snapshot_at"`
+	DeviceID        string            `json:"device_id"`
+	Control         string            `json:"control"`
+	Engine          string            `json:"engine"`
+	Error           string            `json:"error,omitempty"`
+	Room            *Room             `json:"room,omitempty"`
+	LeaseExpiresAt  time.Time         `json:"lease_expires_at,omitempty"`
+	IP              string            `json:"ip,omitempty"`
+	Peers           []Peer            `json:"peers"`
 }

@@ -10,6 +10,8 @@ if ($env:PROCESSOR_ARCHITEW6432) { $nativeArch = $env:PROCESSOR_ARCHITEW6432 }
 if ($nativeArch.ToLowerInvariant() -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
 $driver = "dist/windows/wintun/bin/$arch/wintun.dll"
 $files = @('nlroom-cli.exe', 'nlroom-service.exe', 'install.ps1', 'uninstall.ps1', 'NodeLaneRoom.cmd', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt', $driver, 'dist/windows/wintun/LICENSE.txt')
+$hasGUI = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'nlroom.exe') -PathType Leaf
+if ($hasGUI) { $files += 'nlroom.exe' }
 foreach ($file in $files) {
   if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $file) -PathType Leaf)) { throw "Incomplete package: $file" }
 }
@@ -53,3 +55,19 @@ for ($attempt = 0; $attempt -lt 40; $attempt++) {
 }
 if (-not $ready) { throw 'Service started but the local control pipe is not ready; inspect the service log' }
 Write-Output "Installed. Use: & '$target/nlroom-cli.exe' init --server https://room.example.com --name Player"
+if ($hasGUI) {
+  $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
+  New-Item -Path $registry -Force | Out-Null
+  $properties = @{
+    DisplayName = 'NodeLane Room'; DisplayVersion = '0.2.0'; Publisher = 'NodeLane'
+    InstallLocation = $target; DisplayIcon = (Join-Path $target 'nlroom.exe')
+    UninstallString = ('"' + "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $target 'uninstall.ps1') + '"')
+  }
+  foreach ($entry in $properties.GetEnumerator()) { New-ItemProperty -Path $registry -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
+  $shortcutPath = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'
+  $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+  $shortcut.TargetPath = Join-Path $target 'nlroom.exe'
+  $shortcut.WorkingDirectory = $target
+  $shortcut.Save()
+  Write-Output 'Open NodeLane Room from the Start menu as the installation user.'
+}

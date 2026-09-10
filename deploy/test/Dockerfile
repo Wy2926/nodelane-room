@@ -14,6 +14,7 @@ COPY internal ./internal
 COPY --from=admin /web/dist ./internal/control/adminweb/dist
 COPY scripts ./scripts
 COPY docs ./docs
+COPY desktop/package.json ./desktop/package.json
 
 FROM source AS build
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -o /out/nlroom-cli ./cmd/nlroom-cli \

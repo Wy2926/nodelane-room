@@ -2,7 +2,7 @@
 
 **NodeLane**（`nodelane.net`）旗下游戏组网子产品，版本 **0.2.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
 
-当前客户端为 AI、脚本和开发调试提供 `nlroom-cli`，网络后台为独立的 `nlroom-service`。未来玩家 GUI 预留进程名 `nlroom`，选用 Tauri 2 + React + TypeScript，首期支持 Windows/Linux；GUI 尚未实现。命名及后续平台边界见 [客户端设计](docs/client.md)。
+玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，界面位于 `desktop/`，采用独立的午夜主机主题；首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向 AI、脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面预览、设计令牌与桌面开发命令见 [客户端设计](docs/client.md#主机界面与设计令牌)，实际验收范围见 [验证记录](docs/validation.md)。
 
 V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 3，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。0.2.0 控制面与节点镜像已发布至 `docker.nodelane.net`，支持 `linux/amd64`、`linux/arm64`；摘要见 [镜像清单](deploy/IMAGES.txt)。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
@@ -104,7 +104,7 @@ Steam 是本轮唯一自动导入来源，图像类型参见 [Steamworks 图像�
 
 ## Linux 客户端开发
 
-Linux 归档包含 `nlroom-cli` 和 `nlroom-service`。当前用于开发和隔离回归，后台需要 TUN 权限；默认 socket 为 `0600`，CLI 和后台必须使用同一系统用户及同一 `--state-dir`。桌面普通用户控制 root 服务的安装、socket/UID 授权方案尚待实现，见 [客户端设计](docs/client.md)。
+Linux Go 归档包含 `nlroom-cli` 和 `nlroom-service`，用于开发和隔离回归。显式 `--state-dir` 下 socket 为 `0600`，CLI 和后台必须使用同一系统用户。桌面版另提供 root 服务与绑定安装用户 UID 的独立 socket；安装包构建和用户绑定见 [客户端设计](docs/client.md#桌面架构)，宿主安装尚待真机验收。
 
 在具有 TUN 权限的隔离开发环境，两个终端使用相同用户执行：
 
