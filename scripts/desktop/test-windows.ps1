@@ -1,0 +1,70 @@
+# Exercise the real file-swap/rollback block with simulated service operations.
+# All paths stay in a unique workspace temporary directory; no service is installed.
+$ErrorActionPreference = 'Stop'
+$root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+$text = Get-Content -LiteralPath (Join-Path $root 'scripts/install.ps1') -Raw
+$tokens = $null; $parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors) { throw $parseErrors[0] }
+$functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)
+$transaction = $text.Substring($text.IndexOf('# The lock is'))
+$testRoot = Join-Path $root ('.local/install-test-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $testRoot | Out-Null
+try {
+  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback')) {
+    & {
+      foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
+      # Windows ACL/DPAPI and real SCM/driver acceptance are separate checks.
+      function Assert-Tree { param($Path, [switch]$Trusted) }
+      function Protect-Bundle { param($Path) }
+      function Get-ChildItem { param($LiteralPath, [switch]$Recurse, [switch]$Force) @() }
+      function Get-Process { param($Name, $ErrorAction) @() }
+      function Stop-Network {
+        if ($scenario -eq 'stop-failure') { throw 'simulated stop failure' }
+      }
+      function Start-Service {
+        param($Name)
+        if ($scenario -eq 'start-failure' -and (Get-Content (Join-Path $target 'BUILD.txt')) -eq 'new') { throw 'simulated start failure' }
+      }
+      function Wait-Ready {
+        param($Version)
+        if ($scenario -eq 'readiness-failure' -and $Version -eq '0.2.1') { throw 'simulated readiness failure' }
+      }
+      $base = Join-Path $testRoot $scenario
+      New-Item -ItemType Directory -Path $base | Out-Null
+      $target = Join-Path $base 'NodeLaneRoom'
+      $previous = Join-Path $base 'NodeLaneRoom.previous'
+      $pending = Join-Path $base 'NodeLaneRoom.pending'
+      $source = Join-Path $base 'payload'
+      foreach ($folder in @($target, $source)) {
+        New-Item -ItemType Directory -Path (Join-Path $folder 'licenses') -Force | Out-Null
+      }
+      Set-Content -LiteralPath (Join-Path $target 'BUILD.txt') -Value 'old'
+      Set-Content -LiteralPath (Join-Path $source 'BUILD.txt') -Value 'new'
+      $files = @('BUILD.txt')
+      $hasGUI = $false
+      $existing = [pscustomobject]@{ Status = 'Running' }
+      $oldVersion = '0.2.0'; $version = '0.2.1'
+      if ($scenario -eq 'rollback') {
+        Move-Item -LiteralPath $source -Destination $previous
+        $source = $previous
+      }
+      $failed = $false
+      try { . ([scriptblock]::Create($transaction)) } catch { $failed = $true }
+      $expectedFailure = $scenario -in @('start-failure', 'readiness-failure', 'stop-failure')
+      if ($failed -ne $expectedFailure) { throw "Unexpected transaction result: $scenario" }
+      $want = if ($expectedFailure) { 'old' } else { 'new' }
+      if ((Get-Content -LiteralPath (Join-Path $target 'BUILD.txt')) -ne $want) { throw "Wrong active program after $scenario" }
+      if (-not $expectedFailure -and (Get-Content -LiteralPath (Join-Path $previous 'BUILD.txt')) -ne 'old') { throw 'Missing previous version' }
+      try { Assert-Bundle (Join-Path $base '../outside'); throw 'Accepted unsafe path' } catch {
+        if ($_.Exception.Message -ne 'Unsafe installation path') { throw }
+      }
+      Write-Output "PASS installer transaction: $scenario"
+    }
+  }
+} finally {
+  $resolved = [IO.Path]::GetFullPath($testRoot)
+  $allowed = [IO.Path]::GetFullPath((Join-Path $root '.local'))
+  if ((Split-Path $resolved -Parent) -ne $allowed -or (Split-Path $resolved -Leaf) -notlike 'install-test-*') { throw 'Unsafe test cleanup path' }
+  Remove-Item -LiteralPath $resolved -Recurse -Force
+}

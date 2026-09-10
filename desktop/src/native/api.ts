@@ -1,6 +1,9 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { Request, Failure } from "../shared/model";
+import { version } from "../../package.json";
+
+export const clientVersion = version;
 
 export function rpc<T>(request: Request): Promise<T> {
   if (!isTauri())
@@ -18,6 +21,7 @@ const descriptions: Record<string, string> = {
   permission_denied:
     "当前系统账户未获授权。请使用安装时指定的玩家账户打开应用。",
   incompatible: "客户端与后台协议不兼容，请使用同一安装包中的程序。",
+  version_mismatch: "客户端与后台版本不一致。请退出界面并重新打开；若仍不一致，请重新运行完整安装包。",
   forbidden: "操作未获授权。房间权限或游戏配置可能已改变，请刷新后查看。",
   conflict: "操作与当前房间状态冲突，请刷新后查看。",
   invalid_request: "输入不符合要求，请检查后重试。",

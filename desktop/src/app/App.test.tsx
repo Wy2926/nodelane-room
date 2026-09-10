@@ -98,6 +98,44 @@ test("first use submits the online control endpoint by default", async () => {
   expect(rpc).toHaveBeenCalledWith({ action: "init", server: "https://room.nodelane.net", name: "旅人" });
 });
 
+test("settings and diagnostics work before identity initialization", async () => {
+  status.device_id = "";
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "设置" }));
+  expect(screen.getByText("客户端版本")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "开始旅程" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "网络诊断" }));
+  expect(screen.queryByRole("button", { name: "开始旅程" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "返回房间" }));
+  expect(screen.getByRole("button", { name: "开始旅程" })).toBeTruthy();
+});
+
+test("renewed invitation uses the actual standalone invitation response", async () => {
+  status.selected_room = "room";
+  status.room = { id: "room", name: "联机房间", game: game.id, game_name: game.name, owner_id: "owner", revision: 1, capacity: 32, closed: false, expires_at: new Date(Date.now() + 3600000).toISOString() };
+  status.game = game;
+  vi.mocked(rpc).mockImplementation(async (request) => {
+    if (request.action === "invite") return { code: "test-invitation", expires_at: new Date(Date.now() + 600000).toISOString() } as never;
+    return (request.action === "games" ? [game] : []) as never;
+  });
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "生成新邀请码" }));
+  expect(await screen.findByRole("dialog")).toBeTruthy();
+  expect(screen.getByText("test-invitation")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "复制邀请码" })).toBeTruthy();
+  expect(rpc).toHaveBeenCalledWith({ action: "invite", room: "room" });
+});
+
+test("an open join form stops accepting operations when the service disappears", async () => {
+  const app = render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: /朋友在等你/ }));
+  await userEvent.type(screen.getByLabelText("邀请码"), "test-code");
+  vi.mocked(useService).mockReturnValue({ status, error: { code: "service_unavailable", error: "服务离线" }, refresh: vi.fn(), updatedAt: Date.now() });
+  app.rerender(<App />);
+  expect((screen.getByRole("button", { name: "加入并连接" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(vi.mocked(rpc).mock.calls.some(([request]) => request.action === "join")).toBe(false);
+});
+
 test("configured game ports are read-only and stop state is explicit", async () => {
   status.selected_room = "room";
   status.room = {

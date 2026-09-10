@@ -1,6 +1,36 @@
 use super::transport::exchange;
 use super::*;
 
+// Run only against an explicitly provisioned disposable/installed Go service.
+// Unlike the duplex tests, this uses the production pipe/socket transport.
+#[tokio::test]
+#[ignore = "requires an installed Go service and its authorized OS user"]
+async fn installed_service_roundtrip() {
+    let (_, bytes) = request("POST", "/rpc", br#"{"action":"status"}"#.to_vec(), 4 << 20)
+        .await
+        .expect("production local transport");
+    let status: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(status["version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(status["protocol_version"], 1);
+    for field in ["private_key", "token", "certificate"] {
+        assert!(status.get(field).is_none());
+    }
+    let (_, bytes) = request("POST", "/rpc", br#"{"action":"doctor"}"#.to_vec(), 4 << 20)
+        .await
+        .unwrap();
+    let doctor: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(doctor.get("platform").is_some());
+    let rejected = request(
+        "POST",
+        "/rpc",
+        br#"{"action":"service-install"}"#.to_vec(),
+        4096,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(rejected.code, "unknown_action");
+}
+
 #[test]
 fn refuses_admin_and_path_injection() {
     assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"service-install"}"#).is_err());

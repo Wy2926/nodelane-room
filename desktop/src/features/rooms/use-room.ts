@@ -54,6 +54,7 @@ export function useRoom(
       serviceError
     ) {
       setManagement(undefined);
+      setManagementError(undefined);
       return;
     }
     let cancelled = false;

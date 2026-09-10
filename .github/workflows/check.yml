@@ -1,6 +1,27 @@
 name: verify
 on: [push, pull_request]
 jobs:
+  desktop:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version-file: '.nvmrc', cache: npm, cache-dependency-path: desktop/package-lock.json}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev
+      - run: npm --prefix desktop ci
+      - run: npm --prefix desktop run build
+      - run: npm --prefix desktop test
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: cargo +1.95.0 test --manifest-path desktop/src-tauri/Cargo.toml --locked
+      - run: python scripts/desktop/test_package.py
+      - if: runner.os == 'Windows'
+        run: ./scripts/desktop/test-windows.ps1
   windows:
     runs-on: windows-latest
     steps:

@@ -57,7 +57,7 @@ mockIPC(async (command, args) => {
       return { room, invitation: { code: "UI-PREVIEW-ONLY", expires_at: new Date(Date.now() + 600000).toISOString() } };
     }
     case "join": room = makeRoom("朋友的房间", game); connected = true; return { room };
-    case "invite": return { room, invitation: { code: "UI-PREVIEW-ONLY", expires_at: new Date(Date.now() + 600000).toISOString() } };
+    case "invite": return { code: "UI-PREVIEW-ONLY", expires_at: new Date(Date.now() + 600000).toISOString() };
     case "leave": connected = false; return {};
     case "close": connected = false; room = undefined; return {};
     case "doctor": return { preview: true, engine: "stopped", message: "界面示例，未建立隧道，未进行网络测量。" };

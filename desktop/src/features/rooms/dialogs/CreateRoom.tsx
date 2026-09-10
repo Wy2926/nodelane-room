@@ -7,6 +7,7 @@ export function CreateRoom({
   actions,
   status,
   gamesError,
+  serviceError,
   onJoined,
 }: {
   dialog: Extract<Dialog, { type: "create" }>;
@@ -62,7 +63,7 @@ export function CreateRoom({
       </p>
       <button
         className="primary"
-        disabled={!!busy || !!gamesError || !!status?.selected_room}
+        disabled={!!busy || !!serviceError || !!gamesError || !!status?.selected_room}
       >
         创建并连接
       </button>

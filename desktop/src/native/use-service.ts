@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { failure, notifyState, rpc } from "./api";
+import { clientVersion, failure, notifyState, rpc } from "./api";
 import type { Failure, Status } from "../shared/model";
 
 export function useService() {
@@ -27,6 +27,8 @@ export function useService() {
         const next = await rpc<Status>({ action: "status" });
         if (next.protocol_version !== 1)
           throw { code: "incompatible", error: "protocol mismatch" };
+        if (next.version !== clientVersion)
+          throw { code: "version_mismatch", error: "version mismatch" };
         if (stopped) return;
         if (previous?.engine === "running" && next.engine !== "running")
           void notifyState("disconnected");

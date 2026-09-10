@@ -1,11 +1,13 @@
-"""Build desktop assets and a matching fresh installer; never install it."""
+"""Build desktop assets and a matching complete installer; never install it."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+from package import source_version
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -21,6 +23,7 @@ def main():
     parser.add_argument('--release', type=Path, required=True, help='Matching Go release directory')
     parser.add_argument('--skip-web', action='store_true', help='Use frontend assets already built and checked')
     args = parser.parse_args()
+    version = source_version()
     npm = 'npm.cmd' if os.name == 'nt' else 'npm'
     if not args.skip_web:
         run([npm, '--prefix', 'desktop', 'ci'])
@@ -40,6 +43,10 @@ def main():
     output = ROOT / 'dist/desktop' / f'nlroom-{args.platform}-{args.arch}{extension}'
     output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(built, output)
+    output.with_suffix(output.suffix + '.build.json').write_text(json.dumps({
+        'version': version, 'platform': args.platform, 'arch': args.arch,
+        'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
+    }, indent=2) + '\n', encoding='utf-8')
     run([sys.executable, 'scripts/desktop/package.py', '--platform', args.platform, '--arch', args.arch, '--gui', str(output), '--release', str(args.release)])
 
 

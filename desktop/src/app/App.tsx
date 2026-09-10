@@ -32,9 +32,12 @@ export function App() {
           <p>读取设备与房间状态…</p>
         </Empty>
       )}
-      {service.status && !service.status.device_id && !service.error && (
+      {service.status && !service.status.device_id && !service.error && page !== "settings" && page !== "doctor" && (
         <Setup actions={actions} />
       )}
+      {service.status && !service.status.device_id && page === "settings" && <Settings status={service.status} actions={actions} usable={!service.error && !actions.busy} />}
+      {service.status && !service.status.device_id && page === "doctor" && <Diagnostics status={service.status} actions={actions} usable={!service.error && !actions.busy} serviceError={service.error} />}
+      {service.status && !service.status.device_id && <RoomDialogs actions={actions} status={service.status} serviceError={service.error} onJoined={() => setPage("rooms")} />}
       {service.status?.device_id && (
         <Session
           status={service.status}

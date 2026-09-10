@@ -21,7 +21,7 @@ export function Feedback({
             <strong>无法连接网络后台</strong>
             <p>{serviceError.error}</p>
           </div>
-          <button onClick={refresh}>重新检查</button>
+          <div className="actions"><button onClick={refresh}>重新检查</button><button onClick={() => void actions.quit()}>退出界面</button></div>
         </div>
       )}
       {status?.error && (

@@ -4,6 +4,7 @@ import type { Status, Failure } from "../../../shared/model";
 export function JoinRoom({
   actions,
   status,
+  serviceError,
   onJoined,
 }: {
   dialog: Extract<Dialog, { type: "join" }>;
@@ -46,7 +47,7 @@ export function JoinRoom({
           placeholder="粘贴邀请码"
         />
       </label>
-      <button className="primary" disabled={!!busy || !!status?.selected_room}>
+      <button className="primary" disabled={!!busy || !!serviceError || !!status?.selected_room}>
         加入并连接
       </button>
     </form>

@@ -3,7 +3,7 @@ import type { Actions } from "../../app/use-actions";
 import type { RoomView } from "./use-room";
 import { Art } from "../catalog/Artwork";
 import { formatTime } from "../../shared/time";
-import type { RoomResult } from "../../shared/model";
+import type { Invitation } from "../../shared/model";
 export function RoomHero({
   view,
   status,
@@ -20,17 +20,10 @@ export function RoomHero({
   if (!room) return null;
   const count = members.length;
   const invite = () =>
-    perform<RoomResult>(
+    perform<Invitation>(
       "生成邀请码",
       { action: "invite", room: room.id },
-      (out) => {
-        if (out.invitation)
-          setDialog({
-            type: "invite",
-            room: out.room,
-            invitation: out.invitation,
-          });
-      },
+      (invitation) => setDialog({ type: "invite", room, invitation }),
     );
   return (
     <section className="room-hero">

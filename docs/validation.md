@@ -2,7 +2,21 @@
 
 仅在验证、排错或发布任务中查阅。结果只对应当时的源码或产物，修改后须重验；源码、归档、发布镜像和真机分别判定，跳过不算通过。`.local/` 证据不随源码或发布包保存，缺失的历史日志仅保留原路径用于追溯。
 
-## 最近源码检查（2026-09-10）
+## 桌面连接与交付检查（2026-09-11）
+
+本轮沿真实返回格式修复了邀请码换新弹窗，补齐初始化前的设置/诊断、服务版本检查及离线时的表单保护，并交付 Windows EXE 和 Linux deb 完整包的安装、手动更新与恢复流程。Go 数据面、协议、数据库结构及 Nebula 版本未变。
+
+| 范围 | 结果与证据 |
+|---|---|
+| 前端与原生构建 | Node.js 24 下 TypeScript/Vite 构建、15 项交互/轮询测试通过；Rust 1.95 Windows 和 Ubuntu 22.04 x64 release 构建通过。[前端测试](../.local/client-delivery-web-test.log)、[Windows 构建](../.local/client-delivery-windows-build.log)、[Linux 构建](../.local/client-delivery-linux-build.log) |
+| 真实 Linux WebView | 在临时容器安装 deb，以普通用户经生产 Unix socket 操作 root Go 后台，连接独立 HTTPS/PostgreSQL/Nebula：初始化、游戏库、建房、端口增删、新邀请码及原生复制、离房后管理/关房、加入朋友房间、真实 ping、诊断和退出 GUI 后继续联机全部通过。[记录](../.local/nodelane-test-20260911-065931-51775f/desktop.log)、[房间截图](../.local/nodelane-test-20260911-065931-51775f/desktop/room.png) |
+| Linux 包与权限 | 同一容器实际验证 deb 安装、同版本替换、purge 保留身份/UID，其他普通用户不能访问 socket；服务停止和重启由验收脚本显式执行。9 项打包/生命周期测试另覆盖停止失败、残留进程、就绪失败、禁用状态和 abort-upgrade。未将容器检查计为真实 systemd 验收 |
+| Windows 包与恢复 | EXE 生成成功；解包后 617 项 payload SHA256 一致，WebView2/Wintun 分别通过 Microsoft/WireGuard 的 Authenticode 校验。临时目录与模拟服务下，升级、停止失败、启动失败、就绪失败和显式回滚 5 项事务测试通过。[完整包检查](../.local/client-delivery-package-check.json)、[恢复测试](../.local/client-delivery-installer-test.log) |
+| Go 与真实网络回归 | gofmt、Windows `go vet ./...`、`go test -count=1 ./...` 通过；Windows 未配置测试数据库。Linux 独立 PostgreSQL 下 vet、全量普通/race 测试和真实 Nebula 双客户端回归通过，测试资源已清理。[完整结果](../.local/nodelane-test-20260911-063414-97385d/results.json) |
+
+两平台产物位于 `dist/desktop/`，附 SHA256。EXE 为未签名测试包，deb 尚未进入签名仓库；无在线更新源。Windows/Linux Rust 各 2 项边界测试通过，独立的 `installed_service_roundtrip` 烟测均跳过；Linux 实际本机调用已由上述完整 WebView 验收覆盖，宿主未安装服务。ARM64、Windows UAC/SCM/Wintun 真机安装与跨版本升级、Linux systemd 宿主安装/跨版本恢复、休眠、Wayland 及双机 NAT/游戏本体验收仍待完成。容器替换只验证当前 0.2.0 完整包的重装和身份保留，不表示不同身份格式的版本可互相回退。
+
+## 控制面与数据面基线（2026-09-10）
 
 以下结果对应游戏目录、Steam 资料及图片导入、通用端口配置、Minecraft 专用发现移除和全新数据库结构版本 3。已同步 HTTP 契约；Nebula 固定版本未变。
 
@@ -38,7 +52,7 @@
 - Linux 隔离回归未启用外网 Steam 烟测；实际下载在 Windows 单独执行。管理台测试使用 DOM 环境，尚未完成真实浏览器从登录到导入、配置、展示的整段人工验收。
 - 未完成生产管理页面端到端交互、实际 1Panel、Debian/Ubuntu systemd 安装与重复安装、跨版本更新回退及卸载。
 - 未完成 Windows 服务安装/升级、Named Pipe 与 SID/ACL 真机联调、驱动、ARM 真机、跨服务器公网 UDP、双机不同 NAT、Minecraft Java 1.21.1 本体、长期稳定性及真实丢包验收。容器、协议模拟器和 ARM 仿真不能替代这些场景；步骤见 [人工及环境验收](manual-v2-validation.md)。
-- GUI 已有实现和浏览器界面检查；Windows/Linux 原生服务、安装身份、UID 授权及系统 WebView 的完整真机验收仍未完成，移动端 VPN 接入尚未验证，边界见 [客户端设计](client.md)。
+- Linux GUI、真实 socket/UID 与 WebView 的容器验收见本轮记录；Windows 原生服务、安装身份与系统 WebView，以及 Linux 宿主 systemd 的完整真机验收仍未完成。移动端 VPN 接入尚未验证，边界见 [客户端设计](client.md)。
 - 已授权握手补丁及未处理的 Nebula 竞争见 [补丁边界](nebula-race-review.md)；NodeLane 全量 race 通过不代表 Nebula 全仓库无竞争。
 
 ## 复现

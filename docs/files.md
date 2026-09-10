@@ -36,6 +36,7 @@ deploy/ 部署模板与测试环境
   Dockerfile.release 从 Linux 发布包构建运行镜像
   IMAGES.txt 发布镜像版本与摘要
   nlroom-node.service 原生节点 systemd 单元
+  nlroom-service.service Linux 玩家后台的 root 服务、目录保护与停止等待
   node.sh Linux 原生节点安装脚本
   QUICKSTART.txt Compose 发布包部署速查
   test/ 隔离容器回归环境
@@ -76,6 +77,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     native/ 真实 Tauri 本机桥接
       api.ts 玩家 IPC、错误文案、剪贴板与生命周期命令
       use-service.ts 不重叠状态轮询、退避与原生通知
+      use-service.test.ts 版本一致性、并发刷新与服务恢复测试
     shared/ 共用数据与简单 UI
       model.ts 玩家、游戏、房间与本机请求类型
       time.ts 时间与状态新鲜度格式化
@@ -276,9 +278,24 @@ scripts/ 构建、安装与验证工具
   build-images.ps1 校验发布包并构建镜像，支持显式推送
   build.ps1 Windows/Linux 多架构发布包构建
   build.sh Linux 可执行文件构建
+  desktop/ Windows 与 Linux 桌面构建、交付与原生验收
+    build.py 锁定版本的原生 GUI 构建、构建摘要与完整安装包入口
+    Dockerfile Ubuntu 22.04 桌面构建、Windows 交叉编译与 WebView 测试工具
+    licenses.py 收集精确解析的桌面依赖声明与许可证
+    package.py 校验完整包版本和架构、生成 EXE/deb 与校验和
+    windows.nsi 保留玩家账户的中文安装及更新向导
+    linux-setup.sh 绑定 Linux 玩家 UID、启动后台与检查本机就绪
+    linux-postinst.sh deb 安装或更新后重载并检查已绑定后台
+    linux-prerm.sh deb 更新或移除前停止并等待旧后台退出
+    linux-postrm.sh deb 移除后重载，保留身份和用户绑定
+    test_package.py 版本、二进制架构、内容摘要与 Debian 生命周期测试
+    test-windows.ps1 临时目录中的文件替换、停止失败和版本恢复测试
+    test_live.py 为已打包 Linux 客户端创建和清理隔离联机验收环境
+    test-linux.sh 仅容器内的 deb 安装、真实 UID 隔离、替换及卸载验收
+    test_webview.py 通过真实 WebView 和本机服务操作玩家完整联机流程
   check-release.py 归档校验和、内容、架构与权限检查
   Install.cmd Windows 双击安装入口
-  install.ps1 Windows 安装、权限设置与服务就绪检查
+  install.ps1 Windows 完整包校验、用户绑定、安装更新与失败回滚
   NodeLaneRoom.cmd 玩家开发命令行启动入口
   openapi/ API 契约生成工具
     main.go 更新协议类型、管理与节点接口及调用方分组
@@ -288,7 +305,7 @@ scripts/ 构建、安装与验证工具
   package-compose.py 部署模板归档与校验和生成
   release/ 原生安装资源打包工具
     main.go 从发布包生成同源下载资源与清单
-  setup.ps1 提权前捕获玩家 SID 并启动安装
+  setup.ps1 提权前捕获玩家 SID 并启动安装或显式回滚
   test-deploy.py 部署模板与发布镜像冒烟测试
   test-docker.py 隔离双客户端回归与可选 Go/race 检查
   uninstall.ps1 Windows 服务卸载与可选状态清理

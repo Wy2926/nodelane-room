@@ -5,6 +5,7 @@ import { Check, Copy, Desktop, Palette, Power, SlidersHorizontal } from "@phosph
 import type { Status } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
 import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
+import { clientVersion } from "../../native/api";
 
 export function Settings({ status, actions, usable }: {
   status: Status; actions: Actions; usable: boolean;
@@ -59,8 +60,9 @@ export function Settings({ status, actions, usable }: {
               <div><dt>设备昵称</dt><dd>{status.name}</dd></div>
               <div><dt>控制端</dt><dd>{status.server}</dd></div>
               <div><dt>设备标识</dt><dd className="device-identity"><span className="mono selectable">{status.device_id}</span><button className="text-button" aria-label="复制设备标识" title="复制设备标识" onClick={() => void copy(status.device_id)}><Copy size={17} weight="light" aria-hidden="true" /></button></dd></div>
-              <div className="device-versions"><div><dt>客户端版本</dt><dd className="mono">0.2.0</dd></div><div><dt>后台版本</dt><dd className="mono">{status.version}</dd></div></div>
+              <div className="device-versions"><div><dt>客户端版本</dt><dd className="mono">{clientVersion}</dd></div><div><dt>后台版本</dt><dd className="mono">{status.version}</dd></div></div>
             </dl>
+            <p className="hint">更新时先退出界面，再运行新版完整安装包。Windows 安装器或 Linux 软件包会同步更新界面与后台，保留设备身份；网络会短暂中断。</p>
           </div>
         </section>
       </div>

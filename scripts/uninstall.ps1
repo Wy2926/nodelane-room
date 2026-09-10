@@ -10,6 +10,8 @@ if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Adm
 }
 $programFiles = [IO.Path]::GetFullPath($env:ProgramFiles)
 $target = [IO.Path]::GetFullPath((Join-Path $programFiles 'NodeLaneRoom'))
+$lock = [IO.File]::Open((Join-Path $programFiles 'NodeLaneRoom.install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+try {
 if ((Split-Path $target -Parent) -ne $programFiles) { throw 'Unsafe installation path' }
 if ((Get-Item -LiteralPath $target).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing reparse point' }
 $cli = Join-Path $target 'nlroom-cli.exe'
@@ -26,6 +28,16 @@ if (Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue) {
   if ($LASTEXITCODE -ne 0) { throw 'Service removal failed; installation retained' }
 }
 Remove-Item -LiteralPath $target -Recurse -Force
+foreach ($name in @('NodeLaneRoom.previous', 'NodeLaneRoom.pending')) {
+  $backup = [IO.Path]::GetFullPath((Join-Path $programFiles $name))
+  if ((Split-Path $backup -Parent) -ne $programFiles) { throw 'Unsafe backup path' }
+  if (Test-Path -LiteralPath $backup) {
+    foreach ($item in @((Get-Item -LiteralPath $backup)) + @(Get-ChildItem -LiteralPath $backup -Recurse -Force)) {
+      if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing backup reparse point' }
+    }
+    Remove-Item -LiteralPath $backup -Recurse -Force
+  }
+}
 $shortcut = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'
 if (Test-Path -LiteralPath $shortcut) { Remove-Item -LiteralPath $shortcut -Force }
 $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
@@ -40,3 +52,4 @@ if ($PurgeState) {
   }
 }
 Write-Output 'Uninstalled. Identity is preserved unless -PurgeState was supplied.'
+} finally { $lock.Dispose() }

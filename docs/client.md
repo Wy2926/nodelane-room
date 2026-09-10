@@ -17,7 +17,7 @@
 
 Windows 服务注册名继续使用 `NodeLaneRoom`，显示名为 `NodeLane Room`；安装目录 `%ProgramFiles%\NodeLaneRoom`、状态目录 `%ProgramData%\NodeLaneRoom`、管道 `\\.\pipe\NodeLaneRoom` 保持现有值。Linux 桌面身份位于 `/var/lib/nlroom`，本机 socket 位于 `/run/nlroom/agent.sock`；显式 `--state-dir` 保留开发和容器流程。共享控制进程 `nodelane-server`、Go 模块路径、API、镜像和发布包前缀沿用现有名称。
 
-CLI 提供 `--json`、`--watch`、退出码和房间子命令，GUI 发布后继续作为开发与诊断工具维护。当前仅支持全新安装，不提供旧命令别名或旧身份迁移流程。
+CLI 提供 `--json`、`--watch`、退出码和房间子命令，GUI 发布后继续作为开发与诊断工具维护。完整桌面包支持安装和保留身份的手动更新，不提供旧命令别名或旧身份迁移流程。
 
 ## GUI 选择
 
@@ -108,7 +108,7 @@ flowchart LR
 
 首期目标为 Windows 10/11、Ubuntu 22.04/24.04 与 Debian 12/13，先验收 x64，再验收 ARM64；不把 Go 交叉编译通过等同于 GUI 真机支持。Tauri Windows 依赖 WebView2，Linux 依赖 WebKitGTK 4.1 等系统库，须在目标发行版构建和测试。[构建前置条件](https://v2.tauri.app/start/prerequisites/)
 
-首版 Windows 安装器整合 GUI、服务和 Wintun，正式发布须签名，开发验收可生成明确标识的未签名测试包；Linux 先交付 deb 配套 systemd，RPM 后续按目标发行版需求增加。首版仅处理全新安装与卸载，不提供旧身份或旧数据库迁移。AppImage 不能单独解决后台权限与服务安装，暂不作为唯一交付物。后续升级与回滚须协调 GUI/服务版本及停止/等待流程。
+Windows 安装器整合 GUI、服务、Wintun 与微软官方 WebView2 引导程序；正式发布须签名，开发验收生成明确标识的未签名测试包。Linux 交付 deb 配套 systemd，RPM 后续按目标发行版需求增加。完整包更新保留身份与安装用户绑定，替换前停止并等待后台；Windows 新程序启动失败自动恢复旧程序，Linux 由 dpkg 报告配置失败并支持重新配置或安装兼容旧包。不迁移旧身份或旧数据库。AppImage 不能单独解决后台权限与服务安装，暂不作为唯一交付物。操作单处维护于 [安装与更新](../README.md#windows-客户端)。
 
 仅构建 GUI 可运行 `cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked --release --features custom-protocol`，前置为前端构建。安装包由 `python scripts/desktop/build.py --platform windows --arch amd64 --release <同一源码构建的 Go 发布目录>` 生成到 `dist/desktop/`；Linux 改用 `--platform linux`，须具备对应系统库与打包工具。脚本不安装服务。Linux deb 安装后显式运行 `sudo nlroom-setup --owner <普通用户>` 绑定用户并启动服务；卸载保留身份与用户绑定。平台安装与完整联机验收范围以验证记录为准。
 
@@ -127,4 +127,4 @@ flowchart LR
 1. **接口与权限**：复用已交付 CLI、后台和游戏目录，补齐首版接口需求及 Linux 普通用户控制 root 服务的安装与 UID 校验。
 2. **桌面流程**：新增独立客户端前端目录，打通真实本机 IPC、游戏资料/图片、建房入房、房主管理、端口、状态和诊断；覆盖目录失败、游戏停用、规则替换、删除失败与表单重复提交。
 3. **桌面交付**：完成托盘、通知、全新安装/卸载；验收 Windows SID 隔离、Linux UID 隔离、GUI 崩溃不影响联机、撤销及凭据到期停网、睡眠恢复、X11/Wayland、中文输入与无障碍。记录包大小、空闲/联机内存和启动耗时，依据实测决定是否调整框架；实际检查和未验证项只在 [验证记录](validation.md) 维护。
-4. **未来扩展**：通用 LAN 发现按独立方案验证；升级回滚及 Android、macOS、iOS 按实际需求推进，移动平台先验证系统 VPN 与固定 Nebula，再扩展界面。当前不承诺移动端完成日期或免适配迁移。
+4. **未来扩展**：通用 LAN 发现按独立方案验证；在线签名更新、Android、macOS、iOS 按实际需求推进，移动平台先验证系统 VPN 与固定 Nebula，再扩展界面。当前不承诺移动端完成日期或免适配迁移。

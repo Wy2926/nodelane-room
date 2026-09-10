@@ -1,73 +1,228 @@
 #Requires -RunAsAdministrator
-param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value))
+param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [switch]$Rollback, [switch]$CheckOnly)
 $ErrorActionPreference = 'Stop'
-$null = [System.Security.Principal.SecurityIdentifier]::new($OwnerSid)
-$build = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'BUILD.txt') -Raw
-if ($build -notmatch 'Target: windows/(amd64|arm64)') { throw 'Missing Windows package architecture' }
-$arch = $Matches[1]
-$nativeArch = $env:PROCESSOR_ARCHITECTURE
-if ($env:PROCESSOR_ARCHITEW6432) { $nativeArch = $env:PROCESSOR_ARCHITEW6432 }
-if ($nativeArch.ToLowerInvariant() -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
-$driver = "dist/windows/wintun/bin/$arch/wintun.dll"
-$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'install.ps1', 'uninstall.ps1', 'NodeLaneRoom.cmd', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt', $driver, 'dist/windows/wintun/LICENSE.txt')
-$hasGUI = Test-Path -LiteralPath (Join-Path $PSScriptRoot 'nlroom.exe') -PathType Leaf
-if ($hasGUI) { $files += 'nlroom.exe' }
-foreach ($file in $files) {
-  if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $file) -PathType Leaf)) { throw "Incomplete package: $file" }
-}
-if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'licenses') -PathType Container)) { throw 'Incomplete package: licenses' }
-$signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $PSScriptRoot $driver)
-if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=WireGuard LLC(?:,|$)') { throw 'Wintun signature verification failed' }
-$target = Join-Path $env:ProgramFiles 'NodeLaneRoom'
-if (Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue) { throw 'Uninstall the existing service before upgrading. Identity is preserved.' }
-if (Test-Path -LiteralPath $target) {
-  $item = Get-Item -LiteralPath $target
-  if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Installation directory must not be a reparse point' }
-}
-New-Item -ItemType Directory -Force -Path $target | Out-Null
-$acl = New-Object System.Security.AccessControl.DirectorySecurity
-$acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
-$acl.SetAccessRuleProtection($true, $false)
-foreach ($entry in @(@('S-1-5-18','FullControl'), @('S-1-5-32-544','FullControl'), @('S-1-5-32-545','ReadAndExecute'))) {
-  $sid = [System.Security.Principal.SecurityIdentifier]::new($entry[0])
-  $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, [System.Security.AccessControl.FileSystemRights]$entry[1], [System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit', [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow)
-  $acl.AddAccessRule($rule)
-}
-Set-Acl -LiteralPath $target -AclObject $acl
-# Copy only the release payload, never arbitrary files added beside the installer.
-foreach ($file in $files) {
-  $destination = Join-Path $target $file
-  New-Item -ItemType Directory -Force -Path (Split-Path $destination -Parent) | Out-Null
-  Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $destination -Force
-}
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'licenses') -Destination $target -Recurse -Force
-& (Join-Path $target 'nlroom-service.exe') service install --owner-sid $OwnerSid
-if ($LASTEXITCODE -ne 0) { throw 'Service registration failed; inspect the error before retrying' }
-$service = Get-Service -Name NodeLaneRoom
-$service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(20))
-$ready = $false
-for ($attempt = 0; $attempt -lt 40; $attempt++) {
-  try {
-    & (Join-Path $target 'nlroom-cli.exe') status 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { $ready = $true; break }
-  } catch { Write-Verbose 'Waiting for the local control pipe.' }
-  Start-Sleep -Milliseconds 250
-}
-if (-not $ready) { throw 'Service started but the local control pipe is not ready; inspect the service log' }
-Write-Output "Installed. Use: & '$target/nlroom-cli.exe' init --server https://room.example.com --name Player"
-if ($hasGUI) {
-  $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
-  New-Item -Path $registry -Force | Out-Null
-  $properties = @{
-    DisplayName = 'NodeLane Room'; DisplayVersion = '0.2.0'; Publisher = 'NodeLane'
-    InstallLocation = $target; DisplayIcon = (Join-Path $target 'nlroom.exe')
-    UninstallString = ('"' + "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $target 'uninstall.ps1') + '"')
+trap {
+  if (-not $CheckOnly) {
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'NodeLane Room installation failed') | Out-Null
   }
-  foreach ($entry in $properties.GetEnumerator()) { New-ItemProperty -Path $registry -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
-  $shortcutPath = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'
-  $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
-  $shortcut.TargetPath = Join-Path $target 'nlroom.exe'
-  $shortcut.WorkingDirectory = $target
-  $shortcut.Save()
-  Write-Output 'Open NodeLane Room from the Start menu as the installation user.'
+  exit 1
+}
+$null = [System.Security.Principal.SecurityIdentifier]::new($OwnerSid)
+if (-not [Environment]::Is64BitProcess) { throw 'Run the installer with native 64-bit PowerShell' }
+$base = [IO.Path]::GetFullPath($env:ProgramFiles)
+$target = Join-Path $base 'NodeLaneRoom'
+$previous = Join-Path $base 'NodeLaneRoom.previous'
+$pending = Join-Path $base 'NodeLaneRoom.pending'
+$source = $PSScriptRoot
+if ($Rollback) { $source = $previous }
+
+function Assert-Tree([string]$Path, [switch]$Trusted) {
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+  $items = @((Get-Item -LiteralPath $Path)) + @(Get-ChildItem -LiteralPath $Path -Recurse -Force)
+  foreach ($item in $items) {
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing reparse points in installation paths' }
+    if ($Trusted) {
+      $itemAcl = Get-Acl -LiteralPath $item.FullName
+      $owner = $itemAcl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+      if ($owner -notin @('S-1-5-18', 'S-1-5-32-544')) { throw 'Installation path has an untrusted owner' }
+      foreach ($rule in $itemAcl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+        if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Value -notin @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0') -and ([int]$rule.FileSystemRights -band 0xD0156) -ne 0) { throw 'Installation path is writable by an untrusted user' }
+      }
+    }
+  }
+}
+function Assert-Bundle([string]$Path) {
+  $resolved = [IO.Path]::GetFullPath($Path)
+  if ((Split-Path $resolved -Parent) -ne $base -or $resolved -notin @($target, $previous, $pending)) { throw 'Unsafe installation path' }
+  Assert-Tree $resolved -Trusted
+}
+function Remove-Bundle([string]$Path) {
+  Assert-Bundle $Path
+  if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Recurse -Force }
+}
+function Move-Bundle([string]$From, [string]$To) {
+  Assert-Bundle $From
+  Assert-Bundle $To
+  Move-Item -LiteralPath $From -Destination $To
+}
+function Protect-Bundle([string]$Path) {
+  $acl = [System.Security.AccessControl.DirectorySecurity]::new()
+  $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+  $acl.SetAccessRuleProtection($true, $false)
+  foreach ($entry in @(@('S-1-5-18','FullControl'), @('S-1-5-32-544','FullControl'), @('S-1-5-32-545','ReadAndExecute'))) {
+    $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new([System.Security.Principal.SecurityIdentifier]::new($entry[0]), [System.Security.AccessControl.FileSystemRights]$entry[1], [System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit', [System.Security.AccessControl.PropagationFlags]::None, [System.Security.AccessControl.AccessControlType]::Allow))
+  }
+  Set-Acl -LiteralPath $Path -AclObject $acl
+}
+function Stop-Network {
+  $service = Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue
+  if ($service -and $service.Status -ne 'Stopped') {
+    Stop-Service -Name NodeLaneRoom -ErrorAction Stop
+    $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(60))
+  }
+  foreach ($process in @(Get-Process -Name nlroom-service -ErrorAction SilentlyContinue)) {
+    if ($process.Path -eq (Join-Path $target 'nlroom-service.exe') -and -not $process.WaitForExit(10000)) { throw 'Networking process has not exited' }
+  }
+}
+function Wait-Ready([string]$Version) {
+  $service = Get-Service -Name NodeLaneRoom
+  $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
+  for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    try {
+      $json = & (Join-Path $target 'nlroom-cli.exe') status --json 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        $status = $json | ConvertFrom-Json
+        if ($status.version -eq $Version -and $status.protocol_version -eq 1) { return }
+      }
+    } catch { Write-Verbose 'Waiting for the local service.' }
+    Start-Sleep -Milliseconds 300
+  }
+  throw 'The installed service did not become ready with the expected version'
+}
+
+Assert-Tree $source
+foreach ($path in @($target, $previous, $pending)) { Assert-Bundle $path }
+$build = Get-Content -LiteralPath (Join-Path $source 'BUILD.txt') -Raw
+if ($build -notmatch '(?m)^Target: windows/(amd64|arm64)\s*$') { throw 'Missing Windows package architecture' }
+$arch = $Matches[1]
+if ($build -notmatch '(?m)^Version: (\d+\.\d+\.\d+)\s*$') { throw 'Invalid package version' }
+$version = $Matches[1]
+$nativeArch = $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()
+if ($nativeArch -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
+$driver = "dist/windows/wintun/bin/$arch/wintun.dll"
+$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'install.ps1', 'uninstall.ps1', 'setup.ps1', 'NodeLaneRoom.cmd', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt', $driver, 'dist/windows/wintun/LICENSE.txt')
+$hasGUI = Test-Path -LiteralPath (Join-Path $source 'nlroom.exe') -PathType Leaf
+if (-not $hasGUI -and (Test-Path -LiteralPath (Join-Path $target 'nlroom.exe'))) { throw 'Use the complete desktop installer to update this GUI installation' }
+if ($hasGUI) { $files += @('nlroom.exe', 'PAYLOAD.sha256', 'MicrosoftEdgeWebview2Setup.exe') }
+foreach ($file in $files) {
+  if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Incomplete package: $file" }
+}
+if (-not (Test-Path -LiteralPath (Join-Path $source 'licenses') -PathType Container)) { throw 'Incomplete package: licenses' }
+$signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $source $driver)
+if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=WireGuard LLC(?:,|$)') { throw 'Wintun signature verification failed' }
+if ($hasGUI) {
+  # Hashes detect incomplete or mixed payloads; test packages are not publisher-signed.
+  $hashes = @{}
+  foreach ($line in (Get-Content -LiteralPath (Join-Path $source 'PAYLOAD.sha256'))) {
+    if ($line -notmatch '^([0-9a-f]{64})  ([a-zA-Z0-9_./@+ -]+)$') { throw 'Invalid payload manifest' }
+    $hash = $Matches[1]; $name = $Matches[2]
+    if ($name.StartsWith('/') -or $name.Split('/') -contains '..' -or $hashes.ContainsKey($name)) { throw 'Invalid payload path' }
+    $hashes[$name] = $hash
+  }
+  foreach ($name in @($files | Where-Object { $_ -ne 'PAYLOAD.sha256' }) + @(Get-ChildItem -LiteralPath (Join-Path $source 'licenses') -Recurse -File | ForEach-Object { $_.FullName.Substring($source.Length + 1).Replace('\', '/') })) {
+    if (-not $hashes.ContainsKey($name) -or (Get-FileHash -LiteralPath (Join-Path $source $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$name]) { throw "Payload verification failed: $name" }
+  }
+}
+$existing = Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue
+$ownerFile = Join-Path $env:ProgramData 'NodeLaneRoom/owner.sid'
+if (Test-Path -LiteralPath $ownerFile) {
+  Assert-Tree (Split-Path $ownerFile -Parent) -Trusted
+  if ((Get-Content -LiteralPath $ownerFile -Raw).Trim() -ne $OwnerSid) { throw 'This installation belongs to a different player. Run setup from the original player account.' }
+}
+if ($existing) {
+  if (-not (Test-Path -LiteralPath $ownerFile)) { throw 'Installed service has no owner binding' }
+  $config = Get-CimInstance Win32_Service -Filter "Name='NodeLaneRoom'"
+  $expectedPath = '"' + (Join-Path $target 'nlroom-service.exe') + '"'
+  if (-not $config.PathName.StartsWith($expectedPath, [StringComparison]::OrdinalIgnoreCase) -or $config.StartName -ne 'LocalSystem') { throw 'Unexpected service configuration; installation was not changed' }
+}
+$oldVersion = $null
+if (Test-Path -LiteralPath (Join-Path $target 'BUILD.txt')) {
+  $oldBuild = Get-Content -LiteralPath (Join-Path $target 'BUILD.txt') -Raw
+  if ($oldBuild -notmatch '(?m)^Version: (\d+\.\d+\.\d+)\s*$') { throw 'Installed version cannot be verified' }
+  $oldVersion = $Matches[1]
+  if (-not $Rollback -and [version]$version -lt [version]$oldVersion) { throw 'Downgrade refused; use the explicit rollback command' }
+}
+if ($existing -and -not $oldVersion) { throw 'Installed service has no verifiable version; refusing replacement' }
+if ($CheckOnly) { Write-Output "Package $version verified. No installation changes made."; return }
+
+# The lock is in administrator-controlled Program Files, shared with uninstall.
+$lock = [IO.File]::Open((Join-Path $base 'NodeLaneRoom.install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+$movedOld = $false; $movedNew = $false; $stopped = $false
+$wasRunning = $existing -and $existing.Status -eq 'Running'
+try {
+  if (-not (Test-Path -LiteralPath $target) -and (Test-Path -LiteralPath $previous)) { throw 'Interrupted installation: restore NodeLaneRoom.previous to NodeLaneRoom before retrying' }
+  Remove-Bundle $pending
+  New-Item -ItemType Directory -Path $pending | Out-Null
+  Protect-Bundle $pending
+  foreach ($file in $files) {
+    $destination = Join-Path $pending $file
+    New-Item -ItemType Directory -Force -Path (Split-Path $destination -Parent) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $source $file) -Destination $destination
+  }
+  Copy-Item -LiteralPath (Join-Path $source 'licenses') -Destination $pending -Recurse
+  # Copy-Item does not preserve source ACLs. Explicitly own the copied files as
+  # Administrators even on hosts whose creator-owner policy names the UAC user.
+  foreach ($item in @(Get-ChildItem -LiteralPath $pending -Recurse -Force)) {
+    $itemAcl = Get-Acl -LiteralPath $item.FullName
+    $itemAcl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+    Set-Acl -LiteralPath $item.FullName -AclObject $itemAcl
+  }
+  Assert-Tree $pending -Trusted
+  if ($hasGUI) {
+    foreach ($name in $hashes.Keys) {
+      if ((Get-FileHash -LiteralPath (Join-Path $pending $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$name]) { throw 'Staged payload changed during installation' }
+    }
+    $runtimeKey = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+    $runtime = @(
+      Get-ItemProperty -LiteralPath ('Registry::HKEY_USERS\' + $OwnerSid + '\' + $runtimeKey) -Name pv -ErrorAction SilentlyContinue
+      Get-ItemProperty -LiteralPath ('HKLM:\SOFTWARE\WOW6432Node\' + $runtimeKey.Substring(9)) -Name pv -ErrorAction SilentlyContinue
+    ) | Where-Object { $_.pv -and $_.pv -ne '0.0.0.0' }
+    if (-not $runtime) {
+      $bootstrap = Join-Path $pending 'MicrosoftEdgeWebview2Setup.exe'
+      $signed = Get-AuthenticodeSignature -LiteralPath $bootstrap
+      if ($signed.Status -ne 'Valid' -or $signed.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)') { throw 'WebView2 bootstrapper signature verification failed' }
+      $setup = Start-Process -FilePath $bootstrap -ArgumentList @('/silent', '/install') -WindowStyle Hidden -PassThru
+      if (-not $setup.WaitForExit(300000)) { throw 'WebView2 installation is still running; wait for it to finish before retrying' }
+      if ($setup.ExitCode -ne 0) { throw 'Microsoft WebView2 installation failed; check connectivity and retry' }
+      $installedRuntime = Get-ItemProperty -LiteralPath ('HKLM:\SOFTWARE\WOW6432Node\' + $runtimeKey.Substring(9)) -Name pv -ErrorAction SilentlyContinue
+      if (-not $installedRuntime -or $installedRuntime.pv -eq '0.0.0.0') { throw 'WebView2 is not ready; restart Windows and retry the installer' }
+    }
+  }
+  foreach ($process in @(Get-Process -Name nlroom -ErrorAction SilentlyContinue)) {
+    if ($process.Path -eq (Join-Path $target 'nlroom.exe')) { Stop-Process -Id $process.Id -Force; $process.WaitForExit() }
+  }
+  Stop-Network
+  $stopped = $true
+  Remove-Bundle $previous
+  if (Test-Path -LiteralPath $target) { Move-Bundle $target $previous; $movedOld = $true }
+  Move-Bundle $pending $target
+  $movedNew = $true
+  if ($existing) { Start-Service -Name NodeLaneRoom } else {
+    & (Join-Path $target 'nlroom-service.exe') service install --owner-sid $OwnerSid
+    if ($LASTEXITCODE -ne 0) { throw 'Service registration failed' }
+  }
+  Wait-Ready $version
+  if ($hasGUI) {
+    $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
+    New-Item -Path $registry -Force | Out-Null
+    $properties = @{
+      DisplayName = 'NodeLane Room'; DisplayVersion = $version; Publisher = 'NodeLane'
+      InstallLocation = $target; DisplayIcon = (Join-Path $target 'nlroom.exe')
+      UninstallString = ('"' + "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $target 'uninstall.ps1') + '"')
+    }
+    foreach ($entry in $properties.GetEnumerator()) { New-ItemProperty -Path $registry -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'))
+    $shortcut.TargetPath = Join-Path $target 'nlroom.exe'; $shortcut.WorkingDirectory = $target; $shortcut.Save()
+  }
+  Write-Output "NodeLane Room $version installed. Open the application as the installation user."
+} catch {
+  $failure = $_
+  if ($movedNew) {
+    Stop-Network
+    if (-not $existing -and (Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue)) {
+      & (Join-Path $target 'nlroom-service.exe') service uninstall
+      if ($LASTEXITCODE -ne 0) { throw 'Failed to remove new service; installation files retained for recovery' }
+    }
+    Remove-Bundle $target
+  }
+  if ($movedOld) { Move-Bundle $previous $target }
+  if ($existing -and $stopped -and $wasRunning) {
+    Start-Service -Name NodeLaneRoom
+    Wait-Ready $oldVersion
+    Write-Output 'Previous networking service restored.'
+  }
+  throw $failure
+} finally {
+  $lock.Dispose()
 }
