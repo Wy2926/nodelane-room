@@ -82,8 +82,8 @@ func (in *SetupRequest) normalize() error {
 // against that same database. No replica can replace an initialized deployment.
 func (s *Store) initialize(ctx context.Context, in SetupRequest, ca *pki.Authority, encoded string, bind func() error) error {
 	return s.Write(ctx, func(tx pgx.Tx) error {
-		if err := s.migrate(ctx, tx); err != nil {
-			return fmt.Errorf("%w: 数据库须为空库或地址池一致的 V2 库", ErrInvalid)
+		if err := s.initializeSchema(ctx, tx); err != nil {
+			return fmt.Errorf("%w: 数据库须为空库或地址池一致的当前结构（版本 %d），不支持旧库迁移", ErrInvalid, schemaVersion)
 		}
 		var used bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM administrator) OR EXISTS(SELECT 1 FROM deployment) OR EXISTS(SELECT 1 FROM devices) OR EXISTS(SELECT 1 FROM nodes) OR EXISTS(SELECT 1 FROM settings WHERE key='ca_fingerprint')`).Scan(&used); err != nil {
@@ -105,8 +105,7 @@ func (s *Store) initialize(ctx context.Context, in SetupRequest, ca *pki.Authori
 	})
 }
 
-// LoadDeployment requires the new database-backed configuration; no environment
-// or file CA fallback is accepted for an older deployment.
+// LoadDeployment opens the current schema and its shared control configuration.
 func LoadDeployment(ctx context.Context, databaseURL string) (*Server, error) {
 	s, err := Open(ctx, databaseURL, model.DefaultPool)
 	if err != nil {
@@ -119,8 +118,8 @@ func LoadDeployment(ctx context.Context, databaseURL string) (*Server, error) {
 		}
 	}()
 	var valid bool
-	if err = s.Pool.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=2 FROM schema_version").Scan(&valid); err != nil || !valid {
-		return nil, errors.New("database is not initialized V2")
+	if err = s.Pool.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=$1 FROM schema_version", schemaVersion).Scan(&valid); err != nil || !valid {
+		return nil, fmt.Errorf("database requires current schema version %d", schemaVersion)
 	}
 	var network, publicURL, registry, caCert, caKey string
 	err = s.Pool.QueryRow(ctx, `SELECT s.value,d.public_url,d.registry,d.ca_cert,d.ca_key FROM deployment d JOIN settings s ON s.key='network' WHERE d.id=1 AND EXISTS(SELECT 1 FROM administrator)`).Scan(&network, &publicURL, &registry, &caCert, &caKey)

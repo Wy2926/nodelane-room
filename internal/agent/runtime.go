@@ -13,7 +13,6 @@ import (
 	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/engine"
-	"github.com/nodelane/nodelane-room/internal/game"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/platform"
 	"github.com/nodelane/nodelane-room/internal/probe"
@@ -46,9 +45,6 @@ type Runtime struct {
 	key, public      []byte
 	snapshot         model.Snapshot
 	probe            *probe.Service
-	game             *game.Minecraft
-	gameView         atomic.Pointer[game.Minecraft]
-	selfID           string
 	probeBusy        atomic.Bool
 	engineGeneration uint64
 	registered       map[string]time.Time
@@ -128,26 +124,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 			}
 		}
 	}()
-	adsDone := make(chan struct{})
-	go func() {
-		defer close(adsDone)
-		t := time.NewTicker(1500 * time.Millisecond)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				r.advertise()
-			}
-		}
-	}()
 	defer func() {
 		if r.watchCancel != nil {
 			r.watchCancel()
 		}
 		<-done
-		<-adsDone
 		r.netMu.Lock()
 		r.stopNetworkLocked()
 		r.netMu.Unlock()

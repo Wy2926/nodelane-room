@@ -48,6 +48,32 @@ func (s *Server) playerHeartbeat(r *http.Request, tx pgx.Tx, id string, _ []byte
 	return s.Store.heartbeat(r.Context(), tx, r.PathValue("room"), id)
 }
 
+func (s *Server) playerDeleteEndpoint(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
+	var in model.EndpointRequest
+	if err := decodeBytes(b, &in); err != nil {
+		return nil, err
+	}
+	ctx, room := r.Context(), r.PathValue("room")
+	if err := activeMember(ctx, tx, room, id); err != nil {
+		return nil, err
+	}
+	rm, err := readRoom(ctx, tx, room)
+	if err != nil {
+		return nil, err
+	}
+	if rm.Game != "custom" {
+		return nil, ErrForbidden
+	}
+	if _, err = expandGamePorts([]model.GamePort{{Protocol: in.Protocol, Port: in.Port}}); err != nil {
+		return nil, err
+	}
+	result, err := tx.Exec(ctx, "DELETE FROM endpoints WHERE room_id=$1 AND device_id=$2 AND protocol=$3 AND port=$4", room, id, in.Protocol, in.Port)
+	if err == nil && result.RowsAffected() > 0 {
+		err = bump(ctx, tx, room, "endpoint_removed")
+	}
+	return map[string]bool{"ok": err == nil}, err
+}
+
 func (s *Server) playerInvite(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
 	return s.playerMemberAction(r, tx, id, b, "invite")
 }

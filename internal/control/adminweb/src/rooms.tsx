@@ -46,7 +46,7 @@ export function RoomTable({
           <tr key={r.id}>
             <td>
               <strong>{r.name}</strong>
-              <small>{r.game}</small>
+              <small>{r.game_name}</small>
             </td>
             <td>
               <Badge

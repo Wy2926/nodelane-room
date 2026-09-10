@@ -102,7 +102,7 @@ func run() error {
 	generated = map[string]bool{}
 	schema(reflect.TypeOf(model.NetworkSample{}))
 	schema(reflect.TypeOf(model.TelemetrySnapshot{}))
-	for _, v := range []any{model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
+	for _, v := range []any{model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.EndpointRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
 		schema(reflect.TypeOf(v))
 	}
 	schemes := components["securitySchemes"].(map[string]any)
@@ -110,7 +110,7 @@ func run() error {
 	schemes["NodeBearer"] = M{"type": "http", "scheme": "bearer", "description": "One-hour session scoped to the current nonrevoked node identity binding. Cannot authorize player/admin APIs."}
 	paths := doc["paths"].(map[string]any)
 	paths["/v2/auth/verify"].(M)["post"].(M)["summary"] = "Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce"
-	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh V2 database and identities required. No V1 API. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
+	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh database schema version 3 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
 	str := M{"type": "string"}
 	empty := object(M{})
 	ok := object(M{"ok": M{"type": "boolean", "enum": []bool{true}}}, "ok")
@@ -155,9 +155,19 @@ func run() error {
 		paths[path].(map[string]any)[method] = op
 	}
 	delete(paths, "/v2/admin/bootstrap")
+	add("/v2/games", "get", "Enabled server game catalog; custom permits client-defined ports", "Bearer", nil, M{"type": "array", "items": ref("Game")}, false)
+	add("/v2/games/{game}/images/{image}", "get", "Downloaded public game artwork; image is cover or background", "", nil, str, false)
+	paths["/v2/games/{game}/images/{image}"].(M)["get"].(M)["responses"] = M{"200": M{"description": "Validated JPEG/PNG from shared PostgreSQL, at most 5 MiB", "content": M{"image/jpeg": M{"schema": M{"type": "string", "format": "binary"}}, "image/png": M{"schema": M{"type": "string", "format": "binary"}}}}, "404": M{"$ref": "#/components/responses/Error"}}
+	add("/v2/admin/games/import", "post", "Import a Steam app link, download both images and atomically save a disabled draft", "AdminCookie", ref("GameImportRequest"), ref("Game"), true)
+	paths["/v2/admin/games/import"].(M)["post"].(M)["description"] = "Only https://store.steampowered.com/app/<id>/ links; fixed store API and HTTPS steamstatic.com artwork, public resolved addresses, bounded redirects/downloads. No API key. 10 imports/admin/minute, at most 500 games. External failure stores nothing; a completed retry returns its cached response. Steam Store appdetails availability and fields may change. Ports are configured manually after import."
+	add("/v2/admin/games/{game}", "put", "Update name, TCP/UDP ports and enabled state using the original revision", "AdminCookie", ref("GameUpdateRequest"), ref("Game"), true)
+	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "custom is immutable and always enabled. Enabled configured games require at least one port; 1–65535 excluding 4243, ranges expand to at most 32 nonoverlapping protocol/port pairs. Atomically replaces existing room registrations and publishes room/admin events. Disabled games deny new rooms, new joins and endpoint registration; existing game ports are withdrawn."
+	add("/v2/rooms/{room}/endpoints", "delete", "Remove this member's custom game port and publish a room change", "Bearer", ref("EndpointRequest"), ok, true)
+	paths["/v2/rooms/{room}/endpoints"].(M)["post"].(M)["description"] = "Only active room members; TCP/UDP 1–65535 excluding 4243, at most 32 registrations/member, 45 second expiry. Configured games allow only server-defined ports; their fixed ports register automatically on join and heartbeat. custom supports explicit client registration and removal."
+	schemas["RoomRequest"].(M)["properties"].(M)["game"].(M)["description"] = "Enabled game ID from GET /v2/games, or custom; no game-specific discovery."
 	add("/v2/admin/setup", "get", "Check local database configuration and loaded control plane readiness", "", nil, object(M{"initialized": M{"type": "boolean"}, "configured": M{"type": "boolean"}}, "initialized", "configured"), false)
 	add("/v2/admin/setup", "post", "Use a 10 minute local console code to create a control plane or connect an independent instance", "", setup, object(M{"ok": M{"type": "boolean"}, "public_url": str}, "ok", "public_url"), false)
-	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused V2 schema, configuration, CA and administrator; refuses existing deployments. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz. No old environment/CA-file fallback."
+	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 3), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
 	add("/v2/admin/login", "post", "Login; rate limited to 8/IP and 30 total per minute", "", credentials, session, false)
 	add("/v2/admin/session", "get", "Restore current session and stable CSRF token", "AdminCookie", nil, session, false)
 	add("/v2/admin/logout", "post", "Revoke current session", "AdminCookie", empty, ok, false)
@@ -210,7 +220,7 @@ func run() error {
 			tag = "Player"
 		}
 		for method, operation := range value.(M) {
-			if method == "get" || method == "post" || method == "put" {
+			if method == "get" || method == "post" || method == "put" || method == "delete" {
 				operation.(M)["tags"] = []string{tag}
 			}
 		}

@@ -11,6 +11,8 @@ import (
 )
 
 func (s *Server) registerPlayer(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v2/games", s.playerAuth(s.playerGames))
+	mux.HandleFunc("GET /v2/games/{game}/images/{image}", s.gameImage)
 	mux.HandleFunc("POST /v2/rooms/{room}/telemetry", s.playerAuth(s.playerTelemetry))
 	mux.HandleFunc("POST /v2/auth/challenge", s.playerChallenge)
 	mux.HandleFunc("POST /v2/auth/verify", s.playerVerify)
@@ -20,6 +22,7 @@ func (s *Server) registerPlayer(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v2/rooms/join", s.playerMutation(s.playerJoinRoom))
 	mux.HandleFunc("POST /v2/rooms/{room}/lease", s.playerMutation(s.playerLease))
 	mux.HandleFunc("POST /v2/rooms/{room}/endpoints", s.playerMutation(s.playerEndpoint))
+	mux.HandleFunc("DELETE /v2/rooms/{room}/endpoints", s.playerMutation(s.playerDeleteEndpoint))
 	mux.HandleFunc("POST /v2/rooms/{room}/heartbeat", s.playerMutation(s.playerHeartbeat))
 	mux.HandleFunc("POST /v2/rooms/{room}/invite", s.playerMutation(s.playerInvite))
 	mux.HandleFunc("POST /v2/rooms/{room}/kick", s.playerMutation(s.playerKick))
@@ -76,7 +79,7 @@ func (s *Server) playerMutation(next func(*http.Request, pgx.Tx, string, []byte)
 			s.fail(w, ErrInvalid)
 			return
 		}
-		out, err := s.Store.Mutate(r.Context(), id, r.Header.Get("Idempotency-Key"), hash(r.URL.Path+":"+string(b)), func(tx pgx.Tx) (any, error) {
+		out, err := s.Store.Mutate(r.Context(), id, r.Header.Get("Idempotency-Key"), hash(r.Method+":"+r.URL.Path+":"+string(b)), func(tx pgx.Tx) (any, error) {
 			return next(r, tx, id, b)
 		})
 		s.rawResult(w, out, err)

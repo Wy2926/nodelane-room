@@ -28,6 +28,7 @@ type AdminSnapshot struct {
 	CAExpiresAt  time.Time             `json:"ca_expires_at"`
 	Nodes        []model.Node          `json:"nodes"`
 	Rooms        []model.Room          `json:"rooms"`
+	Games        []model.Game          `json:"games"`
 	Operations   []model.NodeOperation `json:"operations"`
 	Events       []AdminEvent          `json:"events"`
 }
@@ -73,13 +74,17 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err := tx.Query(ctx, "SELECT id,name,owner_id,game,revision,capacity,expires_at,closed FROM rooms ORDER BY expires_at DESC LIMIT 500")
+	out.Games, err = readGames(ctx, tx, false)
+	if err != nil {
+		return out, err
+	}
+	rows, err := tx.Query(ctx, "SELECT r.id,r.name,r.owner_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game ORDER BY r.expires_at DESC LIMIT 500")
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var r model.Room
-		if err = rows.Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed); err != nil {
+		if err = rows.Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName); err != nil {
 			rows.Close()
 			return out, err
 		}

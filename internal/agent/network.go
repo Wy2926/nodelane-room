@@ -11,7 +11,6 @@ import (
 
 	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/engine"
-	"github.com/nodelane/nodelane-room/internal/game"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
 	"github.com/nodelane/nodelane-room/internal/probe"
@@ -111,9 +110,6 @@ func (r *Runtime) step(ctx context.Context) error {
 		if r.probe != nil {
 			r.probe.Update(snapshot)
 		}
-		if r.game != nil {
-			r.game.Update(snapshot)
-		}
 	}
 	r.netMu.Unlock()
 	r.netMu.Lock()
@@ -187,13 +183,8 @@ func (r *Runtime) step(ctx context.Context) error {
 	r.key = key
 	r.public = pub
 	r.snapshot = snapshot
-	r.selfID = i.ID()
 	if r.probe == nil {
-		r.probe, err = probe.Start(lease.IP, lease.Network, i.Node, func(ip, room, endpoint string) {
-			if g := r.gameView.Load(); g != nil {
-				g.Notice(ip, room, endpoint)
-			}
-		})
+		r.probe, err = probe.Start(lease.IP, lease.Network, i.Node)
 		if err != nil {
 			r.stopNetworkLocked()
 			r.netMu.Unlock()
@@ -201,18 +192,9 @@ func (r *Runtime) step(ctx context.Context) error {
 		}
 	}
 	r.probe.Update(snapshot)
-	var gameError error
-	if !i.Node && snapshot.Room != nil && snapshot.Room.Game == "minecraft-java" && r.game == nil {
-		r.game, gameError = game.StartMinecraft(i.ID())
-		r.gameView.Store(r.game)
-	}
-	if r.game != nil {
-		r.game.Update(snapshot)
-	}
 	p := r.probe
 	members := append([]model.Member(nil), snapshot.Members...)
 	nodes := append([]model.Node(nil), snapshot.Nodes...)
-	g := r.game
 	r.netMu.Unlock()
 	if i.Node {
 		if err = r.nodeApplied(); err != nil {
@@ -222,9 +204,6 @@ func (r *Runtime) step(ctx context.Context) error {
 	r.stateMu.Lock()
 	r.status.Control = "connected"
 	r.status.Error = r.nodePending
-	if gameError != nil {
-		r.status.Error = gameError.Error()
-	}
 	r.stateMu.Unlock()
 	if r.probeBusy.CompareAndSwap(false, true) {
 		go func() {
@@ -257,14 +236,12 @@ func (r *Runtime) step(ctx context.Context) error {
 		}()
 	}
 	if !i.Node {
-		ports := append([]model.EndpointRequest(nil), i.Ports...)
-		if g != nil {
-			for _, o := range g.Observations() {
-				ports = append(ports, model.EndpointRequest{Protocol: o.Protocol, Port: o.Port, MOTD: o.MOTD})
-			}
+		ports := []model.EndpointRequest{}
+		if snapshot.Room != nil && snapshot.Room.Game == "custom" {
+			ports = append(ports, i.Ports...)
 		}
 		for _, e := range ports {
-			k := e.Protocol + ":" + strconv.Itoa(int(e.Port)) + ":" + e.MOTD
+			k := e.Protocol + ":" + strconv.Itoa(int(e.Port))
 			if time.Since(r.registered[k]) < 10*time.Second {
 				continue
 			}
@@ -334,28 +311,6 @@ func (r *Runtime) selectRelaysLocked(nodes []model.Node) []string {
 	return r.relays
 }
 
-func (r *Runtime) advertise() {
-	r.netMu.Lock()
-	defer r.netMu.Unlock()
-	if r.game == nil || r.probe == nil || !r.engine.Running() {
-		return
-	}
-	local := map[uint16]bool{}
-	for _, o := range r.game.Observations() {
-		local[o.Port] = true
-	}
-	for _, e := range r.snapshot.Endpoints {
-		if e.DeviceID != r.selfID || e.Protocol != "tcp" || !local[e.Port] {
-			continue
-		}
-		for _, m := range r.snapshot.Members {
-			if m.DeviceID != e.DeviceID {
-				_ = r.probe.Advertise(m.IP, e.ID)
-			}
-		}
-	}
-}
-
 func (r *Runtime) stopNetworkLocked() {
 	r.engine.Stop()
 	r.closeAdaptersLocked()
@@ -368,13 +323,8 @@ func (r *Runtime) stopNetworkLocked() {
 func (r *Runtime) closeAdaptersLocked() {
 	r.udpTraffic.Close()
 	r.udpTraffic = nil
-	r.gameView.Store(nil)
 	if r.probe != nil {
 		r.probe.Close()
 		r.probe = nil
-	}
-	if r.game != nil {
-		r.game.Close()
-		r.game = nil
 	}
 }

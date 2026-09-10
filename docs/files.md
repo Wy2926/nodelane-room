@@ -43,7 +43,7 @@ deploy/ 部署模板与测试环境
     compose.yaml 数据库、控制面、中继与双客户端拓扑
     Dockerfile 测试程序与工具镜像
     entrypoint.sh 测试角色启动与容器内网络隔离
-    peer.py TCP/UDP 与 Minecraft 公告测试辅助服务
+    peer.py 通用 TCP/UDP 联机测试辅助服务
 dist/ 构建、安装包与镜像发布产物
 Dockerfile 从源码构建控制面与节点镜像
 docs/ 协议、部署与验收说明
@@ -51,6 +51,7 @@ docs/ 协议、部署与验收说明
   client.md 品牌与进程命名、GUI 技术选型和跨平台实施边界
   deployment.md V2 部署与维护步骤
   files.md 文件层级与职责索引
+  game-network.md 通用单播、广播与组播 LAN 发现规划和验收边界
   manual-v2-validation.md V2 人工及环境验收清单
   nebula-race-review.md 固定补丁原理与未处理的上游竞争
   openapi.yaml HTTP API 与数据结构契约
@@ -61,11 +62,11 @@ internal/ 产品内部实现
   agent/ 玩家与节点后台状态协调
     health.go 存活与就绪检查
     local.go 本机 RPC 服务、玩家命令分派与后台启停
-    network.go 授权快照、凭据续签、Nebula 与发现生命周期
+    network.go 授权快照、凭据续签、Nebula 与探测生命周期
     node.go 节点登记、配置同步、续签与状态
     node_doctor.go 节点诊断检查
     node_local.go 节点本机命令与脱敏日志缓冲
-    player.go 玩家初始化、房间操作与游戏端口登记
+    player.go 玩家初始化、游戏目录、房间操作与通用端口增删
     runtime.go 共享运行状态、构造、持久化与后台主循环
     runtime_test.go 控制请求阻塞时的凭据到期测试
     status.go 玩家连接状态、实际探测与本机诊断
@@ -104,6 +105,8 @@ internal/ 产品内部实现
         auth.tsx 登录与创建或接入控制面的初始化表单
         auth.test.tsx 登录及接入已有控制面的交互测试
         components.tsx 表格、指标、表单及可访问对话框
+        games.tsx Steam 导入、游戏草稿及端口配置页面
+        games.test.tsx 游戏编辑版本保留、导入失败与通用类型交互测试
         main.tsx 管理台导航、SSE、监控轮询与系统页面
         metrics.ts 新鲜度、速率、房间去重与出口观察计算
         metrics.test.ts 计数重置、断档、未知值与房间统计测试
@@ -115,6 +118,10 @@ internal/ 产品内部实现
         types.ts 前端 HTTP 与监控类型
     auth.go 设备挑战、会话与房间权限校验
     deployment.go 数据库配置校验、控制面创建与独立实例接入事务
+    game_import.go Steam 链接、资料及图片下载与来源和大小校验
+    games.go 游戏目录、端口规则及房间授权同步事务
+    games_http.go 玩家游戏列表、图片和管理员导入配置接口
+    games_test.go 游戏目录授权、并发、图片回放及可选真实 Steam 导入测试
     geoip.go 可并发切换的本地 MMDB 国家和省州查询
     geoip_update.go GeoIP 自动下载、月度检查、缓存校验及原子更新
     geoip_test.go 下载失败保留缓存、月度回退及官方样本并发查询测试
@@ -130,10 +137,10 @@ internal/ 产品内部实现
     player_rooms_http.go 玩家房间查询、成员操作与领证接口
     player_test.go 房间、多副本、并发、授权与 SSE 测试
     rooms.go 房间、成员、心跳、邀请、端点与授权快照
-    schema.sql V2 数据库表、共享配置、CA、索引与约束
+    schema.sql 当前数据库表、共享配置、CA、索引与约束
     setup.go 无数据库页面入口、私有启动定位与控制实例恢复
     setup_test.go 初始化授权、上传 CA、事务回滚和多实例共享状态测试
-    store.go 数据库初始化、幂等事务、地址分配、回收与限速
+    store.go 空库初始化与当前结构校验、幂等事务、地址分配、回收与限速
     store_test.go 数据库版本拒绝与数据保留测试
     test_helpers_test.go 独立测试 schema、HTTP 服务与玩家夹具
     telemetry.go 有界内存监控窗口、校验与过期清理
@@ -150,15 +157,12 @@ internal/ 产品内部实现
     routes_other.go 其他平台路由检查占位
     routes_windows.go Windows 路由冲突检查
     telemetry.go 固定 Nebula hostmap 的实际路径、远端和隧道查询
-  game/ 游戏端点与发现适配
-    adapter.go 适配器接口与发现事件
-    minecraft.go LAN 公告、授权发现、本机代理与组播回环
-    minecraft_test.go 公告解析、授权、过期与代理清理测试
   localapi/ 本机服务协议与调用客户端
     client.go 经 Named Pipe/Unix socket 调用本机 RPC
     client_unix_test.go Unix socket 请求、响应与错误兼容测试
     protocol.go 本机请求与节点日志响应类型
   model/ 共享协议类型
+    game.go 游戏目录、端口范围及管理请求类型
     model.go 设备、房间、凭据、端点与状态类型
     node.go 节点配置、登记、操作与同步类型
     telemetry.go 非持久化监控采样与窗口协议
@@ -176,9 +180,9 @@ internal/ 产品内部实现
     storage.go 设备身份与实例定位文件的保护和原子持久化
     sync_unix.go Unix 目录落盘同步
     sync_windows.go Windows 目录同步兼容处理
-  probe/ 隧道内真实测量与发现消息
-    probe.go 探测、RTT/丢包、授权广告与来源限速
-    probe_test.go 探测与发现成员授权测试
+  probe/ 隧道内真实测量
+    probe.go 探测、RTT/丢包、成员授权与来源限速
+    probe_test.go 探测成员授权与统计过期测试
 README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
   __pycache__/ Python 字节码缓存

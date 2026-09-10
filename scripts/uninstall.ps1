@@ -8,7 +8,7 @@ if ((Get-Item -LiteralPath $target).Attributes -band [IO.FileAttributes]::Repars
 $cli = Join-Path $target 'nlroom-cli.exe'
 $service = Join-Path $target 'nlroom-service.exe'
 # Leaving is best effort when the control server is unreachable. The service
-# stop still releases local TUN, WFP sessions, tunnels and discovery proxies.
+# stop still releases local TUN, WFP sessions and tunnels.
 try { & $cli room leave 2>$null | Out-Null } catch { Write-Verbose 'Control unavailable; stopping local service still removes local network resources.' }
 if (Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue) {
   & $service service uninstall

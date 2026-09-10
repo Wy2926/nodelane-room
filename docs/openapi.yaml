@@ -64,6 +64,10 @@ components:
                     items:
                         $ref: '#/components/schemas/AdminEvent'
                     type: array
+                games:
+                    items:
+                        $ref: '#/components/schemas/Game'
+                    type: array
                 network:
                     type: string
                 nodes:
@@ -101,6 +105,7 @@ components:
                 - ca_expires_at
                 - nodes
                 - rooms
+                - games
                 - operations
                 - events
             type: object
@@ -149,8 +154,6 @@ components:
                     type: string
                 id:
                     type: string
-                motd:
-                    type: string
                 port:
                     format: int64
                     type: integer
@@ -164,20 +167,11 @@ components:
                 - expires_at
             type: object
         EndpointRequest:
-            additionalProperties: false
             properties:
-                motd:
-                    maxLength: 512
-                    type: string
                 port:
-                    description: 4243 is reserved
-                    maximum: 65535
-                    minimum: 1
+                    format: int64
                     type: integer
                 protocol:
-                    enum:
-                        - tcp
-                        - udp
                     type: string
             required:
                 - protocol
@@ -211,6 +205,82 @@ components:
             required:
                 - code
                 - message
+            type: object
+        Game:
+            properties:
+                background_url:
+                    type: string
+                cover_url:
+                    type: string
+                enabled:
+                    type: boolean
+                id:
+                    type: string
+                name:
+                    type: string
+                ports:
+                    items:
+                        $ref: '#/components/schemas/GamePort'
+                    type: array
+                revision:
+                    format: int64
+                    type: integer
+                source_url:
+                    type: string
+                summary:
+                    type: string
+            required:
+                - id
+                - name
+                - summary
+                - source_url
+                - cover_url
+                - background_url
+                - ports
+                - enabled
+                - revision
+            type: object
+        GameImportRequest:
+            properties:
+                url:
+                    type: string
+            required:
+                - url
+            type: object
+        GamePort:
+            properties:
+                description:
+                    type: string
+                port:
+                    format: int64
+                    type: integer
+                port_end:
+                    format: int64
+                    type: integer
+                protocol:
+                    type: string
+            required:
+                - protocol
+                - port
+            type: object
+        GameUpdateRequest:
+            properties:
+                enabled:
+                    type: boolean
+                name:
+                    type: string
+                ports:
+                    items:
+                        $ref: '#/components/schemas/GamePort'
+                    type: array
+                revision:
+                    format: int64
+                    type: integer
+            required:
+                - name
+                - ports
+                - enabled
+                - revision
             type: object
         Invitation:
             additionalProperties: false
@@ -584,6 +654,8 @@ components:
                     type: string
                 game:
                     type: string
+                game_name:
+                    type: string
                 id:
                     type: string
                 name:
@@ -598,21 +670,18 @@ components:
                 - name
                 - owner_id
                 - game
+                - game_name
                 - revision
                 - capacity
                 - expires_at
                 - closed
             type: object
         RoomRequest:
-            additionalProperties: false
             properties:
                 game:
-                    enum:
-                        - minecraft-java
-                        - custom
+                    description: Enabled game ID from GET /v2/games, or custom; no game-specific discovery.
                     type: string
                 name:
-                    maxLength: 120
                     type: string
             required:
                 - name
@@ -758,7 +827,7 @@ components:
             scheme: bearer
             type: http
 info:
-    description: 'Fresh V2 database and identities required. No V1 API. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
+    description: 'Fresh database schema version 3 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
     title: NodeLane Room V2
     version: 0.2.0
 openapi: 3.0.3
@@ -898,6 +967,113 @@ paths:
             security:
                 - AdminCookie: []
             summary: SSE full authoritative snapshots with durable event IDs; reconnect every five minutes
+            tags:
+                - Admin
+    /v2/admin/games/{game}:
+        put:
+            description: custom is immutable and always enabled. Enabled configured games require at least one port; 1–65535 excluding 4243, ranges expand to at most 32 nonoverlapping protocol/port pairs. Atomically replaces existing room registrations and publishes room/admin events. Disabled games deny new rooms, new joins and endpoint registration; existing game ports are withdrawn.
+            parameters:
+                - in: path
+                  name: game
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GameUpdateRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Game'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Update name, TCP/UDP ports and enabled state using the original revision
+            tags:
+                - Admin
+    /v2/admin/games/import:
+        post:
+            description: Only https://store.steampowered.com/app/<id>/ links; fixed store API and HTTPS steamstatic.com artwork, public resolved addresses, bounded redirects/downloads. No API key. 10 imports/admin/minute, at most 500 games. External failure stores nothing; a completed retry returns its cached response. Steam Store appdetails availability and fields may change. Ports are configured manually after import.
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/GameImportRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Game'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Import a Steam app link, download both images and atomically save a disabled draft
             tags:
                 - Admin
     /v2/admin/login:
@@ -1508,7 +1684,7 @@ paths:
             tags:
                 - Admin
         post:
-            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused V2 schema, configuration, CA and administrator; refuses existing deployments. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz. No old environment/CA-file fallback.
+            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 3), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
             parameters:
                 - in: header
                   name: Origin
@@ -1722,6 +1898,63 @@ paths:
                     $ref: '#/components/responses/Error'
             security: []
             summary: Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce
+            tags:
+                - Player
+    /v2/games:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                items:
+                                    $ref: '#/components/schemas/Game'
+                                type: array
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Enabled server game catalog; custom permits client-defined ports
+            tags:
+                - Player
+    /v2/games/{game}/images/{image}:
+        get:
+            parameters:
+                - in: path
+                  name: game
+                  required: true
+                  schema:
+                    type: string
+                - in: path
+                  name: image
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        image/jpeg:
+                            schema:
+                                format: binary
+                                type: string
+                        image/png:
+                            schema:
+                                format: binary
+                                type: string
+                    description: Validated JPEG/PNG from shared PostgreSQL, at most 5 MiB
+                "404":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Downloaded public game artwork; image is cover or background
             tags:
                 - Player
     /v2/node/auth/challenge:
@@ -2035,7 +2268,58 @@ paths:
             tags:
                 - Player
     /v2/rooms/{room}/endpoints:
+        delete:
+            parameters:
+                - in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/EndpointRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Remove this member's custom game port and publish a room change
+            tags:
+                - Player
         post:
+            description: Only active room members; TCP/UDP 1–65535 excluding 4243, at most 32 registrations/member, 45 second expiry. Configured games allow only server-defined ports; their fixed ports register automatically on join and heartbeat. custom supports explicit client registration and removal.
             operationId: endpointsRoom
             parameters:
                 - description: Room ID

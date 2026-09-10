@@ -8,6 +8,8 @@ import (
 )
 
 func (s *Server) registerAdmin(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v2/admin/games/import", s.adminWrite(s.adminImportGame))
+	mux.HandleFunc("PUT /v2/admin/games/{game}", s.adminWrite(s.adminMutation(s.adminUpdateGame)))
 	mux.HandleFunc("GET /v2/admin/telemetry", s.adminHandler(s.adminTelemetry))
 	mux.HandleFunc("POST /v2/admin/login", s.adminIdentity(s.adminLogin))
 	mux.HandleFunc("GET /v2/admin/session", s.adminHandler(s.adminSession))

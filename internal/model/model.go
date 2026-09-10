@@ -37,6 +37,7 @@ type Room struct {
 	Name      string    `json:"name"`
 	OwnerID   string    `json:"owner_id"`
 	Game      string    `json:"game"`
+	GameName  string    `json:"game_name"`
 	Revision  int64     `json:"revision"`
 	Capacity  int       `json:"capacity"`
 	ExpiresAt time.Time `json:"expires_at"`
@@ -53,7 +54,6 @@ type Endpoint struct {
 	DeviceID  string    `json:"device_id"`
 	Protocol  string    `json:"protocol"`
 	Port      uint16    `json:"port"`
-	MOTD      string    `json:"motd,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 type Node struct {
@@ -135,7 +135,6 @@ type RoomResult struct {
 type EndpointRequest struct {
 	Protocol string `json:"protocol"`
 	Port     uint16 `json:"port"`
-	MOTD     string `json:"motd,omitempty"`
 }
 type Peer struct {
 	DeviceID    string   `json:"device_id"`

@@ -4,13 +4,10 @@ import http.client
 import http.server
 import json
 import os
-import re
 import socket
 import socketserver
-import struct
 import sys
 import threading
-import time
 
 
 class TCP(socketserver.BaseRequestHandler):
@@ -36,39 +33,6 @@ class TCPServer(socketserver.ThreadingTCPServer):
 class Fixture:
     def __init__(self):
         self.held = None
-        self.advertising = False
-        self.announcements = []
-        self.lock = threading.Lock()
-        self.multicast = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.multicast.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.multicast.bind(("", 4445))
-        self.multicast.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
-                                  socket.inet_aton("224.0.2.60") + socket.inet_aton("0.0.0.0"))
-        # Linux IP_RECVTTL is 12; Python does not expose it on all supported builds.
-        self.multicast.setsockopt(socket.IPPROTO_IP, 12, 1)
-        threading.Thread(target=self.collect, daemon=True).start()
-        threading.Thread(target=self.advertise, daemon=True).start()
-
-    def collect(self):
-        while True:
-            data, ancillary, _, source = self.multicast.recvmsg(2048, 128)
-            match = re.fullmatch(rb"\[MOTD\](.*?)\[/MOTD\]\[AD\](\d+)\[/AD\]", data)
-            if match:
-                ttl = next((struct.unpack("i", value)[0] for level, kind, value in ancillary
-                            if level == socket.IPPROTO_IP and kind == socket.IP_TTL), None)
-                with self.lock:
-                    self.announcements.append({"motd": match[1].decode(), "port": int(match[2]),
-                                               "source": source[0], "ttl": ttl, "time": time.monotonic()})
-                    self.announcements = self.announcements[-64:]
-
-    def advertise(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 0)
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-        while True:
-            if self.advertising:
-                sock.sendto(b"[MOTD]Docker simulated world[/MOTD][AD]25565[/AD]", ("224.0.2.60", 4445))
-            time.sleep(1)
 
     def action(self, req):
         action = req["action"]
@@ -109,13 +73,6 @@ class Fixture:
                 return {"state": "timeout"}
             except OSError:
                 return {"state": "closed"}
-        if action == "advertise":
-            self.advertising = req["enabled"]
-            return {"ok": True}
-        if action == "announcements":
-            with self.lock:
-                return [item for item in self.announcements
-                        if time.monotonic() - item["time"] < 5]
         raise ValueError("unknown fixture action")
 
 

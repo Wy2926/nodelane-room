@@ -8,14 +8,13 @@ import (
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
-func TestProbeAndDiscoveryMembership(t *testing.T) {
-	ads := make(chan string, 2)
-	a, err := Start("127.0.0.2", "127.0.0.0/8", false, nil)
+func TestProbeMembership(t *testing.T) {
+	a, err := Start("127.0.0.2", "127.0.0.0/8", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err := Start("127.0.0.3", "127.0.0.0/8", false, func(_, _, ep string) { ads <- ep })
+	b, err := Start("127.0.0.3", "127.0.0.0/8", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,23 +32,12 @@ func TestProbeAndDiscoveryMembership(t *testing.T) {
 	if _, err = a.Ping(context.Background(), "127.0.0.4"); err == nil {
 		t.Fatal("probed nonmember")
 	}
-	ep := "0123456789abcdef0123456789abcdef"
-	if err = a.Advertise("127.0.0.3", ep); err != nil {
-		t.Fatal(err)
+	a.Update(model.Snapshot{})
+	if _, err = a.Ping(context.Background(), "127.0.0.3"); err == nil {
+		t.Fatal("revoked peer still authorized")
 	}
-	select {
-	case got := <-ads:
-		if got != ep {
-			t.Fatal(got)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("discovery not delivered")
-	}
-	_ = a.send("127.0.0.3", Packet{Version: 1, Type: "advertisement", Room: "different", Endpoint: ep})
-	select {
-	case <-ads:
-		t.Fatal("cross-room discovery accepted")
-	case <-time.After(100 * time.Millisecond):
+	if rtt, loss := a.Stats("127.0.0.3"); rtt != nil || loss != nil {
+		t.Fatal("revoked peer measurements retained")
 	}
 }
 

@@ -2,9 +2,27 @@ export interface Room {
   id: string;
   name: string;
   game: string;
+  game_name: string;
   owner_id: string;
   expires_at: string;
   closed: boolean;
+}
+export interface GamePort {
+  protocol: "tcp" | "udp";
+  port: number;
+  port_end?: number;
+  description?: string;
+}
+export interface Game {
+  id: string;
+  name: string;
+  summary: string;
+  source_url: string;
+  cover_url: string;
+  background_url: string;
+  ports: GamePort[];
+  enabled: boolean;
+  revision: number;
 }
 export interface NodeConfig {
   name: string;
@@ -48,6 +66,7 @@ export interface Audit {
   created_at: string;
 }
 export interface Snapshot {
+  games: Game[];
   nodes: InfraNode[];
   rooms: Room[];
   operations: Operation[];

@@ -19,6 +19,8 @@ import (
 //go:embed schema.sql
 var schema string
 
+const schemaVersion = 3
+
 var (
 	ErrUnauthorized = errors.New("authentication required")
 	ErrForbidden    = errors.New("operation is not permitted")
@@ -56,24 +58,24 @@ func parseNetwork(network string) (netip.Prefix, error) {
 	}
 	return n, nil
 }
-func (s *Store) Migrate(ctx context.Context) error {
+func (s *Store) InitializeSchema(ctx context.Context) error {
 	return s.Write(ctx, func(tx pgx.Tx) error {
-		return s.migrate(ctx, tx)
+		return s.initializeSchema(ctx, tx)
 	})
 }
 
-func (s *Store) migrate(ctx context.Context, tx pgx.Tx) error {
+func (s *Store) initializeSchema(ctx context.Context, tx pgx.Tx) error {
 	var exists bool
 	if err := tx.QueryRow(ctx, "SELECT to_regclass('schema_version') IS NOT NULL").Scan(&exists); err != nil {
 		return err
 	}
 	if exists {
 		var valid bool
-		if err := tx.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=2 FROM schema_version").Scan(&valid); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=$1 FROM schema_version", schemaVersion).Scan(&valid); err != nil {
 			return err
 		}
 		if !valid {
-			return fmt.Errorf("database schema is not V2; use an empty database for a new deployment")
+			return fmt.Errorf("database schema must be version %d; use an empty database for a new deployment", schemaVersion)
 		}
 	} else {
 		var count int
@@ -83,24 +85,19 @@ func (s *Store) migrate(ctx context.Context, tx pgx.Tx) error {
 		if count != 0 {
 			return fmt.Errorf("initialization requires an empty database schema")
 		}
-	}
-	if _, err := tx.Exec(ctx, schema); err != nil {
-		return err
-	}
-	_, err := tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('network',$1) ON CONFLICT DO NOTHING", s.Network.String())
-	if err != nil {
-		return err
+		if _, err := tx.Exec(ctx, schema); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('network',$1),('deployment_id',$2)", s.Network.String(), randomID()); err != nil {
+			return err
+		}
 	}
 	var n string
-	if err = tx.QueryRow(ctx, "SELECT value FROM settings WHERE key='network'").Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT value FROM settings WHERE key='network'").Scan(&n); err != nil {
 		return err
 	}
 	if n != s.Network.String() {
 		return fmt.Errorf("configured network differs from database: %s", n)
-	}
-	_, err = tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('deployment_id',$1) ON CONFLICT DO NOTHING", randomID())
-	if err != nil {
-		return err
 	}
 	return nil
 }

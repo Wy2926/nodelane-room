@@ -106,7 +106,18 @@ func (r *Runtime) Members(ctx context.Context, room string) (model.Snapshot, err
 	return s, err
 }
 
-func (r *Runtime) AddPort(in model.EndpointRequest) error {
+func (r *Runtime) Games(ctx context.Context) ([]model.Game, error) {
+	r.op.Lock()
+	defer r.op.Unlock()
+	if r.api == nil {
+		return nil, errors.New("run init first")
+	}
+	var out []model.Game
+	err := r.api.Call(ctx, "GET", "/v2/games", nil, &out)
+	return out, err
+}
+
+func (r *Runtime) SetPort(ctx context.Context, in model.EndpointRequest, remove bool) error {
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.identity.RoomID == "" {
@@ -115,18 +126,44 @@ func (r *Runtime) AddPort(in model.EndpointRequest) error {
 	if (in.Protocol != "tcp" && in.Protocol != "udp") || in.Port == 0 || in.Port == model.ProbePort {
 		return errors.New("invalid game port")
 	}
+	var snap model.Snapshot
+	if r.api == nil {
+		return errors.New("run init first")
+	}
+	if err := r.api.Call(ctx, "GET", "/v2/rooms/"+r.identity.RoomID, nil, &snap); err != nil {
+		return err
+	}
+	if snap.Room == nil || snap.Room.Game != "custom" {
+		return errors.New("自定义端口仅适用于通用游戏；当前游戏端口由服务端配置")
+	}
 	i := r.identity
-	for _, p := range i.Ports {
+	i.Ports = append([]model.EndpointRequest(nil), i.Ports...)
+	for index, p := range i.Ports {
 		if p.Protocol == in.Protocol && p.Port == in.Port {
-			return nil
+			if !remove {
+				return nil
+			}
+			i.Ports = append(i.Ports[:index], i.Ports[index+1:]...)
+			break
 		}
 	}
-	if len(i.Ports) >= 16 {
-		return errors.New("at most 16 explicit ports are supported")
+	if !remove && len(i.Ports) >= 32 {
+		return errors.New("at most 32 explicit ports are supported")
 	}
-	i.Ports = append(i.Ports, in)
+	if !remove {
+		i.Ports = append(i.Ports, in)
+	}
+	// Persist removal first so the run loop cannot renew a removed permission,
+	// including after a restart or an interrupted DELETE. Failed deletes expire.
 	if err := r.persist(i); err != nil {
 		return err
+	}
+	if remove {
+		r.registered = map[string]time.Time{}
+		if err := r.api.Call(ctx, "DELETE", "/v2/rooms/"+i.RoomID+"/endpoints", in, nil); err != nil {
+			r.Wake()
+			return err
+		}
 	}
 	r.Wake()
 	return nil

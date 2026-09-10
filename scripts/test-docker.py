@@ -243,6 +243,11 @@ class TestRun:
         self.eventually("four registered endpoints", lambda: len(self.rpc("alice", "members")["endpoints"]) == 4)
         a, b = self.traffic()
         self.monitoring(a, b)
+        self.rpc("alice", "remove-port", body={"protocol":"tcp","port":26001})
+        self.eventually("custom port removal", lambda: not self.echo("bob", a["ip"]))
+        self.rpc("alice", "port", body={"protocol":"tcp","port":26001})
+        self.eventually("custom port restored", lambda: self.echo("bob", a["ip"]))
+        self.passed("custom port removal and re-registration update real traffic")
         self.isolation()
         self.rpc("bob", "leave")
         self.stopped("bob")
@@ -269,38 +274,34 @@ class TestRun:
         self.stopped("alice")
         self.passed("room closure removes TUN devices")
 
-    def minecraft(self):
-        created = self.rpc("alice", "create", body={"name": "Simulated Minecraft", "game": "minecraft-java"})
+    def configured_game(self):
+        games = self.rpc("alice", "games")
+        self.require(any(g["id"] == "custom" for g in games), "custom game absent")
+        game = next(g for g in games if g["id"] == "minecraft-java")
+        created = self.rpc("alice", "create", body={"name": "Configured TCP game", "game": game["id"]})
         code = self.invite(created["invitation"])
         self.rpc("bob", "join", body={"code": code})
         for service in ("alice", "bob"):
-            self.eventually(service + " Minecraft ready", lambda: self.connected(service))
-        self.fixture("alice", "advertise", enabled=True)
-
-        def discovered():
-            return next((item for item in self.fixture("bob", "announcements")
-                         if item["motd"] == "Docker simulated world"), None)
-
-        announcement = self.eventually("remote local multicast advertisement", discovered, timeout=90)
-        self.require(announcement["ttl"] == 0, "proxy announcement must have TTL 0")
-        self.require(announcement["source"] == "172.30.82.10", "announcement did not originate on Bob's local interface")
-        self.require(announcement["port"] != 25565, "remote advertisement did not select a proxy port")
-        self.eventually("proxy traffic", lambda: self.echo("bob", announcement["source"], port=announcement["port"]))
-        self.require(self.fixture("bob", "hold", ip=announcement["source"], port=announcement["port"])["ok"], "persistent proxy connection failed")
-        self.passed("simulated Minecraft advertisement, authorized discovery, TTL 0 loopback and real TCP proxy")
-        bob = self.status("bob")
+            self.eventually(service + " configured game ready", lambda: self.connected(service))
         alice = self.status("alice")
+        self.eventually("automatic server-configured TCP", lambda: self.echo("bob", alice["ip"], port=25565))
+        self.rpc("alice", "port", body={"protocol":"tcp","port":26001}, denied=True)
+        self.require(not self.echo("bob", alice["ip"], port=26001), "unconfigured port accepted")
+        update = {"username":"test-admin","password":self.admin_password,"path":"games/"+game["id"],"method":"PUT",
+                  "body":{"name":game["name"],"revision":game["revision"],"enabled":True,"ports":[{"protocol":"tcp","port":26002}]}}
+        self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps(update))
+        self.eventually("new configured port passes", lambda: self.echo("bob", alice["ip"], port=26002))
+        self.require(not self.echo("bob", alice["ip"], port=25565), "removed configured port still passes")
+        self.passed("server game list, automatic ports, custom override denial and live port replacement")
+        bob = self.status("bob")
         self.rpc("alice", "kick", body={"device_id": bob["device_id"]})
         self.stopped("bob")
-        self.eventually("existing proxy TCP closed", lambda: self.fixture("bob", "held")["state"] == "closed")
-        self.require(not self.echo("bob", announcement["source"], port=announcement["port"]), "revoked proxy still accepts clients")
-        self.require(not self.echo("bob", alice["ip"], port=25565), "revoked game traffic survives")
+        self.require(not self.echo("bob", alice["ip"], port=26002), "revoked game traffic survives")
         denial = self.rpc("bob", "join", body={"code": code}, denied=True)
         self.require("control API 403" in denial["error"], "kicked member rejected for unexpected reason")
-        self.fixture("alice", "advertise", enabled=False)
         self.rpc("alice", "close")
         self.stopped("alice")
-        self.passed("kick closes existing proxy TCP, removes TUN/proxy and denies rejoin")
+        self.passed("generic game kick removes TUN, stops traffic and denies rejoin")
 
     def verify(self):
         print("Running Linux vet, full tests and full race tests with the dedicated database...", flush=True)
@@ -352,7 +353,7 @@ def main():
         run.setup()
         run.isolation()
         run.business()
-        run.minecraft()
+        run.configured_game()
         ok = run.verify() if args.verify else True
     except (RuntimeError, ValueError, subprocess.SubprocessError, OSError) as exc:
         message = run.redact(str(exc))

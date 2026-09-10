@@ -21,6 +21,7 @@ import {
 } from "./components";
 import { NodeEditor, NodePanel, NodeTable, states } from "./nodes";
 import { RoomPanel, RoomTable } from "./rooms";
+import { Games } from "./games";
 import type { API, Room, Session, Snapshot, Telemetry } from "./types";
 import "./style.css";
 
@@ -209,6 +210,7 @@ function App() {
     overview: "网络总览",
     nodes: "节点管理",
     rooms: "房间与成员",
+    games: "游戏管理",
     events: "操作记录",
     system: "系统设置",
   };
@@ -245,7 +247,7 @@ function App() {
               aria-current={tab === key ? "page" : undefined}
               onClick={() => setTab(key)}
             >
-              <span>{["◈", "▤", "◫", "≡", "⚙"][i]}</span>
+              <span>{["◈", "▤", "◫", "◇", "≡", "⚙"][i]}</span>
               {label}
             </button>
           ))}
@@ -373,6 +375,9 @@ function App() {
                 />
               </Card>
             )}
+            {tab === "games" && (
+              <Games games={data.games} api={api} refresh={refresh} />
+            )}
             {tab === "events" && (
               <>
                 <Card title="节点操作结果">
@@ -461,7 +466,9 @@ function App() {
             <footer>
               — 表示缺少有效采样。连接类型来自 Nebula
               隧道，延迟与丢包来自实际探测。
-              {!telemetry?.geoip ? " IP 归属库尚未就绪，自动下载成功后显示。" : ""}
+              {!telemetry?.geoip
+                ? " IP 归属库尚未就绪，自动下载成功后显示。"
+                : ""}
             </footer>
           </>
         )}

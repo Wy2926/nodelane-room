@@ -36,7 +36,7 @@ func database(t *testing.T) (*Store, *pki.Authority) {
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	must(t, err)
 	s := &Store{Pool: pool, Network: netip.MustParsePrefix(model.DefaultPool)}
-	must(t, s.Migrate(ctx))
+	must(t, s.InitializeSchema(ctx))
 	ca, err := pki.Generate(s.Network)
 	must(t, err)
 	t.Cleanup(func() {
@@ -71,7 +71,7 @@ func user(t *testing.T, server *httptest.Server, name string) *client.API {
 func create(t *testing.T, a *client.API) model.RoomResult {
 	t.Helper()
 	var r model.RoomResult
-	must(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{Name: "Test room", Game: "minecraft-java"}, &r))
+	must(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{Name: "Test room", Game: "custom"}, &r))
 	return r
 }
 func join(t *testing.T, a *client.API, r model.RoomResult) {

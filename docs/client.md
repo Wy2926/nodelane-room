@@ -10,21 +10,14 @@
 |---|---|---|---|
 | 玩家 GUI | `nlroom.exe` | `nlroom` | 预留，普通用户运行 |
 | AI、脚本与开发调试 CLI | `nlroom-cli.exe` | `nlroom-cli` | 仅发起本机请求 |
-| 玩家网络后台 | `nlroom-service.exe` | `nlroom-service` | 承载身份、控制连接、Nebula 与游戏发现 |
+| 玩家网络后台 | `nlroom-service.exe` | `nlroom-service` | 承载身份、控制连接、Nebula 与端口授权 |
 | lighthouse/relay 节点 | 不发布 | `nlroom-node` | 已有基础设施进程 |
 
 所有 Linux 主程序名均短于 16 字节，便于进程列表辨识。GUI 使用系统 WebView 后还会有平台渲染辅助进程，不能要求任务管理器中只有上述主程序。
 
-Windows 服务注册名继续使用 `NodeLaneRoom`，显示名为 `NodeLane Room`；安装目录 `%ProgramFiles%\NodeLaneRoom`、状态目录 `%ProgramData%\NodeLaneRoom`、管道 `\\.\pipe\NodeLaneRoom` 保持现有值。Linux 暂沿用现有配置目录和 `agent.sock`，避免改名意外生成新设备身份。共享控制进程 `nodelane-server`、Go 模块路径、API、镜像和发布包前缀沿用现有名称。
+Windows 服务注册名继续使用 `NodeLaneRoom`，显示名为 `NodeLane Room`；安装目录 `%ProgramFiles%\NodeLaneRoom`、状态目录 `%ProgramData%\NodeLaneRoom`、管道 `\\.\pipe\NodeLaneRoom` 保持现有值。Linux 使用配置目录和 `agent.sock` 保存身份并提供本机通信。共享控制进程 `nodelane-server`、Go 模块路径、API、镜像和发布包前缀沿用现有名称。
 
-| 旧调用 | 新调用 |
-|---|---|
-| `nodelane init/room/status/peers/ping/doctor` | `nlroom-cli init/room/status/peers/ping/doctor` |
-| `nodelane daemon` | `nlroom-service daemon` |
-| `nodelane service install/uninstall` | `nlroom-service service install/uninstall` |
-| `NodeLane.cmd` | `NodeLaneRoom.cmd`，打开开发命令行 |
-
-不打包旧命令别名。旧安装使用**旧包的卸载脚本**停止并卸载服务，保留身份，再安装新包；自动化同步改命令路径。CLI 保留现有 `--json`、`--watch`、退出码和房间子命令，GUI 发布后继续作为开发与诊断工具维护。
+CLI 提供 `--json`、`--watch`、退出码和房间子命令，GUI 发布后继续作为开发与诊断工具维护。当前仅支持全新安装，不提供旧命令别名或旧身份迁移流程。
 
 ## GUI 选择
 
@@ -49,10 +42,10 @@ flowchart LR
     CLI["nlroom-cli · Go"] --> IPC
     IPC --> Service["nlroom-service · Go"]
     Service --> Control["控制面 HTTPS / SSE"]
-    Service --> Engine["固定 Nebula / 真实探测 / 游戏发现"]
+    Service --> Engine["固定 Nebula / 真实探测 / 端口授权"]
 ```
 
-- GUI 和 CLI 均为普通用户入口；服务独立于窗口存活，关闭窗口不等于离房。退出房间明确调用现有 leave；后台停机仍关闭隧道和本机代理。
+- GUI 和 CLI 均为普通用户入口；服务独立于窗口存活，关闭窗口不等于离房。退出房间明确调用现有 leave；后台停机仍关闭隧道。
 - Rust 只负责窗口、托盘、通知和有界本机 IPC。复用现有 `/rpc` 动作与 JSON 模型，不解析 CLI 表格，也不重新实现房间、证书和网络状态机。GUI 不读取身份私钥、隧道密钥或设备会话。
 - 界面只加载随包发布的资源；桥接只允许具名玩家操作，服务继续校验请求。外部网页不能调用本机桥接，不向 WebView 暴露任意命令执行、文件路径或管理员接口。
 - Windows 使用现有绑定安装用户 SID 的 Named Pipe。安装器负责提权安装服务和 Wintun；GUI 不以管理员/SYSTEM 身份运行，网络后台不作为随窗口启停的普通子进程。
@@ -71,7 +64,7 @@ Windows 采用有服务安装步骤的签名安装器；Linux 优先 deb/rpm 配
 - iOS：需 `Network Extension` / `NEPacketTunnelProvider`，验证扩展生命周期、内存和后台限制，并使用 macOS/Xcode 构建签名。[Apple Packet Tunnel](https://developer.apple.com/documentation/networkextension/nepackettunnelprovider)
 - macOS：界面可继续使用 Tauri；仍需验收 TUN、后台授权、签名与公证以及睡眠恢复。
 
-固定 Nebula 补丁目前只验收桌面路径，移动端是否能接入系统提供的 TUN 句柄仍未验证。必须先做小型集成验证；若需改变已锁定的数据面依赖，另行评审与授权。保持现有薄封装，不提前建立传输 Provider 抽象。Minecraft Java 发现是当前桌面游戏适配，不能据此宣称移动端游戏兼容。
+固定 Nebula 补丁目前只验收桌面路径，移动端是否能接入系统提供的 TUN 句柄仍未验证。必须先做小型集成验证；若需改变已锁定的数据面依赖，另行评审与授权。保持现有薄封装，不提前建立传输 Provider 抽象。通用 LAN 发现仍在规划，见 [游戏网络规划](game-network.md)；不能宣称移动端游戏兼容。
 
 ## 实施顺序与验收
 

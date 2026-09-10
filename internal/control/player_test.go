@@ -36,7 +36,7 @@ func TestRoomLifecycleAcrossReplicas(t *testing.T) {
 	if len(snap.Members) != 2 {
 		t.Fatalf("members: %+v", snap.Members)
 	}
-	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/endpoints", model.EndpointRequest{Protocol: "tcp", Port: 25565, MOTD: "World"}, nil))
+	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/endpoints", model.EndpointRequest{Protocol: "tcp", Port: 25565}, nil))
 	must(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/transfer", model.MemberRequest{DeviceID: guest.Identity.ID()}, nil))
 	statusError(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{}, nil), 403)
 	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{}, nil))

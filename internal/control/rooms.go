@@ -13,7 +13,7 @@ import (
 
 func readRoom(ctx context.Context, tx pgx.Tx, id string) (model.Room, error) {
 	var r model.Room
-	err := tx.QueryRow(ctx, "SELECT id,name,owner_id,game,revision,capacity,expires_at,closed FROM rooms WHERE id=$1", id).Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed)
+	err := tx.QueryRow(ctx, "SELECT r.id,r.name,r.owner_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game WHERE r.id=$1", id).Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName)
 	return r, noRows(err)
 }
 func (s *Store) available(ctx context.Context, tx pgx.Tx, device string) error {
@@ -56,7 +56,21 @@ func (s *Store) addMember(ctx context.Context, tx pgx.Tx, room, device string) e
 		return err
 	}
 	_, err = tx.Exec(ctx, "INSERT INTO members(room_id,device_id,ip) VALUES($1,$2,$3) ON CONFLICT(room_id,device_id) DO UPDATE SET ip=EXCLUDED.ip,active=true,last_seen=now()", room, device, ip)
-	return err
+	if err != nil {
+		return err
+	}
+	r, err := readRoom(ctx, tx, room)
+	if err != nil {
+		return err
+	}
+	g, err := readGame(ctx, tx, r.Game)
+	if err != nil {
+		return err
+	}
+	if !g.Enabled {
+		return ErrForbidden
+	}
+	return syncGamePorts(ctx, tx, room, device, g)
 }
 func invitation(ctx context.Context, tx pgx.Tx, room string) (model.Invitation, error) {
 	out := model.Invitation{Code: randomID(), ExpiresAt: time.Now().UTC().Add(30 * time.Minute)}
@@ -69,11 +83,18 @@ func invitation(ctx context.Context, tx pgx.Tx, room string) (model.Invitation, 
 func (s *Store) createRoom(ctx context.Context, tx pgx.Tx, device string, in model.RoomRequest) (model.RoomResult, error) {
 	var out model.RoomResult
 	in.Name = strings.TrimSpace(in.Name)
-	if !model.ValidLabel(in.Name, 120) || (in.Game != "minecraft-java" && in.Game != "custom") {
+	if !model.ValidLabel(in.Name, 120) {
 		return out, ErrInvalid
 	}
+	g, err := readGame(ctx, tx, in.Game)
+	if err != nil {
+		return out, err
+	}
+	if !g.Enabled {
+		return out, ErrForbidden
+	}
 	id := randomID()
-	_, err := tx.Exec(ctx, "INSERT INTO rooms(id,name,owner_id,game,capacity,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '24 hours')", id, in.Name, device, in.Game, model.RoomCapacity)
+	_, err = tx.Exec(ctx, "INSERT INTO rooms(id,name,owner_id,game,capacity,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '24 hours')", id, in.Name, device, in.Game, model.RoomCapacity)
 	if err != nil {
 		return out, err
 	}
@@ -115,6 +136,17 @@ func (s *Store) heartbeat(ctx context.Context, tx pgx.Tx, room, device string) (
 		return nil, err
 	}
 	_, err := tx.Exec(ctx, "UPDATE members SET last_seen=now() WHERE room_id=$1 AND device_id=$2", room, device)
+	if err != nil {
+		return nil, err
+	}
+	r, err := readRoom(ctx, tx, room)
+	if err != nil {
+		return nil, err
+	}
+	g, err := readGame(ctx, tx, r.Game)
+	if err == nil {
+		err = syncGamePorts(ctx, tx, room, device, g)
+	}
 	return map[string]bool{"ok": true}, err
 }
 
@@ -181,23 +213,34 @@ func (s *Store) endpoint(ctx context.Context, tx pgx.Tx, room, device string, in
 	if err := activeMember(ctx, tx, room, device); err != nil {
 		return out, err
 	}
-	if (in.Protocol != "tcp" && in.Protocol != "udp") || in.Port == 0 || in.Port == model.ProbePort || (in.MOTD != "" && !model.ValidLabel(in.MOTD, 512)) || strings.Contains(in.MOTD, "[/MOTD]") || strings.Contains(in.MOTD, "[AD]") {
+	if (in.Protocol != "tcp" && in.Protocol != "udp") || in.Port == 0 || in.Port == model.ProbePort {
 		return out, ErrInvalid
+	}
+	r, err := readRoom(ctx, tx, room)
+	if err != nil {
+		return out, err
+	}
+	g, err := readGame(ctx, tx, r.Game)
+	if err != nil {
+		return out, err
+	}
+	if !gameAllowsEndpoint(g, in) {
+		return out, fmt.Errorf("%w: 端口不在服务端游戏配置中；自定义端口请使用通用游戏", ErrForbidden)
 	}
 	var n int
 	if err := tx.QueryRow(ctx, "SELECT count(*) FROM endpoints WHERE room_id=$1 AND device_id=$2", room, device).Scan(&n); err != nil {
 		return out, err
 	}
-	var old string
-	err := tx.QueryRow(ctx, "SELECT motd FROM endpoints WHERE room_id=$1 AND device_id=$2 AND protocol=$3 AND port=$4", room, device, in.Protocol, in.Port).Scan(&old)
-	changed := errors.Is(err, pgx.ErrNoRows) || old != in.MOTD
+	var old time.Time
+	err = tx.QueryRow(ctx, "SELECT expires_at FROM endpoints WHERE room_id=$1 AND device_id=$2 AND protocol=$3 AND port=$4", room, device, in.Protocol, in.Port).Scan(&old)
+	changed := errors.Is(err, pgx.ErrNoRows) || !old.After(time.Now())
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return out, err
 	}
 	if n >= 32 && errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrConflict
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO endpoints(id,room_id,device_id,protocol,port,motd,expires_at) VALUES($1,$2,$3,$4,$5,$6,now()+interval '45 seconds') ON CONFLICT(room_id,device_id,protocol,port) DO UPDATE SET motd=EXCLUDED.motd,expires_at=EXCLUDED.expires_at RETURNING id,device_id,protocol,port,motd,expires_at`, randomID(), room, device, in.Protocol, in.Port, in.MOTD).Scan(&out.ID, &out.DeviceID, &out.Protocol, &out.Port, &out.MOTD, &out.ExpiresAt)
+	err = tx.QueryRow(ctx, `INSERT INTO endpoints(id,room_id,device_id,protocol,port,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '45 seconds') ON CONFLICT(room_id,device_id,protocol,port) DO UPDATE SET expires_at=EXCLUDED.expires_at RETURNING id,device_id,protocol,port,expires_at`, randomID(), room, device, in.Protocol, in.Port).Scan(&out.ID, &out.DeviceID, &out.Protocol, &out.Port, &out.ExpiresAt)
 	if err == nil && changed {
 		err = bump(ctx, tx, room, "endpoints")
 	}
@@ -278,13 +321,13 @@ func readRoomMembers(ctx context.Context, tx pgx.Tx, room string) ([]model.Membe
 }
 
 func readRoomEndpoints(ctx context.Context, tx pgx.Tx, room string) ([]model.Endpoint, error) {
-	rows, err := tx.Query(ctx, "SELECT id,device_id,protocol,port,motd,expires_at FROM endpoints WHERE room_id=$1 AND expires_at>now() ORDER BY id", room)
+	rows, err := tx.Query(ctx, "SELECT id,device_id,protocol,port,expires_at FROM endpoints WHERE room_id=$1 AND expires_at>now() ORDER BY id", room)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.Endpoint, error) {
 		var out model.Endpoint
-		err := row.Scan(&out.ID, &out.DeviceID, &out.Protocol, &out.Port, &out.MOTD, &out.ExpiresAt)
+		err := row.Scan(&out.ID, &out.DeviceID, &out.Protocol, &out.Port, &out.ExpiresAt)
 		return out, err
 	})
 }

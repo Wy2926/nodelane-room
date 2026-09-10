@@ -1,4 +1,4 @@
-// Package probe measures the overlay and transports bounded discovery notices.
+// Package probe measures the overlay with authenticated, bounded ping/pong.
 // All packets use Nebula's authenticated, encrypted overlay, never the public socket.
 package probe
 
@@ -17,11 +17,9 @@ import (
 )
 
 type Packet struct {
-	Version  int    `json:"v"`
-	Type     string `json:"type"`
-	Nonce    string `json:"nonce,omitempty"`
-	Room     string `json:"room,omitempty"`
-	Endpoint string `json:"endpoint,omitempty"`
+	Version int    `json:"v"`
+	Type    string `json:"type"`
+	Nonce   string `json:"nonce,omitempty"`
 }
 type pending struct {
 	ip   string
@@ -37,20 +35,18 @@ type bucket struct {
 	count  int
 }
 type Service struct {
-	conn            *net.UDPConn
-	mu              sync.Mutex
-	allowed         map[string]bool
-	room            string
-	network         netip.Prefix
-	infrastructure  bool
-	pending         map[string]pending
-	samples         map[string][]sample
-	rate            map[string]bucket
-	OnAdvertisement func(ip, room, endpoint string)
-	done            chan struct{}
+	conn           *net.UDPConn
+	mu             sync.Mutex
+	allowed        map[string]bool
+	network        netip.Prefix
+	infrastructure bool
+	pending        map[string]pending
+	samples        map[string][]sample
+	rate           map[string]bucket
+	done           chan struct{}
 }
 
-func Start(ip, network string, infrastructure bool, onAd func(string, string, string)) (*Service, error) {
+func Start(ip, network string, infrastructure bool) (*Service, error) {
 	addr, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(ip, "4243"))
 	if err != nil {
 		return nil, err
@@ -64,7 +60,7 @@ func Start(ip, network string, infrastructure bool, onAd func(string, string, st
 		conn.Close()
 		return nil, err
 	}
-	s := &Service{conn: conn, network: n, infrastructure: infrastructure, allowed: map[string]bool{}, pending: map[string]pending{}, samples: map[string][]sample{}, rate: map[string]bucket{}, OnAdvertisement: onAd, done: make(chan struct{})}
+	s := &Service{conn: conn, network: n, infrastructure: infrastructure, allowed: map[string]bool{}, pending: map[string]pending{}, samples: map[string][]sample{}, rate: map[string]bucket{}, done: make(chan struct{})}
 	go s.read()
 	return s, nil
 }
@@ -77,10 +73,6 @@ func (s *Service) Update(snapshot model.Snapshot) {
 	}
 	for _, n := range snapshot.Nodes {
 		s.allowed[n.IP] = true
-	}
-	s.room = ""
-	if snapshot.Room != nil {
-		s.room = snapshot.Room.ID
 	}
 	for ip := range s.rate {
 		if !s.allowed[ip] {
@@ -123,7 +115,6 @@ func (s *Service) read() {
 		if len(s.rate) < 65536 || s.rate[ip].second != 0 {
 			s.rate[ip] = b
 		}
-		room := s.room
 		s.mu.Unlock()
 		if !allowed || b.count > 10 {
 			continue
@@ -147,10 +138,6 @@ func (s *Service) read() {
 				close(v.done)
 			}
 			s.mu.Unlock()
-		case "advertisement":
-			if !s.infrastructure && room != "" && p.Room == room && len(p.Endpoint) == 32 && s.OnAdvertisement != nil {
-				s.OnAdvertisement(ip, p.Room, p.Endpoint)
-			}
 		}
 	}
 }
@@ -209,16 +196,6 @@ func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
 		ok = true
 		return time.Since(start), nil
 	}
-}
-func (s *Service) Advertise(ip, endpoint string) error {
-	s.mu.Lock()
-	room := s.room
-	allowed := s.allowed[ip]
-	s.mu.Unlock()
-	if !allowed {
-		return errors.New("peer is not authorized")
-	}
-	return s.send(ip, Packet{Version: 1, Type: "advertisement", Room: room, Endpoint: endpoint})
 }
 func (s *Service) Stats(ip string) (*float64, *float64) {
 	s.mu.Lock()

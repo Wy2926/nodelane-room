@@ -55,13 +55,15 @@ func (r *Runtime) Serve(ctx context.Context) error {
 			out = r.Doctor()
 		case "members":
 			out, err = r.Members(req.Context(), in.Room)
+		case "games":
+			out, err = r.Games(req.Context())
 		case "ping":
 			out, err = r.Ping(req.Context(), in.Target)
-		case "port":
+		case "port", "remove-port":
 			var p model.EndpointRequest
 			err = json.Unmarshal(in.Body, &p)
 			if err == nil {
-				err = r.AddPort(p)
+				err = r.SetPort(req.Context(), p, in.Action == "remove-port")
 			}
 			out = map[string]bool{"ok": err == nil}
 		case "create", "join", "invite", "kick", "transfer", "leave", "close":
