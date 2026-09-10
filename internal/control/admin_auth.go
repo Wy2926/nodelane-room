@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/nodelane/nodelane-room/internal/model"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -41,24 +40,6 @@ func passwordOK(encoded, password string) bool {
 	}
 	return subtle.ConstantTimeCompare(sum, argon2.IDKey([]byte(password), salt, 3, 64*1024, 1, 32)) == 1
 }
-func (s *Store) AdminBootstrap(ctx context.Context) (string, error) {
-	token := randomID() + randomID()
-	err := s.Write(ctx, func(tx pgx.Tx) error {
-		var exists bool
-		if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM administrator)").Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			return ErrConflict
-		}
-		_, err := tx.Exec(ctx, `INSERT INTO admin_bootstrap(id,token_hash,expires_at) VALUES(1,$1,now()+interval '10 minutes') ON CONFLICT(id) DO UPDATE SET token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at`, hash(token))
-		return err
-	})
-	if err != nil {
-		return "", err
-	}
-	return token, nil
-}
 func (s *Store) ResetAdminPassword(ctx context.Context, password string) error {
 	encoded, err := passwordHash(password)
 	if err != nil {
@@ -82,42 +63,6 @@ func (s *Store) ResetAdminPassword(ctx context.Context, password string) error {
 type adminCredentials struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
-	Code     string `json:"code"`
-}
-
-func (s *Store) bootstrapAdmin(ctx context.Context, in adminCredentials) error {
-	if !model.ValidLabel(in.Username, 80) || len(in.Code) != 64 {
-		return ErrInvalid
-	}
-	// Verify the bootstrap capability before performing expensive password hashing.
-	var valid bool
-	if err := s.Pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM admin_bootstrap WHERE id=1 AND token_hash=$1 AND expires_at>now())", hash(in.Code)).Scan(&valid); err != nil || !valid {
-		return ErrForbidden
-	}
-	encoded, err := passwordHash(in.Password)
-	if err != nil {
-		return err
-	}
-	return s.Write(ctx, func(tx pgx.Tx) error {
-		tag, e := tx.Exec(ctx, "DELETE FROM admin_bootstrap WHERE id=1 AND token_hash=$1 AND expires_at>now()", hash(in.Code))
-		if e != nil {
-			return e
-		}
-		if tag.RowsAffected() != 1 {
-			return ErrForbidden
-		}
-		var exists bool
-		if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM administrator)").Scan(&exists); e != nil {
-			return e
-		}
-		if exists {
-			return ErrConflict
-		}
-		if _, e = tx.Exec(ctx, "INSERT INTO administrator(id,username,password_hash) VALUES(1,$1,$2)", in.Username, encoded); e != nil {
-			return e
-		}
-		return adminEvent(ctx, tx, in.Username, "admin.initialized", "administrator", struct{}{})
-	})
 }
 
 func (s *Store) loginAdmin(ctx context.Context, in adminCredentials) (string, error) {

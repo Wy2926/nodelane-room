@@ -11,3 +11,5 @@ __pycache__/
 *.key
 *.crt
 *.db
+node_modules/
+/internal/control/adminweb/dist/

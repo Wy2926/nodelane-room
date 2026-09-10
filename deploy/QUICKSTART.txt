@@ -5,10 +5,16 @@ NodeLane Room 0.2.0 全新部署
 
 控制面：已有 PostgreSQL/反代用 compose.host.yaml + .env.host.example；
 全套新建用 compose.yaml + .env.example + Caddyfile。不要合并两套。
-填写 PUBLIC_URL、数据库与网络，使用全新数据库和 CA。
-创建 secrets 目录（0700，UID/GID 10001），显式 run ca-init，然后 up -d --wait。
-在 control-a 终端执行 nodelane-server admin bootstrap，使用 10 分钟初始化码
-打开 PUBLIC_URL/admin 设置管理员密码。账号密码与玩家身份分离。
+当前流程须构建新版控制镜像；历史 0.2.0 镜像尚不包含页面初始化。
+每次部署只有 control 一个控制实例。up -d --wait 后执行
+docker compose exec control nodelane-server admin path，访问 HTTPS 域名加输出路径。
+根路径和旧 /admin 返回 404。随机入口随私有卷持久化，可设置 NODELANE_ADMIN_PATH 后重建。
+在 control 终端执行 nodelane-server admin bootstrap，页面填写初始化码、
+数据库、公网地址、地址池、节点仓库及管理员，CA 可直接生成或上传。
+配置及 CA 保存到 PostgreSQL；实例私有卷保存启动定位、随机入口和自动下载的 GeoIP 缓存。
+IP 归属默认自动拉取 DB-IP City Lite，须允许控制容器出站 HTTPS；无需手动下载。
+其他独立实例选择“接入已有控制面”，填写相同数据库与现有管理员密码。
+不再设置业务环境变量或运行 ca-init/migrate，保留 control-state 卷。
 
 管理台创建节点，填写真实公网域名/IP:UDP端口，默认4242、两个角色开启。
 生成30分钟一次性临时接入密钥。明文仅显示一次，丢失则重新生成。

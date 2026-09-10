@@ -66,11 +66,6 @@ func (s *Server) adminIdentity(next func(http.ResponseWriter, *http.Request, adm
 	}
 }
 
-func (s *Server) adminBootstrap(w http.ResponseWriter, r *http.Request, in adminCredentials) {
-	err := s.Store.bootstrapAdmin(r.Context(), in)
-	s.result(w, map[string]bool{"ok": err == nil}, err)
-}
-
 func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request, in adminCredentials) {
 	token, err := s.Store.loginAdmin(r.Context(), in)
 	if err != nil {

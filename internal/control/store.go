@@ -34,9 +34,9 @@ type Store struct {
 }
 
 func Open(ctx context.Context, url, network string) (*Store, error) {
-	n, err := netip.ParsePrefix(network)
-	if err != nil || !n.Addr().Is4() || n.Bits() < 16 || n.Bits() > 28 || n != n.Masked() {
-		return nil, fmt.Errorf("network must be a canonical IPv4 /16 through /28 prefix")
+	n, err := parseNetwork(network)
+	if err != nil {
+		return nil, err
 	}
 	p, err := pgxpool.New(ctx, url)
 	if err != nil {
@@ -48,49 +48,61 @@ func Open(ctx context.Context, url, network string) (*Store, error) {
 	}
 	return &Store{Pool: p, Network: n}, nil
 }
+
+func parseNetwork(network string) (netip.Prefix, error) {
+	n, err := netip.ParsePrefix(network)
+	if err != nil || !n.Addr().Is4() || n.Bits() < 16 || n.Bits() > 28 || n != n.Masked() {
+		return netip.Prefix{}, fmt.Errorf("%w: 地址池须为规范 IPv4 /16 至 /28 网段", ErrInvalid)
+	}
+	return n, nil
+}
 func (s *Store) Migrate(ctx context.Context) error {
 	return s.Write(ctx, func(tx pgx.Tx) error {
-		var exists bool
-		if err := tx.QueryRow(ctx, "SELECT to_regclass('schema_version') IS NOT NULL").Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			var valid bool
-			if err := tx.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=2 FROM schema_version").Scan(&valid); err != nil {
-				return err
-			}
-			if !valid {
-				return fmt.Errorf("database schema is not V2; use an empty database for a new deployment")
-			}
-		} else {
-			var count int
-			if err := tx.QueryRow(ctx, "SELECT count(*) FROM information_schema.tables WHERE table_schema=current_schema()").Scan(&count); err != nil {
-				return err
-			}
-			if count != 0 {
-				return fmt.Errorf("initialization requires an empty database schema")
-			}
-		}
-		if _, err := tx.Exec(ctx, schema); err != nil {
-			return err
-		}
-		_, err := tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('network',$1) ON CONFLICT DO NOTHING", s.Network.String())
-		if err != nil {
-			return err
-		}
-		var n string
-		if err = tx.QueryRow(ctx, "SELECT value FROM settings WHERE key='network'").Scan(&n); err != nil {
-			return err
-		}
-		if n != s.Network.String() {
-			return fmt.Errorf("configured network differs from database: %s", n)
-		}
-		_, err = tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('deployment_id',$1) ON CONFLICT DO NOTHING", randomID())
-		if err != nil {
-			return err
-		}
-		return nil
+		return s.migrate(ctx, tx)
 	})
+}
+
+func (s *Store) migrate(ctx context.Context, tx pgx.Tx) error {
+	var exists bool
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('schema_version') IS NOT NULL").Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		var valid bool
+		if err := tx.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=2 FROM schema_version").Scan(&valid); err != nil {
+			return err
+		}
+		if !valid {
+			return fmt.Errorf("database schema is not V2; use an empty database for a new deployment")
+		}
+	} else {
+		var count int
+		if err := tx.QueryRow(ctx, "SELECT count(*) FROM information_schema.tables WHERE table_schema=current_schema()").Scan(&count); err != nil {
+			return err
+		}
+		if count != 0 {
+			return fmt.Errorf("initialization requires an empty database schema")
+		}
+	}
+	if _, err := tx.Exec(ctx, schema); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('network',$1) ON CONFLICT DO NOTHING", s.Network.String())
+	if err != nil {
+		return err
+	}
+	var n string
+	if err = tx.QueryRow(ctx, "SELECT value FROM settings WHERE key='network'").Scan(&n); err != nil {
+		return err
+	}
+	if n != s.Network.String() {
+		return fmt.Errorf("configured network differs from database: %s", n)
+	}
+	_, err = tx.Exec(ctx, "INSERT INTO settings(key,value) VALUES('deployment_id',$1) ON CONFLICT DO NOTHING", randomID())
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // All mutations share a database transaction lock. This intentionally favors
@@ -239,7 +251,7 @@ func (s *Store) Sweep(ctx context.Context) error {
 				return err
 			}
 		}
-		for _, q := range []string{"DELETE FROM challenges WHERE expires_at<now()", "DELETE FROM sessions WHERE expires_at<now()", "DELETE FROM invitations WHERE expires_at<now()", "DELETE FROM enrollment_keys WHERE expires_at<now()-interval '1 day'", "DELETE FROM admin_sessions WHERE expires_at<now() OR last_seen<now()-interval '30 minutes'", "DELETE FROM admin_bootstrap WHERE expires_at<now()", "DELETE FROM idempotency WHERE expires_at<now()", "DELETE FROM rate_limits WHERE window_start<now()-interval '1 day'", "DELETE FROM addresses WHERE release_after<now()", "DELETE FROM certificates WHERE expires_at<now()-interval '1 hour'", "DELETE FROM events WHERE created_at<now()-interval '7 days'"} {
+		for _, q := range []string{"DELETE FROM challenges WHERE expires_at<now()", "DELETE FROM sessions WHERE expires_at<now()", "DELETE FROM invitations WHERE expires_at<now()", "DELETE FROM enrollment_keys WHERE expires_at<now()-interval '1 day'", "DELETE FROM admin_sessions WHERE expires_at<now() OR last_seen<now()-interval '30 minutes'", "DELETE FROM idempotency WHERE expires_at<now()", "DELETE FROM rate_limits WHERE window_start<now()-interval '1 day'", "DELETE FROM addresses WHERE release_after<now()", "DELETE FROM certificates WHERE expires_at<now()-interval '1 hour'", "DELETE FROM events WHERE created_at<now()-interval '7 days'"} {
 			if _, err = tx.Exec(ctx, q); err != nil {
 				return err
 			}

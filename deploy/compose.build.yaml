@@ -1,9 +1,4 @@
-# 可选本地构建：docker compose -f compose.yaml -f compose.build.yaml build
-# 发布镜像部署无需此文件；上下文是源码根目录或 Linux 发布包根目录。
-x-build: &build
-  build: {context: .., target: control}
+# 源码或 Linux 发布包本地构建覆盖项。
 services:
-  control-a: *build
-  control-b: *build
-  migrate: *build
-  ca-init: *build
+  control:
+    build: {context: .., target: control}

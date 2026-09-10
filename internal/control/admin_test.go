@@ -62,13 +62,10 @@ func newAdmin(t *testing.T) (*Store, *adminClient) {
 	srv := httptest.NewTLSServer((&Server{Store: s, CA: ca, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}).Handler())
 	t.Cleanup(srv.Close)
 	a := &adminClient{t: t, server: srv}
-	code, err := s.AdminBootstrap(context.Background())
+	encoded, err := passwordHash("correct test password")
 	must(t, err)
-	status, data := a.request("POST", "/bootstrap", map[string]string{"username": "owner", "password": "correct test password", "code": code}, true, false)
-	if status != 200 {
-		t.Fatalf("bootstrap: %d %s", status, data)
-	}
-	status, data = a.request("POST", "/login", map[string]string{"username": "owner", "password": "correct test password"}, true, false)
+	must(t, s.initialize(context.Background(), SetupRequest{Username: "owner", DatabaseURL: "postgres://test:test@localhost/test", PublicURL: srv.URL, Registry: DefaultRegistry}, ca, encoded, func() error { return nil }))
+	status, data := a.request("POST", "/login", map[string]string{"username": "owner", "password": "correct test password"}, true, false)
 	if status != 200 {
 		t.Fatalf("login: %d %s", status, data)
 	}
@@ -113,9 +110,6 @@ func TestAdminSessionAndCSRF(t *testing.T) {
 	status, data = a.request("POST", "/nodes", model.NodeConfig{Name: "n", Region: "d", Address: "n:4242", Relay: true}, true, true)
 	if status != 200 {
 		t.Fatalf("create: %s", data)
-	}
-	if _, err := s.AdminBootstrap(ctx); err != ErrConflict {
-		t.Fatalf("bootstrap reopened: %v", err)
 	}
 	must(t, s.ResetAdminPassword(ctx, "replacement password"))
 	status, _ = a.request("GET", "/snapshot", nil, true, true)

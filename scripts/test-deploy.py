@@ -35,12 +35,11 @@ def main():
     out.mkdir(parents=True)
     password = secrets.token_hex(24)
     hidden = [password]
-    env = dict(os.environ, ROOM_DOMAIN="room.test", PUBLIC_URL="https://room.test", POSTGRES_PASSWORD=password,
+    env = dict(os.environ, ROOM_DOMAIN="room.test", POSTGRES_PASSWORD=password,
                NODELANE_VERSION=args.version if args.images else run, NODELANE_REGISTRY=args.registry,
-               NODELANE_NETWORK="10.203.0.0/16", NODE_PORT="4242", NODE_NAME="compose-test", NODE_REGION="local",
-               NODE_PUBLIC_HOST="node", NODE_CONTROL_URL="https://room.test", CA_INIT_UID="0", CA_INIT_GID="0")
-    env.update(DATABASE_URL=f"postgres://nodelane:{password}@db:5432/nodelane?sslmode=disable",
-               CONTROL_BIND_IP="127.0.0.1")
+               NODE_PORT="4242", NODE_NAME="compose-test", NODE_REGION="local",
+               NODE_PUBLIC_HOST="node", NODE_CONTROL_URL="https://room.test")
+    env.update(CONTROL_BIND_IP="127.0.0.1")
     checks = []
 
     def command(argv, *, stdin=None, log=None, check=True):
@@ -63,7 +62,7 @@ def main():
 
     def config(filename):
         example = ".env.host.example" if filename == "compose.host.yaml" else ".env.example"
-        argv = ["docker", "compose", "--profile", "setup", "--env-file", str(root / "deploy" / example), "-f", str(root / "deploy" / filename)]
+        argv = ["docker", "compose", "--env-file", str(root / "deploy" / example), "-f", str(root / "deploy" / filename)]
         if not args.images:
             build = "compose.build.yaml" if filename == "compose.host.yaml" else filename.replace(".yaml", ".build.yaml")
             argv += ["-f", str(root / "deploy" / build)]
@@ -81,16 +80,11 @@ def main():
             passed("both supplied Compose files parse")
             services = control["services"]
             if args.host:
-                if set(services) != {"control-a", "control-b", "migrate", "ca-init"} or control.get("volumes"):
-                    raise RuntimeError("host template unexpectedly manages infrastructure")
-                for name, service in services.items():
-                    if name not in ("control-a", "control-b") and service.get("ports"):
-                        raise RuntimeError("setup task unexpectedly publishes a port")
-                    if name in ("migrate") and service.get("volumes"):
-                        raise RuntimeError("database-only task unexpectedly mounts the CA")
-                if services["migrate"].get("depends_on"):
-                    raise RuntimeError("host migration unexpectedly depends on managed infrastructure")
-                passed("host template owns no database/proxy/volumes and isolates CA from database-only tasks")
+                if set(services) != {"control"} or set(control.get("volumes", {})) != {"control-state"}:
+                    raise RuntimeError("host template must own one control instance and its private state volume")
+                if set(services["control"].get("environment", {})) - {"NODELANE_ADMIN_PATH", "NODELANE_GEOIP_URL"}:
+                    raise RuntimeError("control template still requires preconfigured application environment")
+                passed("host template owns one control instance; no database, proxy or CA setup tasks")
                 # Supply already-running infrastructure only in the isolated test model.
                 # Host IP bindings and host-gateway reachability still require deployment verification.
                 services["db"] = fixture["services"]["db"]
@@ -103,14 +97,12 @@ def main():
             for service in services.values():
                 service.pop("ports", None)
                 service["restart"] = "no"
+                service["networks"] = {"backend": None}
             services["edge"]["networks"] = {"backend": {"aliases": ["room.test"]}}
             control["networks"] = {"backend": {"internal": True}}
-            control["volumes"] = {name: {} for name in ("ca", "node-state", "trust", "caddy-data", "caddy-config")}
+            control["volumes"] = {name: {} for name in ("control-state", "node-state", "trust", "caddy-data", "caddy-config")}
             services["db"]["volumes"] = []
             services["db"]["tmpfs"] = ["/var/lib/postgresql"]
-            for name in ("control-a", "control-b"):
-                services[name]["volumes"] = [{"type": "volume", "source": "ca", "target": "/run/nodelane", "read_only": True}]
-            services["ca-init"]["volumes"] = [{"type": "volume", "source": "ca", "target": "/out"}]
             services["node"]["environment"].update({"SSL_CERT_FILE": "/trust/root.crt"})
             services["node"]["volumes"] = [{"type":"volume","source":"node-state","target":"/var/lib/nlroom-node"}, {"type":"volume","source":"trust","target":"/trust","read_only":True}]
             caddyfile = temp / "Caddyfile"
@@ -126,25 +118,27 @@ def main():
             compose = ["docker", "compose", "-p", run, "-f", str(composefile)]
             if args.images:
                 if args.pull:
-                    command(compose + ["pull", "control-a", "node"], log="pull.log")
+                    command(compose + ["pull", "control", "node"], log="pull.log")
                 passed("using published image names" + (" pulled from registry" if args.pull else " from local image store"))
             else:
-                command(compose + ["build", "control-a", "node"], log="build.log")
+                command(compose + ["build", "control", "node"], log="build.log")
                 passed("control and node images build from the selected root")
-            if args.host:
-                # Model install -d -m 0700 -o 10001 -g 10001, inside the test volume.
-                command(compose + ["run", "--rm", "--no-deps", "-T", "--user", "0", "--cap-add", "CHOWN",
-                                   "--entrypoint", "sh", "-v", f"{run}_ca:/out", "control-a", "-c", "chmod 700 /out && chown 10001:10001 /out"])
-            command(compose + ["run", "--rm", "--no-deps", "-T", "ca-init"], log="ca-init.log")
-            if not args.host:
-                command(compose + ["run", "--rm", "--no-deps", "-T", "--user", "0", "--cap-add", "CHOWN",
-                                   "--entrypoint", "sh", "-v", f"{run}_ca:/out", "control-a", "-c", "chown -R 10001:10001 /out"])
             if args.host:
                 command(compose + ["up", "-d", "--wait", "--wait-timeout", "120", "db"], log="database-up.log")
             command(compose + ["up", "-d", "--wait", "--wait-timeout", "180", "edge"], log="up.log")
-            for name in ("control-a", "control-b"):
-                command(compose + ["exec", "-T", name, "curl", "--fail", "--silent", "http://127.0.0.1:8080/readyz"])
-            passed("PostgreSQL, one-shot migration and both control replicas become ready")
+            command(compose + ["exec", "-T", "control", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"])
+            before = command(compose + ["exec", "-T", "control", "curl", "--fail", "--silent", "http://127.0.0.1:8080/readyz"], check=False)
+            if before.returncode == 0: raise RuntimeError("unconfigured instance reported ready")
+            entry = command(compose + ["exec", "-T", "control", "nodelane-server", "admin", "path"]).stdout.strip()
+            hidden.append(entry)
+            def check_entry():
+                for path, expected in (("/", "404"), ("/admin", "404"), ("/admin/assets/app.js", "404"),
+                                       (entry, "200"), (entry + "/assets/app.js", "200"), (entry + "/assets/style.css", "200")):
+                    response = command(compose + ["exec", "-T", "control", "curl", "--silent", "--output", "/dev/null",
+                                                  "--write-out", "%{http_code} %{redirect_url}", "http://127.0.0.1:8080" + path]).stdout.strip()
+                    if response != expected: raise RuntimeError("private admin entry or public 404 boundary failed")
+            check_entry()
+            passed("single control starts without database URL or CA; setup page is reachable")
             trust = command(compose + ["exec", "-T", "edge", "cat", "/data/caddy/pki/authorities/local/root.crt"]).stdout
             command(compose + ["run", "--rm", "--no-deps", "-T", "--entrypoint", "sh", "-v", f"{run}_trust:/out",
                                "node", "-c", "cat > /out/root.crt"], stdin=trust)
@@ -152,7 +146,7 @@ def main():
             status = json.loads(command(compose+["exec","-T","node","nlroom-node","status","--json"]).stdout)
             if status["registered"] or status["engine"] != "stopped": raise RuntimeError("pending node state is incorrect")
             passed("unenrolled container stays healthy and local command is accessible")
-            code = command(compose+["exec","-T","control-a","nodelane-server","admin","bootstrap"]).stdout.strip()
+            code = command(compose+["exec","-T","control","nodelane-server","admin","bootstrap"]).stdout.strip()
             admin_password=secrets.token_hex(24)
             hidden.extend([code,admin_password])
             csrf=''
@@ -161,12 +155,16 @@ def main():
                 if body is not None: config.append('data = '+json.dumps(json.dumps(body)))
                 reply=command(compose+["exec","-T","node","curl","--fail","--silent","--show-error","--config","-"],stdin='\n'.join(config))
                 return json.loads(reply.stdout)
-            admin('bootstrap',{'code':code,'username':'test-admin','password':admin_password})
+            admin('setup',{'mode':'create','code':code,'username':'test-admin','password':admin_password,'database_url':f'postgres://nodelane:{password}@db:5432/nodelane?sslmode=disable','public_url':'room.test','network':'10.203.0.0/16','registry':args.registry,'ca_mode':'generate'})
+            for attempt in range(30):
+                if admin('setup',method='GET')['initialized']: break
+                time.sleep(1)
+            else: raise RuntimeError('control did not load persisted configuration')
             csrf=admin('login',{'username':'test-admin','password':admin_password})['csrf'];hidden.append(csrf)
             node_record=admin('nodes',{'name':'compose-test','region':'local','address':'node:4242','lighthouse':True,'relay':True})
             token=admin('nodes/'+node_record['id']+'/key',{})['key'];hidden.append(token)
             command(compose+["exec","-T","node","nlroom-node","enroll","--key-stdin"],stdin=token,log="enroll.log")
-            passed("admin bootstrap, login, pre-created node and one-use enrollment over HTTPS")
+            passed("web database/CA setup, login, pre-created node and one-use enrollment over HTTPS")
             command(compose+["exec","-T","node","curl","--fail","--silent","http://127.0.0.1:9090/readyz"])
             manifest=json.loads(command(compose+["exec","-T","node","curl","--fail","--silent","https://room.test/install/manifest.json"]).stdout)
             if manifest['version']!='0.2.0' or set(manifest['artifacts'])!={'linux/amd64','linux/arm64'}: raise RuntimeError('native release manifest mismatch')
@@ -246,22 +244,27 @@ def main():
                 if command(compose+["exec","-T","node","cat","/sys/class/net/nodelane0/ifindex"]).stdout!=tun_index: raise RuntimeError('ordinary renewal restarted TUN')
                 passed('real automatic Nebula renewal preserves the TUN device')
                 expires=datetime.datetime.fromisoformat(node_status()['lease_expires_at'].replace('Z','+00:00'))
-                command(compose+["stop","control-a","control-b"],log='both-controls-stopped.log')
-                print('Waiting for the issued certificate to expire with both controls offline...',flush=True)
+                command(compose+["stop","control"],log='control-stopped.log')
+                print('Waiting for the issued certificate to expire with control offline...',flush=True)
                 def expired():
                     return command(compose+["exec","-T","node","curl","--fail","--silent","http://127.0.0.1:9090/readyz"],check=False).returncode!=0
                 eventually('data plane expires offline',expired,max(1,(expires-datetime.datetime.now(datetime.timezone.utc)).total_seconds())+40)
                 if command(compose+["exec","-T","node","sh","-c","test -d /sys/class/net/nodelane0"],check=False).returncode==0: raise RuntimeError('expired node retained TUN')
-                command(compose+["start","control-a","control-b"])
+                command(compose+["start","control"])
                 eventually('control restoration and fresh certificate',lambda:node_status()['engine']=='running')
                 passed('real certificate expiry stops offline TUN and control recovery reacquires authorization')
-            command(compose + ["stop", "control-a"], log="control-stop.log")
-            time.sleep(2)
-            command(compose + ["exec", "-T", "node", "curl", "--fail", "--silent", "https://room.test/readyz"])
+            deployment_id=admin('snapshot',method='GET')['deployment_id']
+            command(compose + ["up", "-d", "--force-recreate", "--wait", "--wait-timeout", "120", "control"], log="control-recreate.log")
+            restored_entry = command(compose + ["exec", "-T", "control", "nodelane-server", "admin", "path"]).stdout.strip()
+            if restored_entry != entry: raise RuntimeError("private admin entry changed after recreation")
+            check_entry()
+            passed("random admin entry and assets persist after recreation; public routes stay 404 without redirects")
+            eventually('persisted control configuration loads after recreation',lambda:admin('setup',method='GET')['initialized'])
+            if admin('snapshot',method='GET')['deployment_id'] != deployment_id: raise RuntimeError('control identity changed after recreation')
             metrics = command(compose + ["exec", "-T", "node", "curl", "--silent", "--output", "/dev/null", "--write-out", "%{http_code}", "https://room.test/metrics"]).stdout
             if metrics != "404":
                 raise RuntimeError("public metrics path was not blocked")
-            passed("HTTPS remains reachable with one control replica stopped; public metrics blocked")
+            passed("single control recovers configuration, CA and admin session after recreation; public metrics blocked")
             action('revoke')
             eventually('permanent revocation',lambda:node_status()['engine']=='stopped')
             denied=command(compose+["exec","-T","node","nlroom-node","enroll"],check=False)
@@ -277,8 +280,7 @@ def main():
         finally:
             if compose:
                 command(compose + ["logs", "--no-color", "--tail", "80"], log="services.log", check=False)
-                # Include one-shot setup services so their token volume is also removed.
-                result = command(compose + ["--profile", "setup", "down", "--volumes", "--remove-orphans"], log="cleanup.log", check=False)
+                result = command(compose + ["down", "--volumes", "--remove-orphans"], log="cleanup.log", check=False)
                 ok = ok and result.returncode == 0
                 checks.append({"check": "containers, test database, identities, CA and networks removed", "result": "passed" if result.returncode == 0 else "failed"})
                 if result.returncode == 0 and not args.images:

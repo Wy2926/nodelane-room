@@ -109,10 +109,11 @@ class TestRun:
         self.command("build", "control", timeout=1200, log="build.log")
         print("Starting the private database and HTTPS control service...", flush=True)
         self.command("up", "-d", "--wait", "--wait-timeout", "120", "db", "control", timeout=240, log="startup.log")
-        code = self.execute("control", "nodelane-server", "admin", "bootstrap").stdout.strip()
+        code = self.execute("control", "nodelane-server", "--state-dir", "/state/control", "admin", "bootstrap").stdout.strip()
         password = secrets.token_hex(24)
+        self.admin_password = password
         self.secrets.extend([code, password])
-        admin = self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps({"code":code,"username":"test-admin","password":password,"create":{"name":"test-relay","region":"docker","address":"relay:4242","lighthouse":True,"relay":True}}))
+        admin = self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps({"code":code,"username":"test-admin","password":password,"database_url":f"postgres://nodelane:{self.env['NODELANE_TEST_DB_PASSWORD']}@db:5432/nodelane_test?sslmode=disable","create":{"name":"test-relay","region":"docker","address":"relay:4242","lighthouse":True,"relay":True}}))
         token = json.loads(admin.stdout)['key']
         self.secrets.append(token)
         self.command("up", "-d", "relay")
@@ -175,6 +176,43 @@ class TestRun:
         self.passed("bidirectional TUN TCP/UDP, actual relay paths, measured RTT and closed-port rejection", peers=paths)
         return a, b
 
+    def monitoring(self, alice, bob):
+        def observed():
+            reply = self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps({
+                "username": "test-admin", "password": self.admin_password, "path": "telemetry", "method": "GET",
+                "wait_telemetry": [alice["device_id"], bob["device_id"]]}), timeout=120)
+            data = json.loads(reply.stdout)
+            sources = {s["device_id"]: s for s in data["series"]}
+            for own, peer in ((alice, bob), (bob, alice)):
+                source = sources.get(own["device_id"])
+                if not source or len(source["samples"]) < 7:
+                    return None
+                samples = source["samples"]
+                at = lambda s: datetime.datetime.fromisoformat(s["at"].replace("Z", "+00:00"))
+                if (at(samples[-1]) - at(samples[0])).total_seconds() < 30:
+                    return None
+                current = samples[-1]
+                traffic = current.get("traffic", {})
+                if not traffic.get("upload_bytes") or not traffic.get("download_bytes"):
+                    raise RuntimeError("member traffic missing: " + json.dumps(traffic))
+                link = next((p for p in current["peers"] if p["device_id"] == peer["device_id"]), {})
+                if link.get("mode") != "relay" or not link.get("relay_ips") or link.get("rtt_ms") is None or link.get("loss_percent") is None:
+                    raise RuntimeError("member measured relay path missing: " + json.dumps(link))
+            nodes = [s for s in data["series"] if s.get("node_id")]
+            if not nodes:
+                return None
+            sample = nodes[0]["samples"][-1]
+            if sample.get("traffic", {}).get("scope") != "nebula_udp" or not sample["traffic"]["upload_bytes"] or not sample["traffic"]["download_bytes"]:
+                raise RuntimeError("node forwarded traffic missing: " + json.dumps(sample.get("traffic")))
+            for player in (alice, bob):
+                if not any(p["device_id"] == player["device_id"] and p.get("remote") for p in sample["peers"]):
+                    raise RuntimeError("node did not observe the member endpoint")
+            return data
+        data = observed()
+        self.require(data is not None, "valid telemetry window missing after collection")
+        self.passed("admin telemetry retains >=30s of real relay, RTT/loss, member and forwarded UDP traffic, observed exits",
+                    reporters=len(data["series"]), retention_seconds=data["retention_seconds"])
+
     def business(self):
         a_id = self.rpc("alice", "init", server="https://control:8443", name="Alice")
         b_id = self.rpc("bob", "init", server="https://control:8443", name="Bob")
@@ -204,6 +242,7 @@ class TestRun:
                 self.rpc(service, "port", body={"protocol": protocol, "port": 26001})
         self.eventually("four registered endpoints", lambda: len(self.rpc("alice", "members")["endpoints"]) == 4)
         a, b = self.traffic()
+        self.monitoring(a, b)
         self.isolation()
         self.rpc("bob", "leave")
         self.stopped("bob")
@@ -267,10 +306,13 @@ class TestRun:
         print("Running Linux vet, full tests and full race tests with the dedicated database...", flush=True)
         self.command("--profile", "verify", "build", "verify", timeout=1200, log="verify-build.log")
         failed = False
+        fixture = os.environ.get("NODELANE_TEST_GEOIP_DB")
+        fixture_args = ["--volume", str(Path(fixture).resolve()) + ":/tmp/GeoIP2-City-Test.mmdb:ro",
+                        "--env", "NODELANE_TEST_GEOIP_DB=/tmp/GeoIP2-City-Test.mmdb"] if fixture else []
         for name, args in (("vet", ["go", "vet", "./..."]),
                            ("test", ["go", "test", "-count=1", "./..."]),
                            ("race", ["go", "test", "-race", "-count=1", "./..."])):
-            result = self.command("run", "--rm", "--no-deps", "verify", *args,
+            result = self.command("run", "--rm", "--no-deps", *fixture_args, "verify", *args,
                                   timeout=1200, check=False, log=name + ".log")
             self.results.append({"check": "Linux " + name + " with dedicated PostgreSQL", "result": "passed" if result.returncode == 0 else "failed"})
             print(("PASS " if result.returncode == 0 else "FAIL ") + "Linux " + name, flush=True)
@@ -316,6 +358,7 @@ def main():
         message = run.redact(str(exc))
         run.results.append({"check": "test run", "result": "failed", "error": message})
         print("FAIL " + message, flush=True)
+        run.command("logs", "--no-color", "--tail", "80", "control", log="control-error.log", check=False)
         for service in ("alice", "bob"):
             try:
                 (run.out / (service + "-status.json")).write_text(json.dumps(run.status(service), indent=2), encoding="utf-8")

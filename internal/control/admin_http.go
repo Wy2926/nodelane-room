@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) registerAdmin(mux *http.ServeMux) {
-	mux.HandleFunc("POST /v2/admin/bootstrap", s.adminIdentity(s.adminBootstrap))
+	mux.HandleFunc("GET /v2/admin/telemetry", s.adminHandler(s.adminTelemetry))
 	mux.HandleFunc("POST /v2/admin/login", s.adminIdentity(s.adminLogin))
 	mux.HandleFunc("GET /v2/admin/session", s.adminHandler(s.adminSession))
 	mux.HandleFunc("POST /v2/admin/logout", s.adminWrite(s.adminLogout))

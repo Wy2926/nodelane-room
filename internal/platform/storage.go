@@ -9,51 +9,64 @@ import (
 	"github.com/nodelane/nodelane-room/internal/client"
 )
 
-func SaveIdentity(dir string, i client.Identity) error {
+// SavePrivateFile publishes complete, protected data. Exclusive publication uses
+// a hard link so concurrent requests cannot replace an instance's database locator.
+func SavePrivateFile(path string, data []byte, replace bool) error {
+	dir := filepath.Dir(path)
 	if err := SecureDir(dir); err != nil {
 		return err
 	}
-	b, err := json.Marshal(i)
+	b, err := protect(data)
 	if err != nil {
 		return err
 	}
-	b, err = protect(b)
+	f, err := os.CreateTemp(dir, ".private-*")
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(dir, ".identity-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	defer os.Remove(name)
+	defer os.Remove(f.Name())
+	defer f.Close()
 	if err = f.Chmod(0600); err != nil {
-		f.Close()
 		return err
 	}
 	if _, err = f.Write(b); err != nil {
-		f.Close()
 		return err
 	}
 	if err = f.Sync(); err != nil {
-		f.Close()
 		return err
 	}
 	if err = f.Close(); err != nil {
 		return err
 	}
-	if err = os.Rename(name, filepath.Join(dir, "identity.bin")); err != nil {
+	if replace {
+		err = os.Rename(f.Name(), path)
+	} else {
+		err = os.Link(f.Name(), path)
+	}
+	if err != nil {
 		return err
 	}
 	return SyncDir(dir)
 }
+
+func LoadPrivateFile(path string) ([]byte, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return unprotect(b)
+}
+
+func SaveIdentity(dir string, i client.Identity) error {
+	b, err := json.Marshal(i)
+	if err != nil {
+		return err
+	}
+	return SavePrivateFile(filepath.Join(dir, "identity.bin"), b, true)
+}
 func LoadIdentity(dir string) (client.Identity, error) {
 	var i client.Identity
-	b, err := os.ReadFile(filepath.Join(dir, "identity.bin"))
-	if err != nil {
-		return i, err
-	}
-	b, err = unprotect(b)
+	b, err := LoadPrivateFile(filepath.Join(dir, "identity.bin"))
 	if err != nil {
 		return i, err
 	}

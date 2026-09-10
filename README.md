@@ -1,15 +1,15 @@
 # NodeLane Room V2
 
-Go 游戏组网产品，版本 **0.2.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 双控制副本、独立基础设施节点和 Windows CLI/服务。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
+Go 游戏组网产品，版本 **0.2.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Windows CLI/服务。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
 
 V2 使用全新数据库、CA 和节点/玩家身份。初始化仅接受空数据库 schema 或 V2 schema，遇到 V1/其他版本退出，不清库、不自动转换。0.2.0 控制面与节点镜像已发布至 `docker.nodelane.net`，支持 `linux/amd64`、`linux/arm64`；摘要见 [镜像清单](deploy/IMAGES.txt)。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
 ## 控制面和节点
 
-完整的新部署步骤见 [部署指南](docs/deployment.md)。控制端同源提供 `/admin`、`/install/node.sh` 和两个架构的发布包。控制副本共用数据库及 CA，无需粘性会话。
+完整的新部署步骤见 [部署指南](docs/deployment.md)。控制端同源提供随机管理入口、`/install/node.sh` 和两个架构的发布包。根路径及旧 `/admin` 返回 404，不跳转或披露管理地址。每次部署一个控制实例；多个独立实例可接入同一数据库，共享配置、CA 和会话，无需粘性会话。
 
-1. 初始化空数据库和新 CA，启动两个控制副本及 HTTPS 反代。
-2. 在控制服务器执行 `nodelane-server admin bootstrap`，取得 10 分钟一次性初始化码，在 `/admin` 设置管理员账号密码。
+1. 启动单个控制实例及 HTTPS 反代，无需预填业务环境配置。
+2. 在实例终端执行 `nodelane-server admin path` 查看随机入口（Compose 加前缀 `docker compose exec control`），再执行 `nodelane-server admin bootstrap`。打开 HTTPS 域名加该入口，填写初始化码、数据库、公网地址、地址池和管理员，生成或上传 CA；配置保存到 PostgreSQL。其他独立实例选择“接入已有控制面”。入口首次生成后持久化，也可用 `--admin-path` / `NODELANE_ADMIN_PATH` 配置 `/` 加 16–128 位字母、数字、下划线或短横线，重启生效。
 3. 管理台创建节点，填写公网域名/IP、UDP 端口、区域和角色；生成 30 分钟临时接入密钥。密钥仅显示一次。
 4. 在节点服务器选择一种部署方式，登记成功后自动启动数据面。
 
@@ -73,7 +73,7 @@ $nl = "$env:ProgramFiles\NodeLaneRoom\nodelane.exe"
 | `doctor` | 查看 Wintun 文件、网卡、凭据、控制状态和探测结果 |
 | `service install/uninstall` | 注册或删除 Windows 服务，安装需要管理员 |
 
-每设备同时一房，每房最多 32 人，有效期 24 小时；房主离线不关闭房间。玩家设备身份绑定本机私钥；管理台使用独立的管理员账号密码。默认地址池 `10.203.0.0/16`，部署前可改，运行中不能直接换池。
+每设备同时一房，每房最多 32 人，有效期 24 小时；房主离线不关闭房间。玩家设备身份绑定本机私钥；管理台使用独立的管理员账号密码。默认地址池 `10.203.0.0/16`，页面初始化时可改，运行中不能直接换池。
 
 证书最多 10 分钟，剩余约 7 分钟开始续签。控制失联期间不接受新操作，已有链路最多保留至当前凭据到期；实际可用时间也取决于对端和 relay 的剩余凭据。端口权限变化会受控重启 Nebula，短暂重连，这是规避固定上游版本防火墙热更新竞争的措施。
 
@@ -81,9 +81,12 @@ $nl = "$env:ProgramFiles\NodeLaneRoom\nodelane.exe"
 
 ## 开发与构建
 
-Go 最低版本由 `go.mod` 声明，CI/容器使用 1.26.8。依赖锁定在 `go.mod`/`go.sum`。开发约束见 [AGENTS.md](AGENTS.md)。
+管理台使用 React 19、TypeScript 和 Vite，Node.js 24 LTS 负责开发与构建，Go 同源提供编译后的页面与 API，生产环境无需运行 Node.js。前端位于 `internal/control/adminweb/`，依赖由 `package-lock.json` 锁定。Go 最低版本由 `go.mod` 声明，CI/容器使用 1.26.8。开发约束见 [AGENTS.md](AGENTS.md)。
 
 ```sh
+npm --prefix internal/control/adminweb ci
+npm --prefix internal/control/adminweb run build
+npm --prefix internal/control/adminweb test
 go mod verify
 go vet ./...
 go test -count=1 ./...
@@ -91,6 +94,8 @@ go test -count=1 ./...
 NODELANE_TEST_DATABASE_URL='postgres://user:password@localhost/nodelane_test?sslmode=disable' go test -race -count=1 ./...
 bash scripts/build.sh
 ```
+
+Go 编译前须构建前端，`go:embed` 嵌入 `internal/control/adminweb/dist/`；构建目录与 `node_modules` 不入库。发布脚本、源码 Dockerfile 与 CI 已自动执行此步骤。`npm --prefix internal/control/adminweb run dev` 启动 Vite；完整登录与初始化验收使用 Go 提供的随机管理入口，以满足已配置的同源 Origin。
 
 Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
@@ -104,9 +109,20 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 构建后用 `python scripts/check-release.py dist/0.2.0` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
 
-容器部署可直接拉取 `docker.nodelane.net` 的 0.2.0 版本镜像。控制面选择全套或已有基础设施两种独立模板，节点使用单独的 compose.node.yaml。完整步骤和必填项见 [部署指南](docs/deployment.md)。
+本次页面初始化流程须从当前源码构建控制镜像，历史 0.2.0 发布镜像尚不包含该改动。控制面选择全套或已有基础设施两种独立模板，节点使用单独的 compose.node.yaml。完整步骤和必填项见 [部署指南](docs/deployment.md)。
 
-1Panel 使用已有 `1panel-network` 时，可将 `deploy/compose.network.yaml` 的 `networks` 段放入精简编排顶层，或在 CLI 用第二个 `-f` 叠加该文件；`migrate` 和控制服务均加入此网络。PostgreSQL 在同一网络时，连接串可使用其实际容器名与内部端口。`NODELANE_NETWORK` 仍表示游戏地址池。详见 [1Panel 网络配置](docs/deployment.md)。
+1Panel 使用已有 `1panel-network` 时，可将 `deploy/compose.network.yaml` 的 `networks` 段放入精简编排顶层，或在 CLI 用第二个 `-f` 叠加该文件；控制服务加入此网络。PostgreSQL 在同一网络时，连接串可使用其实际容器名与内部端口。游戏地址池在页面填写，与 Docker 网络分开。详见 [1Panel 网络配置](docs/deployment.md)。
+
+## 实时网络监控
+
+管理台每 5 秒读取节点、房间及成员监控。采样保留最近 60 秒，15 秒无更新视为陈旧；延迟/丢包来自最近 60 秒内的实际 UDP 探测。监控只存当前控制实例内存，重启清空，不写入 PostgreSQL、审计或幂等记录；多实例分别收集各自收到的样本，完整窗口需将客户端与管理台指向同一个实例。
+
+- 节点展示已建立隧道数、上传/下载速率、窗口流量、逐对端 RTT/丢包及实际路径。Linux 节点以只读包头观察统计本机 Nebula UDP 端口，包含握手、诊断与中继转发，需要 `CAP_NET_RAW`；模板已加入，旧节点须更新容器能力或 systemd 单元。缺少权限或采集丢包时流量显示未知。
+- 成员流量来自系统隧道网卡计数，包含游戏与诊断；计数器重置、重启或采样断档时不推算速率。房间连接按成员对去重，不含基础设施隧道；房间流量为成员接口之和，发送计上传、接收计下载，同时显示上报覆盖人数。
+- 成员详情列出真实观察到的出口 IP:端口、观察方、国家/地区和逐链路 P2P/中继。NAT 对不同目标可使用多个端口，无观察时显示未知，不用 HTTP 来源、配置入口或中继地址冒充成员出口。
+- 国家/省州默认自动下载 DB-IP City Lite 并在本地查询，无需手动下载。每 24 小时检查月度更新，失败保留旧库并每小时重试；首次就绪前、私网或未收录地址显示未知。支持 `--geoip-url` / `NODELANE_GEOIP_URL` 配置 HTTPS `.mmdb.gz` 镜像；显式 `--geoip-db` / `NODELANE_GEOIP_DB` 使用本地库并停用自动下载。见 [部署指南](docs/deployment.md)。
+
+单次最多上报 128 个对端，节点超过时轮转；总连接数仍来自完整 hostmap。每实例最多接纳 1024 个上报身份，内存按保守估计限制为 64 MiB，满载返回 429，不挤掉已接收窗口。监控是认证设备的测量报告，不参与房间授权、地址分配或撤销决策。
 
 ## Docker 双客户端回归
 
@@ -118,6 +134,6 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 每次运行创建唯一 Compose 项目。临时密钥、身份和数据库保存在容器临时存储中，只有 HTTPS 公钥证书共享给客户端；邀请码和登记令牌不写入日志。退出时清理该次容器、网络、证书卷和带本次唯一标签的测试镜像，检查结果与构建/验证日志保存在 `.local/nodelane-test-*/`。源码配置位于 `deploy/test/`，不会放入发布包。
 
-部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/0.2.0/nodelane-room-0.2.0-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。它测试 CA 初始化、自动迁移、双副本、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和副本停止，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
+部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/0.2.0/nodelane-room-0.2.0-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
 
 源码入口见 [文件索引](docs/files.md)，调用方与权限分工见 [架构说明](docs/architecture.md)，接口见 [OpenAPI](docs/openapi.yaml)。V2 不包含玩家 GUI、多管理员角色、TOTP、云资源自动创建或其他游戏的自动发现。

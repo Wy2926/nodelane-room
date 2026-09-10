@@ -2,6 +2,10 @@
 
 ## 代码与接口边界
 
+管理台为 React/TypeScript/Vite 应用，构建时嵌入 Go 二进制，同源 Cookie、Origin、CSRF 与静态文件白名单继续生效。节点及玩家分别通过 `/v2/node/telemetry`、`/v2/rooms/{room}/telemetry` 上报；管理员 `/v2/admin/telemetry` 查询当前实例最近 60 秒。认证和对端身份/IP 归属使用 PostgreSQL 当前授权，监控样本仅在有界内存中，独立于持久化 SSE 状态。多实例数据不自动合并。
+
+路径和远端地址只查询固定 Nebula hostmap，RTT/丢包只读真实探测。成员字节来自 Windows IP Helper / Linux TUN 网卡计数；Linux 节点另以 AF_PACKET、内核 BPF 过滤本机 UDP 端口，只读取最多 68 字节包头，统计包括中继转发的 UDP 负载字节。此观察器不参与收发决策、不保存报文、不改变授权或 Nebula 依赖；采集丢包后返回未知。节点容器/systemd 需要 `NET_RAW` / `AF_PACKET`。实际远端地址可能因 NAT 目标而不同；GeoIP 只读本地 MMDB，不向第三方发送 IP。
+
 `internal/control` 保持单个 Go 包：HTTP 按调用方分文件，事务逻辑按房间、节点、身份及存储职责组织，避免为跨包调用暴露内部授权操作。目录入口见 [文件索引](files.md)。
 
 各调用方在 `registerPlayer`、`registerNode`、`registerAdmin` 中显式绑定路由与具名处理函数；处理函数不再按 URL 二次分发。玩家和管理员共用各自的认证与幂等包装，各接口保留原有限速，管理员写操作保留失败审计和事务内会话复查。房间操作、管理会话、节点管理与事件流按职责分文件；新增接口同步对应处理函数、测试和 OpenAPI。
@@ -9,14 +13,23 @@
 | 调用方 | 接口 | 实现 | 认证 |
 |---|---|---|---|
 | 玩家 CLI/服务 | `/v2/auth/*`、`/v2/rooms/*` | `player_http.go`、`player_rooms_http.go`、`player_events_http.go` | player Bearer 会话 |
+| 实例初始化 | `/v2/admin/setup` | `setup.go`、`deployment.go` | 同源 Origin 与本实例 10 分钟初始化码；接入另验管理员密码 |
 | 管理页面 | `/v2/admin/*` | `admin_http.go` 注册，`admin_{session,nodes,rooms,events}_http.go` 处理 | 管理员 Cookie；写操作校验 Origin 和 CSRF |
 | 基础设施节点 | `/v2/node/*` | `node_http.go` | 登记密钥与挑战；登记后使用 node Bearer 会话 |
-| 浏览器与安装器 | `/admin`、`/admin/assets/{app.js,style.css}`、`/install/{file}` | `admin_web.go`、`install_http.go` | 公开页面与允许下载的文件 |
+| 浏览器与安装器 | `/{实例私有入口}`、该入口下 `/assets/*`、`/install/{file}` | `admin_web.go`、`install_http.go` | 页面入口随机持久化或显式配置，资源按白名单；根路径与 `/admin` 为 404 |
 | 运维探针 | `/healthz`、`/readyz`、`/metrics` | `http.go` | 指标由反代限制外部访问 |
 
 管理页面资源单独放在 `internal/control/adminweb/`，玩家入口为 `cmd/nodelane/`。三类身份不能互换；房间操作只注册支持的动作。管理房间详情在独立一致性快照中读取房间、成员和端口，不借用房主身份，不返回节点或撤销列表。玩家与节点仍使用各自授权的数据面快照。
 
 本机 `/rpc` 由 `internal/agent/local.go` 承载，经 Named Pipe/Unix socket 限制访问；`node_local.go` 分派节点命令。节点存活、就绪和指标由 `health.go` 在独立监听器提供，不属于公网控制 API。完整契约见 [OpenAPI](openapi.yaml)。
+
+## 控制实例与配置
+
+每套 Compose 默认一个控制服务。多个独立实例通过同一 PostgreSQL 数据库和 schema 组成同一控制面，各自拥有私有启动目录。页面初始化事务保存管理员、地址池、公网 origin、节点镜像仓库、数据库连接信息和 CA，使用现有 PostgreSQL 事务锁串行化；不读取旧环境配置或 CA 文件。接入已有部署须验证管理员密码，并在事务内重查密码版本。
+
+实例启动只需本地数据库定位文件，Linux 目录 0700、文件 0600；通用私密文件存储在 Windows 仍经 DPAPI 与 ACL。原子文件发布阻止单个实例绑定不同数据库；共享控制状态正确性由数据库事务保证，不依赖本机锁。CA 私钥仅在数据库及控制服务内存，不经页面、日志、事件或节点分发。
+
+未配置时只提供初始化页面和存活探针，业务未就绪。读取完整数据库配置后一次性发布不可变服务；重启从同一数据库恢复，数据库失联不自动重新初始化。反代用 `/healthz` 保持初始化页面可达，业务检查用 `/readyz`。
 
 ## 分工
 
@@ -32,7 +45,9 @@ SSE 首先重放游标之后最多 256 个持久 `change` 通知，再发送完�
 
 ## 数据面
 
-官方 Nebula 完成 TUN、Noise 握手、证书校验、UDP 打洞和原生 relay。终端连接多个 lighthouse；NodeLane 更新静态入口和 relay 候选。外层 UDP 重绑定使用 Nebula 自带网络变化监控。没有 TURN、WebRTC、HTTP 数据中继或公网 TCP 回退；完全封禁 UDP 的网络无法联机。
+官方 Nebula 完成 TUN、Noise 握手、证书校验、UDP 打洞和原生 relay。生产配置已开启 `punchy.punch`、`punchy.respond`，没有禁用 P2P 的开关或对端地址拒绝规则；无 relay 节点时仍可直连。终端连接多个 lighthouse；NodeLane 更新静态入口和 relay 候选。外层 UDP 重绑定使用 Nebula 自带网络变化监控。没有 TURN、WebRTC、HTTP 数据中继或公网 TCP 回退；完全封禁 UDP 的网络无法联机。
+
+强制中继仅用于回归：`TestNebulaNativeRelay` 用 lighthouse 地址白名单拒绝测试对端；`deploy/test/entrypoint.sh` 的 `BLOCK_SUBNET` 和独立 Docker 网络阻断双客户端底层直连。`TestNebulaP2PWithoutRelay` 关闭测试客户端的 relay，验证双向真实 UDP 直连、实际远端地址与未登记端口拒绝；这些限制不进入生产配置。
 
 每份成员证书只有 `room:<id>` 组，基础设施只有 `infrastructure` 组。默认拒绝所有未列明端口；同房只允许 ICMP、UDP 4243 探测/发现及已登记端口。终端入站只开放自己登记的端口。房间跨组默认拒绝；发现消息另按快照验证房间、成员虚拟 IP、端点 ID、端口与有效期。
 

@@ -9,7 +9,7 @@ services:
       NLROOM_DEPLOYMENT: container
       NLROOM_MAPPED_PORT: ${NODE_PORT:-4242}
     cap_drop: [ALL]
-    cap_add: [NET_ADMIN]
+    cap_add: [NET_ADMIN, NET_RAW]
     security_opt: ['no-new-privileges:true']
     devices: ['/dev/net/tun:/dev/net/tun']
     volumes: ['${NODE_STATE_DIR:-./state}:/var/lib/nlroom-node']

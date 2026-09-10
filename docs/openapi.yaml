@@ -74,6 +74,10 @@ components:
                     items:
                         $ref: '#/components/schemas/NodeOperation'
                     type: array
+                public_url:
+                    type: string
+                registry:
+                    type: string
                 revision:
                     format: int64
                     type: integer
@@ -87,6 +91,8 @@ components:
                 version:
                     type: string
             required:
+                - public_url
+                - registry
                 - revision
                 - server_time
                 - version
@@ -264,6 +270,40 @@ components:
             required:
                 - public_key
             type: object
+        LinkSample:
+            properties:
+                country:
+                    type: string
+                device_id:
+                    type: string
+                ip:
+                    type: string
+                loss_percent:
+                    format: double
+                    type: number
+                mode:
+                    type: string
+                probe_at:
+                    format: date-time
+                    type: string
+                region:
+                    type: string
+                relay_ips:
+                    items:
+                        type: string
+                    type: array
+                remote:
+                    type: string
+                rtt_ms:
+                    format: double
+                    type: number
+            required:
+                - device_id
+                - ip
+                - mode
+                - relay_ips
+                - probe_at
+            type: object
         Member:
             properties:
                 device_id:
@@ -288,6 +328,32 @@ components:
                     type: string
             required:
                 - device_id
+            type: object
+        NetworkSample:
+            properties:
+                at:
+                    format: date-time
+                    type: string
+                connections:
+                    format: int64
+                    type: integer
+                epoch:
+                    type: string
+                generation:
+                    format: int64
+                    type: integer
+                peers:
+                    items:
+                        $ref: '#/components/schemas/LinkSample'
+                    type: array
+                traffic:
+                    $ref: '#/components/schemas/TrafficSample'
+            required:
+                - epoch
+                - at
+                - generation
+                - connections
+                - peers
             type: object
         Node:
             properties:
@@ -607,6 +673,63 @@ components:
                 - blocklist
                 - server_time
             type: object
+        TelemetrySeries:
+            properties:
+                device_id:
+                    type: string
+                node_id:
+                    type: string
+                room_id:
+                    type: string
+                samples:
+                    items:
+                        $ref: '#/components/schemas/NetworkSample'
+                    type: array
+            required:
+                - device_id
+                - samples
+            type: object
+        TelemetrySnapshot:
+            properties:
+                geoip:
+                    type: boolean
+                geoip_provider:
+                    type: string
+                retention_seconds:
+                    format: int64
+                    type: integer
+                series:
+                    items:
+                        $ref: '#/components/schemas/TelemetrySeries'
+                    type: array
+                server_time:
+                    format: date-time
+                    type: string
+                stale_seconds:
+                    format: int64
+                    type: integer
+            required:
+                - server_time
+                - retention_seconds
+                - stale_seconds
+                - geoip
+                - series
+            type: object
+        TrafficSample:
+            properties:
+                download_bytes:
+                    format: int64
+                    type: integer
+                scope:
+                    type: string
+                upload_bytes:
+                    format: int64
+                    type: integer
+            required:
+                - upload_bytes
+                - download_bytes
+                - scope
+            type: object
         VerifyRequest:
             additionalProperties: false
             properties:
@@ -747,65 +870,6 @@ paths:
             summary: Database and CA readiness
             tags:
                 - Operations
-    /v2/admin/bootstrap:
-        post:
-            parameters:
-                - in: header
-                  name: Origin
-                  required: true
-                  schema:
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            additionalProperties: false
-                            properties:
-                                code:
-                                    maxLength: 64
-                                    minLength: 64
-                                    type: string
-                                password:
-                                    description: 12–128 UTF-8 bytes, not characters
-                                    format: password
-                                    type: string
-                                username:
-                                    type: string
-                            required:
-                                - username
-                                - password
-                                - code
-                            type: object
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                additionalProperties: false
-                                properties:
-                                    ok:
-                                        enum:
-                                            - true
-                                        type: boolean
-                                required:
-                                    - ok
-                                type: object
-                    description: Success
-                "400":
-                    $ref: '#/components/responses/Error'
-                "401":
-                    $ref: '#/components/responses/Error'
-                "403":
-                    $ref: '#/components/responses/Error'
-                "409":
-                    $ref: '#/components/responses/Error'
-                "429":
-                    $ref: '#/components/responses/Error'
-            security: []
-            summary: Consume the 10 minute console bootstrap code and create the single administrator
-            tags:
-                - Admin
     /v2/admin/events:
         get:
             description: Each event is named snapshot, with AdminSnapshot JSON data and its durable revision as id. Last-Event-ID is accepted; old, pruned or future cursors recover via the complete current snapshot. Does not replay secrets. Session validity checked on each event.
@@ -1411,6 +1475,160 @@ paths:
             summary: Restore current session and stable CSRF token
             tags:
                 - Admin
+    /v2/admin/setup:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    configured:
+                                        type: boolean
+                                    initialized:
+                                        type: boolean
+                                required:
+                                    - initialized
+                                    - configured
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Check local database configuration and loaded control plane readiness
+            tags:
+                - Admin
+        post:
+            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused V2 schema, configuration, CA and administrator; refuses existing deployments. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz. No old environment/CA-file fallback.
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            oneOf:
+                                - additionalProperties: false
+                                  properties:
+                                    ca_cert:
+                                        type: string
+                                    ca_key:
+                                        format: password
+                                        type: string
+                                        writeOnly: true
+                                    ca_mode:
+                                        enum:
+                                            - generate
+                                            - upload
+                                        type: string
+                                    code:
+                                        maxLength: 64
+                                        minLength: 64
+                                        type: string
+                                        writeOnly: true
+                                    database_url:
+                                        format: password
+                                        type: string
+                                        writeOnly: true
+                                    mode:
+                                        enum:
+                                            - create
+                                        type: string
+                                    network:
+                                        default: 10.203.0.0/16
+                                        type: string
+                                    password:
+                                        description: 12–128 UTF-8 bytes, not characters
+                                        format: password
+                                        type: string
+                                    public_url:
+                                        description: HTTPS origin or bare domain, must match the browser origin for creation
+                                        type: string
+                                    registry:
+                                        default: docker.nodelane.net
+                                        type: string
+                                    username:
+                                        type: string
+                                  required:
+                                    - mode
+                                    - code
+                                    - username
+                                    - password
+                                    - database_url
+                                    - public_url
+                                    - ca_mode
+                                  type: object
+                                - additionalProperties: false
+                                  properties:
+                                    code:
+                                        maxLength: 64
+                                        minLength: 64
+                                        type: string
+                                        writeOnly: true
+                                    database_url:
+                                        format: password
+                                        type: string
+                                        writeOnly: true
+                                    mode:
+                                        enum:
+                                            - connect
+                                        type: string
+                                    password:
+                                        description: 12–128 UTF-8 bytes, not characters
+                                        format: password
+                                        type: string
+                                    username:
+                                        type: string
+                                  required:
+                                    - mode
+                                    - code
+                                    - username
+                                    - password
+                                    - database_url
+                                  type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        type: boolean
+                                    public_url:
+                                        type: string
+                                required:
+                                    - ok
+                                    - public_url
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Use a 10 minute local console code to create a control plane or connect an independent instance
+            tags:
+                - Admin
     /v2/admin/snapshot:
         get:
             responses:
@@ -1433,6 +1651,31 @@ paths:
             security:
                 - AdminCookie: []
             summary: Current shared deployment, nodes, rooms, operations and recent audit snapshot
+            tags:
+                - Admin
+    /v2/admin/telemetry:
+        get:
+            description: GeoIP is true only while a local MMDB is loaded. DB-IP City Lite is downloaded and refreshed automatically by default; lookups never send peer IPs to an external service. Failed updates retain the last valid cache. The browser entry is instance-local, randomly generated or configured with NODELANE_ADMIN_PATH, and available only through the local admin path command. GET / and /admin return 404 without redirects; API paths and authentication are unchanged.
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TelemetrySnapshot'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: 'Current instance memory only: 60-second observations, stale after 15 seconds; no durable cursor'
             tags:
                 - Admin
     /v2/auth/challenge:
@@ -1663,6 +1906,44 @@ paths:
             security:
                 - NodeBearer: []
             summary: 5 second heartbeat, desired configuration and idempotent operation feedback
+            tags:
+                - Node
+    /v2/node/telemetry:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NetworkSample'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - NodeBearer: []
+            summary: Authenticated node observations; 128 peers per report, 5-second cadence, no persistence
             tags:
                 - Node
     /v2/rooms:
@@ -1996,6 +2277,50 @@ paths:
                 default:
                     $ref: '#/components/responses/Error'
             summary: Revoke membership; ownership may remain
+            tags:
+                - Player
+    /v2/rooms/{room}/telemetry:
+        post:
+            parameters:
+                - in: path
+                  name: room
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/NetworkSample'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Active member observations scoped to this room; no persistence or idempotency record
             tags:
                 - Player
     /v2/rooms/{room}/transfer:

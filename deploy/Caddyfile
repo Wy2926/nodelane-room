@@ -1,18 +1,13 @@
-# 域名从 .env 的 ROOM_DOMAIN 注入；自动申请/续期公网 TLS 证书。
+# TLS 域名属于反代启动配置；控制面公网 origin 在初始化页面填写。
 {$ROOM_DOMAIN} {
   encode zstd gzip
-  # 指标只允许从容器内部抓取。
   @private path /metrics
   respond @private 404
-  reverse_proxy control-a:8080 control-b:8080 {
-    # 轮询健康控制副本；无需粘性会话。
-    lb_policy round_robin
-    lb_try_duration 5s
-    lb_try_interval 250ms
-    health_uri /readyz
+  reverse_proxy control:8080 {
+    # 初始化前也必须能访问管理页；业务就绪单独查看 /readyz。
+    health_uri /healthz
     health_interval 10s
     fail_duration 10s
-    # SSE 立即刷新，避免代理缓冲使房间更新延迟。
     flush_interval -1
   }
 }

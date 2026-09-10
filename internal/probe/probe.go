@@ -87,6 +87,13 @@ func (s *Service) Update(snapshot model.Snapshot) {
 			delete(s.rate, ip)
 		}
 	}
+	for ip := range s.samples {
+		if !s.allowed[ip] && !s.infrastructure {
+			delete(s.samples, ip)
+		} else {
+			s.recentLocked(ip)
+		}
+	}
 }
 func (s *Service) Close() { _ = s.conn.Close(); <-s.done }
 func (s *Service) read() {
@@ -177,9 +184,12 @@ func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		delete(s.pending, nonce)
-		v := append(s.samples[ip], sample{rtt: time.Since(start), ok: ok, at: time.Now().UTC()})
-		if len(v) > 20 {
-			v = v[len(v)-20:]
+		if !s.allowed[ip] && !s.infrastructure {
+			return
+		}
+		v := append(s.recentLocked(ip), sample{rtt: time.Since(start), ok: ok, at: time.Now().UTC()})
+		if len(v) > 600 {
+			v = v[len(v)-600:]
 		}
 		s.samples[ip] = v
 	}()
@@ -213,7 +223,7 @@ func (s *Service) Advertise(ip, endpoint string) error {
 func (s *Service) Stats(ip string) (*float64, *float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := s.samples[ip]
+	v := s.recentLocked(ip)
 	if len(v) == 0 {
 		return nil, nil
 	}
@@ -238,7 +248,7 @@ func (s *Service) Stats(ip string) (*float64, *float64) {
 func (s *Service) Failed(ip string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := s.samples[ip]
+	v := s.recentLocked(ip)
 	if len(v) < 3 {
 		return false
 	}
@@ -253,7 +263,7 @@ func (s *Service) Failed(ip string) bool {
 func (s *Service) LastSample(ip string) time.Time {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := s.samples[ip]
+	v := s.recentLocked(ip)
 	if len(v) == 0 {
 		return time.Time{}
 	}
@@ -263,6 +273,24 @@ func (s *Service) LastSample(ip string) time.Time {
 func (s *Service) LastSuccess(ip string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	v := s.samples[ip]
+	v := s.recentLocked(ip)
 	return len(v) > 0 && v[len(v)-1].ok
+}
+
+func (s *Service) recentLocked(ip string) []sample {
+	v := s.samples[ip]
+	cutoff := time.Now().Add(-model.TelemetryRetention)
+	n := 0
+	for n < len(v) && v[n].at.Before(cutoff) {
+		n++
+	}
+	if n == len(v) {
+		delete(s.samples, ip)
+		return nil
+	}
+	if n > 0 {
+		v = append([]sample(nil), v[n:]...)
+		s.samples[ip] = v
+	}
+	return v
 }

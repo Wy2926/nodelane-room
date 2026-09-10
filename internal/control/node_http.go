@@ -10,6 +10,7 @@ import (
 )
 
 func (s *Server) registerNode(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v2/node/telemetry", s.nodeAuth(s.nodeTelemetry))
 	mux.HandleFunc("POST /v2/node/enrollment/challenge", s.nodeEnrollmentChallenge)
 	mux.HandleFunc("POST /v2/node/enrollment/complete", s.nodeEnrollmentComplete)
 	mux.HandleFunc("POST /v2/node/auth/challenge", s.nodeChallenge)

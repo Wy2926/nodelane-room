@@ -11,6 +11,7 @@ import (
 )
 
 func (s *Server) registerPlayer(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v2/rooms/{room}/telemetry", s.playerAuth(s.playerTelemetry))
 	mux.HandleFunc("POST /v2/auth/challenge", s.playerChallenge)
 	mux.HandleFunc("POST /v2/auth/verify", s.playerVerify)
 	mux.HandleFunc("GET /v2/rooms/{room}", s.playerAuth(s.playerSnapshot))

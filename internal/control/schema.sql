@@ -1,5 +1,9 @@
 CREATE TABLE IF NOT EXISTS schema_version (version integer PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value text NOT NULL);
+CREATE TABLE IF NOT EXISTS deployment (
+ id integer PRIMARY KEY CHECK(id=1), database_url text NOT NULL, public_url text NOT NULL,
+ registry text NOT NULL, ca_cert text NOT NULL, ca_key text NOT NULL
+);
 CREATE TABLE IF NOT EXISTS devices (
  id text PRIMARY KEY, name text NOT NULL, public_key bytea NOT NULL UNIQUE,
  created_at timestamptz NOT NULL DEFAULT now()
@@ -52,9 +56,6 @@ CREATE TABLE IF NOT EXISTS node_operations (
 );
 CREATE TABLE IF NOT EXISTS administrator (
  id integer PRIMARY KEY CHECK(id=1), username text NOT NULL, password_hash text NOT NULL
-);
-CREATE TABLE IF NOT EXISTS admin_bootstrap (
- id integer PRIMARY KEY CHECK(id=1), token_hash text NOT NULL, expires_at timestamptz NOT NULL
 );
 CREATE TABLE IF NOT EXISTS admin_sessions (
  token_hash text PRIMARY KEY, csrf_hash text NOT NULL, expires_at timestamptz NOT NULL,

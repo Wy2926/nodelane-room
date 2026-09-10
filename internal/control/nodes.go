@@ -321,7 +321,9 @@ func (s *Store) SyncNode(ctx context.Context, device string, in model.NodeSyncRe
 		if _, err = tx.Exec(ctx, "UPDATE node_operations SET state='superseded' WHERE node_id=$1 AND state='pending' AND revision<$2 AND action<>'restart'", n.ID, in.Report.AppliedRevision); err != nil {
 			return err
 		}
-		b, err := json.Marshal(in.Report)
+		persistentReport := in.Report
+		persistentReport.Probes = nil
+		b, err := json.Marshal(persistentReport)
 		if err != nil {
 			return err
 		}

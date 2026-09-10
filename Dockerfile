@@ -1,9 +1,17 @@
+FROM node:24.21.0-bookworm-slim AS admin
+WORKDIR /web
+COPY internal/control/adminweb/package*.json ./
+RUN npm ci
+COPY internal/control/adminweb ./
+RUN npm run build
+
 FROM golang:1.26.8-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
+COPY --from=admin /web/dist ./internal/control/adminweb/dist
 COPY scripts/release ./scripts/release
 COPY deploy/node.sh deploy/nlroom-node.service ./deploy/
 COPY THIRD_PARTY_NOTICES.md ./
@@ -36,10 +44,11 @@ ENTRYPOINT ["nlroom-node"]
 CMD ["run"]
 
 FROM runtime AS control
+RUN mkdir -p /var/lib/nodelane-control && chown 10001:10001 /var/lib/nodelane-control && chmod 700 /var/lib/nodelane-control
 COPY --from=build /out/nodelane-server /usr/local/bin/nodelane-server
 COPY --from=build /out/releases/ /opt/nodelane/releases/
 USER 10001:10001
 EXPOSE 8080
-HEALTHCHECK --interval=15s --timeout=3s CMD curl --fail --silent http://127.0.0.1:8080/readyz || exit 1
+HEALTHCHECK --interval=15s --timeout=3s CMD curl --fail --silent http://127.0.0.1:8080/healthz || exit 1
 ENTRYPOINT ["nodelane-server"]
 CMD ["serve", "--listen", "0.0.0.0:8080", "--behind-proxy"]

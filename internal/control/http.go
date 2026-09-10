@@ -18,10 +18,14 @@ import (
 )
 
 type Server struct {
+	telemetry  telemetryMemory
+	GeoIP      *GeoIP
+	AdminPath  string
 	Store      *Store
 	CA         *pki.Authority
 	Log        *slog.Logger
 	PublicURL  string
+	Registry   string
 	ReleaseDir string
 	requests   atomic.Uint64
 	failures   atomic.Uint64

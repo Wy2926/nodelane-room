@@ -44,15 +44,13 @@ services:
   control:
     <<: *runtime
     command: [control]
-    environment:
-      DATABASE_URL: postgres://nodelane:${NODELANE_TEST_DB_PASSWORD}@db:5432/nodelane_test?sslmode=disable
     volumes:
       - trust:/trust
     networks: [backend, player-a, player-b]
     depends_on:
       db: {condition: service_healthy}
     healthcheck:
-      test: [CMD, curl, --fail, --silent, --cacert, /trust/control.crt, https://control:8443/readyz]
+      test: [CMD, curl, --fail, --silent, --cacert, /trust/control.crt, https://control:8443/healthz]
       interval: 2s
       timeout: 2s
       retries: 40

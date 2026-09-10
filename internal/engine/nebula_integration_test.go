@@ -171,6 +171,16 @@ func TestNebulaIsolationReloadAndRevocation(t *testing.T) {
 	if got := alice.e.Peers(s.Members)[0].Mode; got != "direct" {
 		t.Fatalf("path=%s, want direct", got)
 	}
+	observed, _ := alice.e.Network()
+	found := false
+	for _, peer := range observed.Peers {
+		if peer.DeviceID == "bob" || peer.IP == bob.c.Lease.IP {
+			found = peer.Mode == "direct" && peer.Remote == bob.address
+		}
+	}
+	if !found {
+		t.Fatal("telemetry did not expose the actual direct remote")
+	}
 	// A third device uses a valid CA certificate but belongs to another room.
 	c := testLease(t, ca, "mallory", "10.203.0.4", "room-two", nil)
 	c.Snapshot = model.Snapshot{Room: &model.Room{ID: "room-two"}, Nodes: s.Nodes, Members: []model.Member{{DeviceID: "mallory", IP: c.Lease.IP}}}
@@ -238,6 +248,16 @@ func TestNebulaNativeRelay(t *testing.T) {
 	if got := peers[0].e.Peers(s.Members)[0].Mode; got != "relay" {
 		t.Fatalf("path=%s, want relay", got)
 	}
+	observed, _ := peers[0].e.Network()
+	found := false
+	for _, peer := range observed.Peers {
+		if peer.DeviceID == "b" {
+			found = peer.Mode == "relay" && peer.Remote == "" && len(peer.RelayIPs) > 0
+		}
+	}
+	if !found {
+		t.Fatal("telemetry substituted a relay candidate for the actual path")
+	}
 	h := peers[0].e.control.GetHostInfoByVpnAddr(netip.MustParseAddr(peers[1].c.Lease.IP), false)
 	survivor := n2
 	if h.CurrentRelaysToMe[0].String() == n.IP {
@@ -264,5 +284,32 @@ func TestNebulaNativeRelay(t *testing.T) {
 	delivered(t, peers[0], peers[1], 7000, "replacement-relay", true)
 	if got := peers[0].e.Peers(s.Members)[0].Mode; got != "relay" {
 		t.Fatalf("failover path=%s, want relay", got)
+	}
+}
+
+func TestNebulaP2PWithoutRelay(t *testing.T) {
+	ca, err := pki.Generate(netip.MustParsePrefix(model.DefaultPool))
+	must(t, err)
+	n := model.Node{ID: "lighthouse", IP: "10.203.0.1", Address: publicAddress(t, "127.0.0.1"), Lighthouse: true}
+	s := model.Snapshot{Room: &model.Room{ID: "p2p-room"}, Nodes: []model.Node{n}, Members: []model.Member{{DeviceID: "a", IP: "10.203.0.2"}, {DeviceID: "b", IP: "10.203.0.3"}}, Endpoints: []model.Endpoint{{DeviceID: "a", Protocol: "udp", Port: 7000}, {DeviceID: "b", Protocol: "udp", Port: 7000}}}
+	lc := testLease(t, ca, n.ID, n.IP, "", &n)
+	lc.Snapshot = s
+	startTestPeer(t, lc, n.Address, nil)
+	var peers []*testPeer
+	for _, m := range s.Members {
+		c := testLease(t, ca, m.DeviceID, m.IP, s.Room.ID, nil)
+		c.Snapshot, c.RelayIPs = s, []string{}
+		peers = append(peers, startTestPeer(t, c, publicAddress(t, "127.0.0.1"), func(v map[string]any) {
+			v["relay"].(map[string]any)["use_relays"] = false
+		}))
+	}
+	for i, from := range peers {
+		to := peers[1-i]
+		delivered(t, from, to, 7000, "p2p-without-relay", true)
+		h := from.e.control.GetHostInfoByVpnAddr(netip.MustParseAddr(to.c.Lease.IP), false)
+		if h == nil || h.CurrentRemote.String() != to.address || len(h.CurrentRelaysToMe) != 0 || from.e.Peers(s.Members)[0].Mode != "direct" {
+			t.Fatal("P2P did not establish the actual direct peer endpoint")
+		}
+		delivered(t, from, to, 7001, "p2p-closed-port", false)
 	}
 }

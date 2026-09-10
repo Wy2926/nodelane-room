@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
@@ -26,14 +28,21 @@ type Engine struct {
 	log           *slog.Logger
 	deviceFactory overlay.DeviceFactory
 	generation    uint64
+	epoch         string
 }
 
-func New(log *slog.Logger) *Engine { return &Engine{log: log} }
+func New(log *slog.Logger) *Engine {
+	var epoch [16]byte
+	_, _ = rand.Read(epoch[:])
+	return &Engine{log: log, epoch: hex.EncodeToString(epoch[:])}
+}
 
 // NewWithDeviceFactory permits an upstream user-space device in integration
 // tests. Production services call New and use Nebula's native OS TUN factory.
 func NewWithDeviceFactory(log *slog.Logger, factory overlay.DeviceFactory) *Engine {
-	return &Engine{log: log, deviceFactory: factory}
+	e := New(log)
+	e.deviceFactory = factory
+	return e
 }
 func (e *Engine) Apply(c Config) error {
 	e.mu.Lock()

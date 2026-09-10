@@ -1,14 +1,13 @@
 package pki
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"net/netip"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/slackhq/nebula/cert"
@@ -33,24 +32,18 @@ func Generate(network netip.Prefix) (*Authority, error) {
 	b, err := c.MarshalPEM()
 	return &Authority{Certificate: c, Key: key, PEM: string(b)}, err
 }
-func Load(certPath, keyPath string) (*Authority, error) {
-	b, err := os.ReadFile(certPath)
+
+// Parse accepts exactly one self-signed CA and its matching signing key.
+func Parse(b, k []byte) (*Authority, error) {
+	c, rest, err := cert.UnmarshalCertificateFromPEM(b)
+	if err != nil || len(bytes.TrimSpace(rest)) != 0 {
+		return nil, errors.New("invalid CA certificate PEM")
+	}
+	key, rest, curve, err := cert.UnmarshalSigningPrivateKeyFromPEM(k)
 	if err != nil {
 		return nil, err
 	}
-	c, _, err := cert.UnmarshalCertificateFromPEM(b)
-	if err != nil {
-		return nil, err
-	}
-	k, err := os.ReadFile(keyPath)
-	if err != nil {
-		return nil, err
-	}
-	key, _, curve, err := cert.UnmarshalSigningPrivateKeyFromPEM(k)
-	if err != nil {
-		return nil, err
-	}
-	if !c.IsCA() || curve != cert.Curve_CURVE25519 || c.Expired(time.Now()) || !c.CheckSignature(c.PublicKey()) {
+	if len(bytes.TrimSpace(rest)) != 0 || !c.IsCA() || curve != cert.Curve_CURVE25519 || c.Expired(time.Now()) || !c.CheckSignature(c.PublicKey()) {
 		return nil, errors.New("invalid or expired NodeLane CA")
 	}
 	if err = c.VerifyPrivateKey(curve, key); err != nil {
@@ -58,26 +51,28 @@ func Load(certPath, keyPath string) (*Authority, error) {
 	}
 	return &Authority{Certificate: c, Key: key, PEM: string(b)}, nil
 }
-func (a *Authority) Save(dir string) error {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+
+func (a *Authority) SigningPEM() string {
+	return string(cert.MarshalSigningPrivateKeyToPEM(cert.Curve_CURVE25519, a.Key))
+}
+
+// ValidatePool checks the same constraints used when signing actual player and node leases.
+func (a *Authority) ValidatePool(network netip.Prefix) error {
+	// Room groups contain unpredictable room IDs, so a fixed CA group allowlist
+	// cannot authorize every room even if it happens to contain the probe group.
+	if len(a.Certificate.Groups()) != 0 {
+		return errors.New("CA must not restrict groups")
+	}
+	if time.Until(a.Certificate.NotAfter()) < 10*time.Minute {
+		return errors.New("CA must remain valid for at least 10 minutes")
+	}
+	_, pub, err := TunnelKey()
+	if err != nil {
 		return err
 	}
-	for _, f := range []struct {
-		name string
-		data []byte
-	}{{"ca.key", cert.MarshalSigningPrivateKeyToPEM(cert.Curve_CURVE25519, a.Key)}, {"ca.crt", []byte(a.PEM)}} {
-		p := filepath.Join(dir, f.name)
-		fd, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if err != nil {
-			return err
-		}
-		_, err = fd.Write(f.data)
-		ce := fd.Close()
-		if err != nil {
-			return err
-		}
-		if ce != nil {
-			return ce
+	for _, group := range []string{"room:validation", "infrastructure"} {
+		if _, err = a.Sign("validation", network, []string{group}, pub, time.Now().Add(10*time.Minute)); err != nil {
+			return errors.New("CA does not authorize the address pool and required groups")
 		}
 	}
 	return nil

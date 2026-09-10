@@ -8,3 +8,5 @@ secrets
 deploy/.env
 **/*.token
 **/__pycache__
+**/node_modules
+internal/control/adminweb/dist

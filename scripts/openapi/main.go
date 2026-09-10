@@ -100,6 +100,8 @@ func run() error {
 	components := doc["components"].(map[string]any)
 	schemas = components["schemas"].(map[string]any)
 	generated = map[string]bool{}
+	schema(reflect.TypeOf(model.NetworkSample{}))
+	schema(reflect.TypeOf(model.TelemetrySnapshot{}))
 	for _, v := range []any{model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
 		schema(reflect.TypeOf(v))
 	}
@@ -114,7 +116,8 @@ func run() error {
 	ok := object(M{"ok": M{"type": "boolean", "enum": []bool{true}}}, "ok")
 	password := M{"type": "string", "format": "password", "description": "12–128 UTF-8 bytes, not characters"}
 	credentials := object(M{"username": str, "password": password}, "username", "password")
-	bootstrap := object(M{"username": str, "password": password, "code": M{"type": "string", "minLength": 64, "maxLength": 64}}, "username", "password", "code")
+	setupFields := M{"mode": M{"type": "string", "enum": []string{"create"}}, "username": str, "password": password, "code": M{"type": "string", "minLength": 64, "maxLength": 64, "writeOnly": true}, "database_url": M{"type": "string", "format": "password", "writeOnly": true}, "public_url": M{"type": "string", "description": "HTTPS origin or bare domain, must match the browser origin for creation"}, "network": M{"type": "string", "default": model.DefaultPool}, "registry": M{"type": "string", "default": control.DefaultRegistry}, "ca_mode": M{"type": "string", "enum": []string{"generate", "upload"}}, "ca_cert": str, "ca_key": M{"type": "string", "format": "password", "writeOnly": true}}
+	setup := M{"oneOf": []any{object(setupFields, "mode", "code", "username", "password", "database_url", "public_url", "ca_mode"), object(M{"mode": M{"type": "string", "enum": []string{"connect"}}, "code": setupFields["code"], "username": str, "password": password, "database_url": setupFields["database_url"]}, "mode", "code", "username", "password", "database_url")}}
 	session := object(M{"username": str, "csrf": str}, "username", "csrf")
 	csrf := M{"name": "X-CSRF-Token", "in": "header", "required": true, "schema": M{"type": "string", "minLength": 64, "maxLength": 64}}
 	origin := M{"name": "Origin", "in": "header", "required": true, "schema": str}
@@ -151,12 +154,19 @@ func run() error {
 		}
 		paths[path].(map[string]any)[method] = op
 	}
-	add("/v2/admin/bootstrap", "post", "Consume the 10 minute console bootstrap code and create the single administrator", "", bootstrap, ok, false)
+	delete(paths, "/v2/admin/bootstrap")
+	add("/v2/admin/setup", "get", "Check local database configuration and loaded control plane readiness", "", nil, object(M{"initialized": M{"type": "boolean"}, "configured": M{"type": "boolean"}}, "initialized", "configured"), false)
+	add("/v2/admin/setup", "post", "Use a 10 minute local console code to create a control plane or connect an independent instance", "", setup, object(M{"ok": M{"type": "boolean"}, "public_url": str}, "ok", "public_url"), false)
+	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused V2 schema, configuration, CA and administrator; refuses existing deployments. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz. No old environment/CA-file fallback."
 	add("/v2/admin/login", "post", "Login; rate limited to 8/IP and 30 total per minute", "", credentials, session, false)
 	add("/v2/admin/session", "get", "Restore current session and stable CSRF token", "AdminCookie", nil, session, false)
 	add("/v2/admin/logout", "post", "Revoke current session", "AdminCookie", empty, ok, false)
 	add("/v2/admin/password", "post", "Change password and revoke every admin session", "AdminCookie", object(M{"current": str, "password": password}, "current", "password"), ok, false)
 	add("/v2/admin/snapshot", "get", "Current shared deployment, nodes, rooms, operations and recent audit snapshot", "AdminCookie", nil, ref("AdminSnapshot"), false)
+	add("/v2/admin/telemetry", "get", "Current instance memory only: 60-second observations, stale after 15 seconds; no durable cursor", "AdminCookie", nil, ref("TelemetrySnapshot"), false)
+	paths["/v2/admin/telemetry"].(M)["get"].(M)["description"] = "GeoIP is true only while a local MMDB is loaded. DB-IP City Lite is downloaded and refreshed automatically by default; lookups never send peer IPs to an external service. Failed updates retain the last valid cache. The browser entry is instance-local, randomly generated or configured with NODELANE_ADMIN_PATH, and available only through the local admin path command. GET / and /admin return 404 without redirects; API paths and authentication are unchanged."
+	add("/v2/node/telemetry", "post", "Authenticated node observations; 128 peers per report, 5-second cadence, no persistence", "NodeBearer", ref("NetworkSample"), ok, false)
+	add("/v2/rooms/{room}/telemetry", "post", "Active member observations scoped to this room; no persistence or idempotency record", "Bearer", ref("NetworkSample"), ok, false)
 	add("/v2/admin/events", "get", "SSE full authoritative snapshots with durable event IDs; reconnect every five minutes", "AdminCookie", nil, ref("AdminSnapshot"), false)
 	ev := paths["/v2/admin/events"].(M)["get"].(M)
 	ev["description"] = "Each event is named snapshot, with AdminSnapshot JSON data and its durable revision as id. Last-Event-ID is accepted; old, pruned or future cursors recover via the complete current snapshot. Does not replay secrets. Session validity checked on each event."

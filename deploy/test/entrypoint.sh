@@ -9,10 +9,8 @@ case "$1" in
       -subj /CN=control -addext subjectAltName=DNS:control >/dev/null 2>&1
     cp /state/control.crt /trust/control.crt
     chmod 644 /trust/control.crt
-    nodelane-server ca init --dir /state/ca
-    nodelane-server migrate
-    exec nodelane-server serve --public-url https://control:8443 --listen :8443 --tls-cert /state/control.crt \
-      --tls-key /state/control.key --ca-cert /state/ca/ca.crt --ca-key /state/ca/ca.key
+    exec nodelane-server --state-dir /state/control serve --listen :8443 --tls-cert /state/control.crt \
+      --tls-key /state/control.key
     ;;
   relay)
     export NLROOM_DEPLOYMENT=container NLROOM_MAPPED_PORT=4242

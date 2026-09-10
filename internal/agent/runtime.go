@@ -32,6 +32,9 @@ type Runtime struct {
 	nodePending     string
 	nodeLastRenewal time.Time
 	nodeControlOK   bool
+	udpTraffic      *udpTraffic
+	telemetryAt     time.Time
+	telemetryOffset int
 	renewAt         time.Time
 	logs            *LogBuffer
 
@@ -330,6 +333,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 		r.op.Lock()
 		r.nodeControlOK = false
 		err := r.step(ctx)
+		if err == nil {
+			r.reportTelemetry(ctx)
+		}
 		if r.nodeMode && err != nil && ctx.Err() == nil {
 			changed := false
 			for id, op := range r.nodeState.Operations {
@@ -517,6 +523,9 @@ func (r *Runtime) step(ctx context.Context) error {
 		r.closeAdaptersLocked()
 	}
 	r.engineGeneration = r.engine.Generation()
+	if i.Node && r.udpTraffic == nil {
+		r.udpTraffic = startUDPTraffic(r.nodeState.ListenPort)
+	}
 	r.lease = lease
 	if renew {
 		r.renewAt = lease.ExpiresAt.Add(-7 * time.Minute).Add(time.Duration(rand.IntN(15)) * time.Second)
@@ -577,6 +586,14 @@ func (r *Runtime) step(ctx context.Context) error {
 			for _, n := range nodes {
 				if n.DeviceID != i.ID() {
 					ips[n.IP] = true
+				}
+			}
+			if i.Node {
+				observed, _ := r.engine.Network()
+				for _, peer := range observed.Peers {
+					if len(ips) < 128 {
+						ips[peer.IP] = true
+					}
 				}
 			}
 			for ip := range ips {
@@ -692,6 +709,8 @@ func (r *Runtime) stopNetworkLocked() {
 	r.relays = nil
 }
 func (r *Runtime) closeAdaptersLocked() {
+	r.udpTraffic.Close()
+	r.udpTraffic = nil
 	r.gameView.Store(nil)
 	if r.probe != nil {
 		r.probe.Close()

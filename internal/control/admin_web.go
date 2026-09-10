@@ -1,35 +1,77 @@
 package control
 
 import (
+	"bytes"
 	"embed"
-	"html/template"
+	"errors"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 
-	"github.com/nodelane/nodelane-room/internal/model"
+	"github.com/nodelane/nodelane-room/internal/platform"
 )
 
-//go:embed adminweb/*
+//go:embed adminweb/dist
 var webFiles embed.FS
-var page = template.Must(template.ParseFS(webFiles, "adminweb/index.html"))
+var page, _ = webFiles.ReadFile("adminweb/dist/index.html")
+
+var adminPathPattern = regexp.MustCompile(`^/[A-Za-z0-9_-]{16,128}$`)
+
+// ConfigureAdminPath publishes an instance-local entry before HTTP starts.
+// Exclusive creation keeps concurrent starts on the same generated path.
+func ConfigureAdminPath(dir, configured string) (string, error) {
+	if configured != "" && !adminPathPattern.MatchString(configured) {
+		return "", errors.New("admin path must be / followed by 16–128 letters, digits, underscores or hyphens")
+	}
+	path := filepath.Join(dir, "admin-path.bin")
+	if configured != "" {
+		return configured, platform.SavePrivateFile(path, []byte(configured), true)
+	}
+	value, err := AdminPath(dir)
+	if !errors.Is(err, os.ErrNotExist) {
+		return value, err
+	}
+	value = "/" + randomID()
+	if err = platform.SavePrivateFile(path, []byte(value), false); errors.Is(err, os.ErrExist) {
+		return AdminPath(dir)
+	}
+	return value, err
+}
+
+func AdminPath(dir string) (string, error) {
+	b, err := platform.LoadPrivateFile(filepath.Join(dir, "admin-path.bin"))
+	if err != nil {
+		return "", err
+	}
+	if !adminPathPattern.Match(b) {
+		return "", errors.New("invalid persisted admin path")
+	}
+	return string(b), nil
+}
 
 func (s *Server) registerAdminWeb(mux *http.ServeMux) {
-	assets, _ := fs.Sub(webFiles, "adminweb")
-	files := http.StripPrefix("/admin/assets/", http.FileServer(http.FS(assets)))
-	for _, name := range []string{"app.js", "style.css"} {
-		mux.Handle("GET /admin/assets/"+name, files)
+	if !adminPathPattern.MatchString(s.AdminPath) {
+		return // Fail closed when no instance entry has been configured.
 	}
-	mux.HandleFunc("GET /admin", s.adminPage)
-	mux.HandleFunc("GET /{$}", s.adminRedirect)
+	assets, _ := fs.Sub(webFiles, "adminweb/dist/assets")
+	prefix := s.AdminPath + "/assets/"
+	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
+	entries, _ := fs.ReadDir(assets, ".")
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			mux.Handle("GET "+prefix+entry.Name(), files)
+		}
+	}
+	mux.HandleFunc("GET "+s.AdminPath, s.adminPage)
+	mux.HandleFunc("GET "+s.AdminPath+"/{$}", s.adminPage)
 }
 
 func (s *Server) adminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = page.Execute(w, map[string]string{"Version": model.Version})
-}
-
-func (s *Server) adminRedirect(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	_, _ = w.Write(bytes.ReplaceAll(page, []byte(`"./assets/`), []byte(`"`+s.AdminPath+`/assets/`)))
 }

@@ -13,15 +13,15 @@ ExecStart=/usr/local/bin/nlroom-node run --config-file /etc/nlroom-node/config.j
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
-AmbientCapabilities=CAP_NET_ADMIN
-CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 DevicePolicy=closed
 DeviceAllow=/dev/net/tun rw
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET
 UMask=0077
 
 [Install]

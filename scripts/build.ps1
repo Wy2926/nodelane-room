@@ -10,6 +10,10 @@ Set-Location -LiteralPath $root
 if ($Version -notmatch '^[0-9A-Za-z._-]+$') { throw 'Invalid version' }
 function Invoke-Go { & $Go @args; if ($LASTEXITCODE -ne 0) { throw "go failed with exit code $LASTEXITCODE" } }
 Invoke-Go mod verify
+& npm.cmd --prefix internal/control/adminweb ci
+if ($LASTEXITCODE -ne 0) { throw 'npm ci failed' }
+& npm.cmd --prefix internal/control/adminweb run build
+if ($LASTEXITCODE -ne 0) { throw 'admin build failed' }
 $goRoot=(Invoke-Go env GOROOT).Trim()
 $release = Join-Path $root "dist/$Version"
 New-Item -ItemType Directory -Force -Path $release | Out-Null

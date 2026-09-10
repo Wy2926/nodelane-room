@@ -1,74 +1,119 @@
-# V2 全新部署指南
+# 控制面部署指南
 
-版本 0.2.0。本指南重新部署控制端、节点和 Windows 客户端，不复用 V1 数据库、CA 或身份。迁移命令不会清空数据库；数据库版本不符时退出。先保留旧部署备份，再使用新的数据库、目录及 Compose 项目名。构建产物在 `dist/0.2.0/`；控制面与节点镜像已发布至 `docker.nodelane.net`，支持 `linux/amd64`、`linux/arm64`，实际摘要见 [IMAGES.txt](../deploy/IMAGES.txt)。
+当前源码提供单实例部署和页面初始化。历史 0.2.0 发布镜像不包含本次改动；验证或部署此流程须先从当前源码构建控制镜像。无旧环境变量、CA 文件或旧初始化接口兼容；已有旧控制面不自动转换或清库。
 
-## 准备发布材料
+## 构建材料
 
-直接部署可使用 `dist/compose/nodelane-room-compose-0.2.0.zip`，按下文填写配置并拉取指定版本镜像，无需本机构建。需要自行构建时，Windows/PowerShell 在源码根目录：
+源码镜像构建增加 Node.js 24 LTS 阶段，使用锁定的 npm 依赖编译 React 管理台；运行镜像仍为 Go。直接 `go build` 前执行 `npm --prefix internal/control/adminweb ci` 和 `npm --prefix internal/control/adminweb run build`。
 
-```powershell
-./scripts/build.ps1
-python scripts/check-release.py dist/0.2.0
-python scripts/package-compose.py
-./scripts/build-images.ps1
+### 监控与 IP 归属地
+
+节点与玩家升级后每 5 秒上报监控，控制实例仅保留 60 秒内存样本。15 秒未上报显示陈旧，重启后重新积累；多个实例互不共享此临时数据，监控完整性要求相关节点、玩家和浏览器使用同一个控制实例。
+
+Linux 节点上传/下载包含 Nebula UDP 中继转发，需被动观察包头。新 `compose.node.yaml` 和管理台下载的 YAML 已包含 `cap_add: [NET_ADMIN, NET_RAW]`；旧容器请更新后重建。原生节点 systemd 单元增加 `CAP_NET_RAW` 与 `RestrictAddressFamilies` 的 `AF_PACKET`，由运维更新单元并重启。缺少采集权限时业务仍运行，监控流量显示 `—`；不应以宿主机所有网卡流量代替。
+
+国家/省州默认自动下载 [DB-IP City Lite](https://db-ip.com/db/download/ip-to-city-lite)，无需账号或手动下载。库按月发布，服务启动后异步拉取，每 24 小时检查更新；失败保留旧库并每小时重试，首次遇当月文件尚未发布则尝试上月。缓存为实例状态卷内 `geoip.mmdb`，重启直接使用；下载经 HTTPS、超时、大小限制及 MMDB 校验后原子替换。页面保留 DB-IP 署名。首次下载前、记录缺失、私网或没有实际观察到的出口均显示未知。
+
+默认源为 `https://download.db-ip.com/free/dbip-city-lite-{month}.mmdb.gz`，`{month}` 替换为 `YYYY-MM`。可用 `--geoip-url` / `NODELANE_GEOIP_URL` 指定 HTTPS `.mmdb.gz` 镜像源。完整 Compose 为控制容器增加独立出站网络；已有 Docker 网络也须允许 DNS 和出站 HTTPS。查询始终在本地，成员 IP 不发给第三方。
+
+已有自管数据库时，可显式加 `--geoip-db /opt/nodelane/geoip/GeoIP.mmdb` 停用自动下载。Compose 可合并只读挂载与环境变量，保留原状态卷：
+
+```yaml
+environment:
+  NODELANE_GEOIP_DB: /opt/nodelane/geoip/GeoIP.mmdb
+volumes:
+  - ./geoip/GeoIP.mmdb:/opt/nodelane/geoip/GeoIP.mmdb:ro
 ```
 
-最后一条只在本机构建两个多架构镜像；只有显式 `-Push` 才推送。也可解压对应架构 Linux 发布包，在包目录用 `docker build --target control -t docker.nodelane.net/nodelane-room-control:0.2.0 .` 与 `--target node` 构建两个镜像。发布包中的 Dockerfile 直接使用已编译程序，不需要 Go 源码。
+手动覆盖文件必须可由镜像 UID 10001 读取，且遵守对应数据库许可；指定无效文件会拒绝启动。Country 库只含国家，省州需 City 库。系统页面显示当前是否已加载可查询的库。
 
-`releases/` 包含 node.sh、manifest.json、SHA256SUMS、amd64/arm64 原生节点包。它们随控制镜像复制到 `/opt/nodelane/releases`，由 `/install/` 同源提供。裸程序控制部署使用 `--release-dir` 指定只读目录。更新控制镜像时同时更新静态包；不要把可写上传目录配置为 release-dir。SHA256 校验的信任根是控制端 HTTPS。
-
-## 控制机：已有 PostgreSQL / 1Panel 反代
-
-在专用新目录放 `compose.host.yaml` 和 `.env.host.example`，后者复制为 `.env`（0600）。填写：
-
-- `DATABASE_URL`：新建的空数据库。容器连接宿主机用私网地址/`host.docker.internal`；同一 Docker 网络可直接使用数据库容器名。不要用容器内 localhost 访问宿主。
-- `PUBLIC_URL`：管理员和节点使用的完整 HTTPS origin，例如 `https://room.example.com`，不能带路径。
-- `CONTROL_BIND_IP`：反代能到达的宿主私网/网桥地址；反代在宿主机直接运行时可用 127.0.0.1。
-- 新的 `CONTROL_PROJECT_NAME`、`CA_DIR`；默认游戏地址池 `10.203.0.0/16`，须避开 LAN/Docker/VPN 网络。
-
-配置完成后，在该目录拉取 0.2.0 镜像并执行初始化：
+源码目录本地构建后启动已有设施模板：
 
 ```bash
-sudo install -d -m 0700 -o 10001 -g 10001 secrets
-docker compose -f compose.host.yaml config --quiet
-docker compose -f compose.host.yaml pull
-docker compose -f compose.host.yaml run --rm --no-deps ca-init
-docker compose -f compose.host.yaml up -d --wait
-docker compose -f compose.host.yaml exec control-a nodelane-server admin bootstrap
+docker compose -f deploy/compose.host.yaml -f deploy/compose.build.yaml build
+docker compose -f deploy/compose.host.yaml up -d --wait
+docker compose -f deploy/compose.host.yaml exec control nodelane-server admin path
+docker compose -f deploy/compose.host.yaml exec control nodelane-server admin bootstrap
 ```
 
-`migrate` Exited(0) 正常，失败会阻止副本启动。CA 初始化不覆盖已有文件。CA 私钥只挂控制副本，权限目录 0700、文件 0600，属主 10001:10001；绝不复制给节点。
+Linux 发布包也可用相同构建覆盖文件，从包内程序构建镜像。完整产物由 `scripts/build.ps1`、`scripts/check-release.py`、`scripts/package-compose.py` 和 `scripts/build-images.ps1` 构建及校验；推送须显式 `-Push`。
 
-反代配置 HTTPS 域名与两后端 `http://CONTROL_BIND_IP:18080`、`:18081`，健康检查 `/readyz`，无需粘性会话。传递 Cookie、Origin、X-CSRF-Token、Authorization、Idempotency-Key、Last-Event-ID，关闭响应缓存和 SSE 缓冲，流超时至少 300 秒；公网拒绝 `/metrics`。保留原始 Origin，不能用后端 HTTP 地址替换。不要将控制 API 的未加密端口暴露公网。
+`releases/` 随控制镜像复制到 `/opt/nodelane/releases`，同源提供 node.sh、manifest.json、校验和及 amd64/arm64 原生节点包。裸程序使用 `--release-dir` 指定只读目录；不要把上传目录配置为安装资源目录。
 
-1Panel 已有容器网络可添加 `compose.network.yaml`，或在 YAML 顶层设置 default 外部网络。数据库、反代必须同网；反代可改为 `control-a:8080`/`control-b:8080`，同时删除宿主 ports。加入网络不会自动修改 DATABASE_URL。
+## 已有 PostgreSQL / 1Panel 反代
 
-打开 `PUBLIC_URL/admin`，选择首次部署初始化，填写刚生成的 10 分钟一次性码并设置 12–128 字节密码，然后登录。密码遗失：
+`compose.host.yaml` 仅启动一个 `control`，默认访问地址为 `127.0.0.1:18080`，无需创建业务配置 `.env`。反代直接在宿主运行时可使用默认地址；反代容器可通过 `CONTROL_BIND_IP` 设置能访问的宿主私网地址，或与控制容器加入同一 Docker 网络。
+
+1Panel 使用已有 `1panel-network` 时，叠加 `compose.network.yaml`，或将其中的 `networks` 段加入单文件编排。数据库与控制容器必须互通。反代同网时可直接连接 `control:8080` 并删除宿主 `ports`；同一网络部署多个独立项目时应给反代使用唯一容器名或网络别名，避免多个 `control` 别名混用。
+
+反代须配置 HTTPS，保留原始 Host、Origin、Cookie、Authorization、X-CSRF-Token、Idempotency-Key、Last-Event-ID；关闭响应缓存和 SSE 缓冲，流超时至少 300 秒，公网拒绝 `/metrics`。代理存活检查使用 `/healthz`，使未初始化页面也可访问；`/readyz` 只在数据库配置和 CA 加载成功后返回 200。不要公开未加密控制端口。
+
+## 页面初始化
+
+先在控制实例终端执行 `nodelane-server admin path`，用公网 HTTPS 域名加输出路径打开初始化页面。入口首次启动用 128 位随机值生成，保存在受保护的 `admin-path.bin`，保留状态卷即可在重建后继续使用。根路径、旧 `/admin` 及旧静态资源返回 404，无默认跳转；入口不出现在服务日志、公开 API 或快照中。管理员 API 仍在 `/v2/admin/*`，继续校验密码、Cookie、Origin 与 CSRF。
+
+可配置 `serve --admin-path /your-private-admin-entry` 或环境变量 `NODELANE_ADMIN_PATH`，格式为 `/` 加 16–128 位 ASCII 字母、数字、下划线或短横线。重建/重启后生效并持久化，旧入口随之失效；移除配置会继续使用已保存值。多实例可各用随机入口；同域负载均衡时需显式配置相同入口或按实例分配域名。使用自定义状态目录的查询命令也要传 `--state-dir`。
+
+执行 `nodelane-server admin bootstrap` 获取 10 分钟初始化码；只保存码的哈希，不记录到服务日志。页面选择“创建控制面”，填写：
+
+| 配置 | 保存及用途 |
+|---|---|
+| 管理员账号、密码 | 创建唯一管理员，密码保存 Argon2id 哈希；密码 12–128 字节 |
+| PostgreSQL 连接串 | 页面填写，创建或验证 V2 schema；初始连接串保存在数据库，实例私有目录自动保存启动定位副本 |
+| 公网地址 | 例如 `room.nodelane.net`，自动补全 HTTPS；须与当前页面 origin 一致，用于管理授权及节点安装 |
+| 游戏地址池 | 默认 `10.203.0.0/16`，支持规范 IPv4 /16 至 /28；须避开 LAN、Docker、VPN |
+| 节点镜像仓库 | 默认 `docker.nodelane.net`，用于管理台生成的节点 Compose |
+| CA | 直接生成一年有效 CA，或上传 `ca.crt` 和 `ca.key`；校验匹配、自签名、有效期和地址池，拒绝限制动态房间组的 CA |
+
+连接串使用 `postgres://用户:密码@主机:5432/数据库?sslmode=disable` 形式，不包含 shell 引号。密码中的特殊字符须按 URL 编码。数据库主机是控制容器可解析的名称或地址；同一 Docker 网络可使用 PostgreSQL 容器名和内部端口，不能把容器内 localhost 当作宿主。`sslmode` 遵循数据库策略。
+
+初始化仅接受空 schema 或未使用且地址池一致的 V2 schema；已有管理员、节点或旧 CA 的控制面不会被覆盖。数据库 schema、管理员、地址池、公网地址、仓库和 CA 在一个事务中提交。失败不会留下部分管理员或部分 CA；若本地连接已落盘而事务未提交，使用同一数据库重试。
+
+CA 证书和私钥均保存在 PostgreSQL，控制实例按需加载，节点只能取得 CA 公钥证书。CA 和数据库密码不会出现在管理快照、事件或生成的节点 YAML 中。地址池和 CA 初始化后固定，本次不提供运行中更换。
+
+`CA_DIR` 已删除。`CONTROL_PROJECT_NAME` 使用 Compose 固定默认名 `nodelane-room`，需要同机多个项目时用 `docker compose -p <实例名>`。`NODELANE_REGISTRY` 不再是控制镜像环境参数，控制镜像从 YAML 中的明确地址拉取；页面的镜像仓库只控制后续节点 YAML。它们不能由尚未启动的控制服务决定。
+
+## 接入同一控制面的其他实例
+
+每次独立部署仍只有一个控制服务，各自使用独立 `control-state` 卷，不共享本地目录：
+
+1. 新实例启动后，在该实例终端获取初始化码。
+2. 访问该实例的 HTTPS 管理页面，选择“接入已有控制面”。
+3. 填写同一数据库的连接串及已有管理员账号密码。
+4. 服务验证管理员后自动加载数据库中的公网地址、地址池、仓库和 CA；不会创建新管理员或覆盖配置。
+5. 将新实例加入统一公网地址的反代后端。正式登录和节点访问仍使用数据库中保存的统一公网地址。
+
+共享状态、会话、地址、撤销、事件、幂等和事务锁都在 PostgreSQL，不要求粘性会话。不同实例可以使用各自可达的数据库地址，但必须指向同一数据库和 schema。
+
+## 本地持久化与备份
+
+唯一不可只保存在数据库中的配置是“如何连接数据库”。每个实例自动写入 `/var/lib/nodelane-control/database.bin`，通过 `control-state` 持久化；无需事前填写环境变量或手工创建文件。Linux 目录 0700、文件 0600，控制容器使用 UID/GID 10001，根文件系统只读。该目录只包含本实例的数据库定位信息与初始化码哈希，CA 不落本地文件。
+
+重建容器须保留该卷。数据库暂时不可用时，服务保持存活并等待连接，业务返回未就绪；不会回退环境配置或新建控制面。卷丢失可用新实例的初始化码和现有管理员重新接入原数据库。
+
+备份 PostgreSQL（包含 CA 私钥及共享配置）并保护各实例私有卷；不要用 `down -v` 排错。连接信息、数据库备份和 CA 都应按私密数据保护。密码遗失时在已配置实例终端执行：
 
 ```bash
-docker compose -f compose.host.yaml exec control-a nodelane-server admin reset-password
+docker compose -f compose.host.yaml exec control nodelane-server admin reset-password
 ```
 
-命令隐藏读取新密码，成功后所有管理会话失效。初始化码和密钥不应保存到工单、日志或 shell 历史。
+命令隐藏读取新密码，成功后所有实例的管理员会话失效。
 
-## 控制机：同时部署 PostgreSQL 与 Caddy
+## 同时部署 PostgreSQL 与 Caddy
 
-使用独立 `compose.yaml`、Caddyfile、`.env.example`。填写 ROOM_DOMAIN、PUBLIC_URL、随机 URL 安全的 POSTGRES_PASSWORD，选择新项目名及不冲突地址池。DNS 指向控制机，反代所需 TCP 80/443 由管理员配置。步骤：
+使用独立 `compose.yaml`、Caddyfile 和 `.env.example`，每套仍只有一个控制实例。只需提前填写 `ROOM_DOMAIN` 和用于创建 PostgreSQL 的随机 `POSTGRES_PASSWORD`；DNS、80/443 和反代 HTTPS 属于基础设施配置。业务配置仍在页面填写。
 
 ```bash
+# 在 deploy 目录；从当前源码构建
 umask 077
 cp .env.example .env
-# 编辑 .env 后：
-docker compose pull
-mkdir -p secrets
-chmod 700 secrets
-CA_INIT_UID="$(id -u)" CA_INIT_GID="$(id -g)" docker compose run --rm --no-deps ca-init
-sudo chown -R 10001:10001 secrets
+# 编辑 ROOM_DOMAIN 与 POSTGRES_PASSWORD
+docker compose -f compose.yaml -f compose.build.yaml build
 docker compose up -d --wait
-docker compose exec control-a nodelane-server admin bootstrap
+docker compose exec control nodelane-server admin bootstrap
 ```
 
-不要与 compose.host.yaml 合并。不要执行整个 setup profile 的 up。数据库/CA 备份必须成套保留；不要用 down -v 处理错误。
+页面数据库主机填 `db:5432`，用户与数据库名均为 `nodelane`，密码使用上述同一值。不再执行 `migrate`、`ca-init` 或准备 secrets 目录。不与已有设施模板合并。增加接入实例时使用已有设施模板，避免另建数据库。
 
 ## 节点预创建和临时接入密钥
 
@@ -131,6 +176,6 @@ docker compose -f compose.node.yaml exec node nlroom-node status
 
 证书最多 10 分钟，剩余约 7 分钟开始带少量抖动自动续签；证书到期检查独立于网络请求，到期停止数据面，控制恢复后重新领证。无需管理员手动刷新日常证书。撤销无法使失联机器立即知道，但失联不能延长当前证书。
 
-CA 到期前 30/7/1 天查看管理台提醒，备份数据库和 CA、安排维护窗口，在隔离环境验证新的信任部署后重新登记节点/客户端。V2 不提供无感 CA 轮换，不能直接替换文件绕过数据库 CA 指纹和终端固定指纹。HTTPS 域名证书继续由反代维护，与 Nebula CA 分开。
+CA 到期前 30/7/1 天查看管理台提醒，备份含 CA 的数据库、安排维护窗口，在隔离环境验证新的信任部署后重新登记节点/客户端。V2 不提供无感 CA 轮换，不能直接修改数据库 CA 绕过终端固定指纹。HTTPS 域名证书继续由反代维护，与 Nebula CA 分开。
 
 完整发布前还需 [人工及环境验收](manual-v2-validation.md)。

@@ -52,3 +52,17 @@ func TestProbeAndDiscoveryMembership(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+func TestProbeWindowExpiry(t *testing.T) {
+	now := time.Now()
+	s := &Service{samples: map[string][]sample{"peer": {{at: now.Add(-61 * time.Second), ok: false}, {at: now.Add(-40 * time.Second), rtt: 10 * time.Millisecond, ok: true}, {at: now.Add(-5 * time.Second), ok: false}}}}
+	rtt, loss := s.Stats("peer")
+	if rtt == nil || *rtt != 10 || loss == nil || *loss != 50 {
+		t.Fatalf("window statistics: %v %v", rtt, loss)
+	}
+	s.samples["peer"] = []sample{{at: now.Add(-61 * time.Second), ok: true}}
+	rtt, loss = s.Stats("peer")
+	if rtt != nil || loss != nil || !s.LastSample("peer").IsZero() {
+		t.Fatal("stale probes remained current")
+	}
+}

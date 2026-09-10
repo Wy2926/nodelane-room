@@ -13,25 +13,32 @@ import (
 )
 
 func TestHTTPRouteBoundaries(t *testing.T) {
-	h := (&Server{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}).Handler()
+	const entry = "/private-entry-for-test"
+	h := (&Server{AdminPath: entry, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}).Handler()
 	for _, tc := range []struct {
 		method string
 		path   string
 		status int
 	}{
-		{"GET", "/", 303},
-		{"GET", "/admin", 200},
-		{"GET", "/admin/assets/app.js", 200},
-		{"GET", "/admin/assets/style.css", 200},
-		{"GET", "/admin/assets/", 404},
-		{"GET", "/admin/assets/index.html", 404},
-		{"GET", "/admin/assets/missing.js", 404},
+		{"GET", "/", 404},
+		{"HEAD", "/", 404},
+		{"GET", "/admin", 404},
+		{"GET", "/admin/", 404},
+		{"GET", "/admin/assets/app.js", 404},
+		{"GET", entry, 200},
+		{"HEAD", entry, 200},
+		{"GET", entry + "/", 200},
+		{"GET", entry + "/assets/app.js", 200},
+		{"GET", entry + "/assets/style.css", 200},
+		{"GET", entry + "/assets/", 404},
+		{"GET", entry + "/assets/index.html", 404},
+		{"GET", entry + "/assets/missing.js", 404},
 		{"GET", "/install/unknown", 404},
 		{"POST", "/v2/rooms/example/unknown", 404},
 		{"POST", "/v2/rooms/example/unknown/nested", 404},
 		{"POST", "/v2/nodes/enroll", 404},
 		{"POST", "/v1/rooms", 404},
-		{"POST", "/admin/assets/app.js", 405},
+		{"POST", entry + "/assets/app.js", 405},
 		{"DELETE", "/v2/rooms/example", 405},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
@@ -40,11 +47,14 @@ func TestHTTPRouteBoundaries(t *testing.T) {
 			if w.Code != tc.status {
 				t.Fatalf("status = %d, want %d", w.Code, tc.status)
 			}
-			if tc.path == "/admin" && w.Header().Get("Content-Security-Policy") == "" {
+			if tc.path == entry && w.Header().Get("Content-Security-Policy") == "" {
 				t.Fatal("admin page missing content policy")
 			}
-			if tc.path == "/" && w.Header().Get("Location") != "/admin" {
-				t.Fatal("root does not point to admin page")
+			if tc.status == 404 && (w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), entry)) {
+				t.Fatal("public route discloses admin entry")
+			}
+			if tc.path == entry && tc.method == "GET" && (!strings.Contains(w.Body.String(), entry+"/assets/app.js") || strings.Contains(w.Body.String(), "/admin/")) {
+				t.Fatal("page assets do not use the private entry")
 			}
 		})
 	}
