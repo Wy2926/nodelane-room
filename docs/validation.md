@@ -17,6 +17,8 @@
 | 本地双架构镜像 | 控制面和节点的 amd64、arm64 程序可执行，镜像内程序 SHA256 与已校验发布包一致；ARM 通过仿真执行。[构建](../.local/fresh-images-build.log)、[平台校验](../.local/fresh-image-platforms.log) |
 | 本地镜像部署 | `scripts/test-deploy.py --images` 通过全新初始化、HTTPS 登记、原生安装清单、实际 TUN、生命周期确认、节点身份及控制面配置/CA/会话重建恢复和永久撤销；本轮容器、卷和网络已清理。[结果及日志](../.local/nodelane-deploy-test-c65f2f3f24d6/results.json) |
 
+上述程序来自提交 `f32b411d03bd3fd062a3e216241610f983ff8d2c`。两份 `0.2.0` 镜像已推送至 `docker.nodelane.net`；远端 OCI index 摘要与本地已测镜像一致，均含 amd64、arm64。标签、固定摘要和源码提交见 [IMAGES.txt](../deploy/IMAGES.txt)，远端核对日志：[控制面](../.local/fresh-control-remote.log)、[节点](../.local/fresh-node-remote.log)。
+
 ## 未验收与限制
 
 - 最近一轮未配置 `NODELANE_TEST_GEOIP_DB`，两个依赖官方 MMDB 样本的测试跳过；此前样本测试通过的记录见下表。
@@ -39,11 +41,7 @@
 
 | 日期与对象 | 当时的结果与证据 |
 |---|---|
-| 2026-09-10 CLI/服务拆分后的本地归档 | Node.js 24.21.0、Windows Go 1.27.0 构建 Windows/Linux amd64、arm64 四份归档；模块、SHA256、PE/ELF、执行权限及安装内容检查通过。仅本地构建，未签名或发布。[构建](../.local/client-build-node24.log)、[归档检查](../.local/client-release-check.log) |
 | 2026-09-10 GeoIP/P2P | 官方 MMDB 的下载损坏回退、月度回退、并发更新/查询及恢复，以及无 relay 的真实双向 UDP P2P 通过；默认源 DB-IP 2026-09 City Lite 下载并校验成功。原结果 `.local/nodelane-test-20260910-173608-ddaace/results.json`，当前日志缺失 |
 | 2026-09-10 页面与持久化部署 | 随机入口、资源白名单、根路径/旧入口拒绝、重建后入口保存、HTTPS 初始化、节点登记恢复及控制配置/会话恢复通过。原结果 `.local/nodelane-deploy-test-b879e68c7b3a/results.json`，当前日志缺失 |
 | 2026-09-09 至 09-10 扩展部署 | 双控制副本、登记恢复、UDP 配置确认、生命周期反馈、真实十分钟续签及断控到期停网通过。原结果 `.local/nodelane-deploy-test-41f5216cc2a6/results.json`，当前日志缺失 |
-| 2026-09-10 发布镜像 | 实际拉取后的 14 项部署检查通过。原结果 `.local/nodelane-deploy-test-ff1744f6331a/results.json`，当前日志缺失 |
 | 2026-09-10 多架构与 Wintun | 归档内容、架构、许可、执行权限、镜像摘要及两架构 Wintun 签名检查通过；ARM 容器经仿真执行，未安装驱动或服务。原记录 `.local/v2-publish-20260910/`、`.local/v2-wintun-signatures.json`，当前日志缺失 |
-
-控制面与节点的 0.2.0 amd64/arm64 镜像于 2026-09-10 发布至 `docker.nodelane.net`，摘要见 [IMAGES.txt](../deploy/IMAGES.txt)。该历史发布早于后续页面初始化、管理台及客户端拆分等源码改动；验证新功能须重新构建。

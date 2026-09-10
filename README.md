@@ -148,7 +148,7 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 构建后用 `python scripts/check-release.py dist/0.2.0` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
 
-本次页面初始化流程须从当前源码构建控制镜像，历史 0.2.0 发布镜像尚不包含该改动。控制面选择全套或已有基础设施两种独立模板，节点使用单独的 compose.node.yaml。完整步骤和必填项见 [部署指南](docs/deployment.md)。
+0.2.0 发布镜像已包含页面初始化和游戏目录功能。控制面选择全套或已有基础设施两种独立模板，节点使用单独的 compose.node.yaml。完整步骤和必填项见 [部署指南](docs/deployment.md)。
 
 1Panel 使用已有 `1panel-network` 时，可将 `deploy/compose.network.yaml` 的 `networks` 段放入精简编排顶层，或在 CLI 用第二个 `-f` 叠加该文件；控制服务加入此网络。PostgreSQL 在同一网络时，连接串可使用其实际容器名与内部端口。游戏地址池在页面填写，与 Docker 网络分开。详见 [1Panel 网络配置](docs/deployment.md)。
 
