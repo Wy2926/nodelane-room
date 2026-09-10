@@ -12,6 +12,7 @@ import struct
 import urllib.request
 
 from licenses import collect
+from branding import render
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -59,6 +60,22 @@ def verify_binary(path, platform, arch):
             expected = {'amd64': 62, 'arm64': 183}[arch]
         if machine != expected: raise SystemExit(f'Binary architecture mismatch: {path.name}')
 
+
+def windows_payload(stage, release, gui, required, target):
+    payload, engine = stage / 'payload', stage / 'engine'
+    payload.mkdir()
+    engine.mkdir()
+    for name in required:
+        shutil.copy2(release / name, payload / name)
+    for name in ['install.ps1', 'uninstall.ps1', 'setup.ps1']:
+        shutil.copy2(ROOT / 'scripts' / name, engine / name)
+    shutil.copytree(release / 'licenses', payload / 'licenses')
+    collect(ROOT, payload / 'licenses/desktop', target)
+    shutil.copytree(release / 'dist/windows/wintun', payload / 'dist/windows/wintun')
+    shutil.copy2(gui, payload / 'nlroom.exe')
+    payload_hashes(payload)
+    return payload, engine
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--platform', choices=['windows', 'linux'], required=True)
@@ -83,27 +100,26 @@ def main():
     with tempfile.TemporaryDirectory(prefix='desktop-package-', dir=temp_root) as tmp:
         stage = Path(tmp)
         if args.platform == 'windows':
-            payload = stage / 'payload'
-            payload.mkdir()
-            for name in required:
-                shutil.copy2(args.release / name, payload / name)
-            for name in ['install.ps1', 'uninstall.ps1', 'setup.ps1', 'NodeLaneRoom.cmd']:
-                shutil.copy2(ROOT / 'scripts' / name, payload / name)
-            shutil.copytree(args.release / 'licenses', payload / 'licenses')
-            collect(ROOT, payload / 'licenses/desktop', target)
-            shutil.copytree(args.release / 'dist' / 'windows' / 'wintun', payload / 'dist' / 'windows' / 'wintun')
-            shutil.copy2(args.gui, payload / 'nlroom.exe')
+            payload, engine = windows_payload(stage, args.release, args.gui, required, target)
             # Official Evergreen bootstrapper; the elevated installer verifies
             # Microsoft's Authenticode signature before executing it.
             with urllib.request.urlopen('https://go.microsoft.com/fwlink/p/?LinkId=2124703', timeout=60) as response:
                 bootstrapper = response.read((5 << 20) + 1)
             if len(bootstrapper) > 5 << 20 or not bootstrapper.startswith(b'MZ'):
                 raise SystemExit('Invalid Microsoft WebView2 bootstrapper download')
-            (payload / 'MicrosoftEdgeWebview2Setup.exe').write_bytes(bootstrapper)
-            payload_hashes(payload)
+            (engine / 'MicrosoftEdgeWebview2Setup.exe').write_bytes(bootstrapper)
+            art = stage / 'art'
+            render(art)
             out = dest / f'nlroom-{version}-windows-{args.arch}-setup.exe'
             partial = out.with_suffix(out.suffix + '.partial')
-            subprocess.run(['makensis', f'-DPAYLOAD={payload}', f'-DOUTPUT={partial}', str(ROOT / 'scripts/desktop/windows.nsi')], check=True)
+            compiler = shutil.which('makensis')
+            if not compiler and os.name == 'nt':
+                compiler = str(Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'NSIS/makensis.exe')
+            if not compiler or not Path(compiler).is_file(): raise SystemExit('Install NSIS 3 and add makensis to PATH')
+            prefix = '/' if os.name == 'nt' else '-'
+            defines = dict(PAYLOAD=payload, ENGINE=engine, OUTPUT=partial, VERSION=version, ARCH=args.arch,
+                           ICON=ROOT / 'desktop/src-tauri/icons/icon.ico', ART=art)
+            subprocess.run([compiler, prefix + 'WX'] + [f'{prefix}D{k}={v}' for k, v in defines.items()] + [str(ROOT / 'scripts/desktop/windows.nsi')], check=True)
         else:
             def copy(source, relative, mode=0o644):
                 target = stage / relative

@@ -22,6 +22,8 @@ jobs:
       - run: python scripts/desktop/test_package.py
       - if: runner.os == 'Windows'
         run: ./scripts/desktop/test-windows.ps1
+      - if: runner.os == 'Windows'
+        run: ./scripts/desktop/test-uninstall.ps1
   windows:
     runs-on: windows-latest
     steps:

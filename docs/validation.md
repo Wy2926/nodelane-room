@@ -2,6 +2,20 @@
 
 仅在验证、排错或发布任务中查阅。结果只对应当时的源码或产物，修改后须重验；源码、归档、发布镜像和真机分别判定，跳过不算通过。`.local/` 证据不随源码或发布包保存，缺失的历史日志仅保留原路径用于追溯。
 
+## Windows 安装与卸载规范化（2026-09-11）
+
+本轮使用 NSIS 3 Modern UI 2 提供品牌安装、维护恢复与独立卸载向导；运行目录不再包含安装脚本和 WebView2 引导程序。Go 数据面、权限协议、数据库结构与依赖未变。
+
+| 检查 | 实际结果 |
+|---|---|
+| NSIS 安装包 | 使用 `makensis -WX` 编译完整 Windows amd64 EXE，安装和卸载各 4 页，SHA256 与校验文件一致；GUI/Go 二进制沿用同版产物。安装工具仅嵌入临时 engine，生成的原生卸载器随安装落盘。[构建](../.local/installer-build.log)、[产物摘要](../.local/installer-package-result.json) |
+| Windows 安装事务 | 临时目录与模拟 SCM 下，GUI 包替换、停止失败、启动失败、就绪失败、显式恢复及系统登记失败恢复共 6 项通过；包含登记版本恢复。[记录](../.local/installer-transaction-test.log) |
+| Windows 卸载 | 模拟 SCM 下，保留身份、显式清除、绑定玩家启动项清理、停止失败、残留进程、服务删除失败、不安全备份与异配服务共 8 项通过；已接入 CI。[记录](../.local/installer-uninstall-test.log) |
+| 打包与 Linux 生命周期 | Windows 4 项打包检查通过，6 项 Debian 测试按平台跳过；Linux 容器运行全部 10 项通过，含运行文件与临时工具隔离。[Windows](../.local/installer-package-test.log)、[Linux](../.local/installer-linux-package-test.log) |
+| Go 回归 | gofmt、Windows `go vet ./...` 和 `go test -count=1 ./...` 通过，含真实 Nebula 进程内集成测试；Windows 未配置测试数据库，数据库用例跳过。本轮无 Go 并发或控制状态改动，未重跑 Linux 数据库/race 回归。[vet](../.local/installer-go-vet.log)、[测试](../.local/installer-go-test.log) |
+
+Windows UAC/SCM/Wintun 的全新安装、跨版本更新恢复和真实卸载仍须真机验收，ARM64 未验收；原生卸载窗口的自动预览被界面工具策略阻止，不能以编译和模拟用例代替完整界面验收。当前仍为未签名测试包，通过完整安装包手动更新，无在线更新源。此前跨平台联机证据见下一节。
+
 ## 桌面连接与交付检查（2026-09-11）
 
 本轮沿真实返回格式修复了邀请码换新弹窗，补齐初始化前的设置/诊断、服务版本检查及离线时的表单保护，并交付 Windows EXE 和 Linux deb 完整包的安装、手动更新与恢复流程。Go 数据面、协议、数据库结构及 Nebula 版本未变。

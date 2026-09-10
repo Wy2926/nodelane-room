@@ -280,16 +280,18 @@ scripts/ 构建、安装与验证工具
   build.sh Linux 可执行文件构建
   desktop/ Windows 与 Linux 桌面构建、交付与原生验收
     build.py 锁定版本的原生 GUI 构建、构建摘要与完整安装包入口
+    branding.py 从既有品牌图标几何生成安装向导位图
     Dockerfile Ubuntu 22.04 桌面构建、Windows 交叉编译与 WebView 测试工具
     licenses.py 收集精确解析的桌面依赖声明与许可证
-    package.py 校验完整包版本和架构、生成 EXE/deb 与校验和
-    windows.nsi 保留玩家账户的中文安装及更新向导
+    package.py 校验版本和架构、分离运行文件与临时工具、生成 EXE/deb 与校验和
+    windows.nsi 保留玩家账户的品牌安装、更新恢复与独立卸载向导
     linux-setup.sh 绑定 Linux 玩家 UID、启动后台与检查本机就绪
     linux-postinst.sh deb 安装或更新后重载并检查已绑定后台
     linux-prerm.sh deb 更新或移除前停止并等待旧后台退出
     linux-postrm.sh deb 移除后重载，保留身份和用户绑定
     test_package.py 版本、二进制架构、内容摘要与 Debian 生命周期测试
-    test-windows.ps1 临时目录中的文件替换、停止失败和版本恢复测试
+    test-windows.ps1 临时目录中的 GUI 文件替换、停止失败、登记失败和版本恢复测试
+    test-uninstall.ps1 模拟 SCM 下的身份保留、显式清除、停止失败及卸载边界测试
     test_live.py 为已打包 Linux 客户端创建和清理隔离联机验收环境
     test-linux.sh 仅容器内的 deb 安装、真实 UID 隔离、替换及卸载验收
     test_webview.py 通过真实 WebView 和本机服务操作玩家完整联机流程
@@ -308,6 +310,6 @@ scripts/ 构建、安装与验证工具
   setup.ps1 提权前捕获玩家 SID 并启动安装或显式回滚
   test-deploy.py 部署模板与发布镜像冒烟测试
   test-docker.py 隔离双客户端回归与可选 Go/race 检查
-  uninstall.ps1 Windows 服务卸载与可选状态清理
+  uninstall.ps1 Windows 停止等待、受保护目录卸载与可选状态清理
 THIRD_PARTY_NOTICES.md 第三方许可声明
 ```

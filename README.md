@@ -37,13 +37,11 @@ docker compose -f compose.node.yaml exec node nlroom-node enroll
 
 桌面玩家使用 `dist/desktop/nlroom-0.2.0-windows-amd64-setup.exe`（本地构建的未签名测试包）。在玩家账户下双击，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。默认连接 `https://room.nodelane.net`，填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
 
-安装入口在提权前取得玩家 SID；检查版本、架构、完整包摘要和 WireGuard 签名的 Wintun。缺少 WebView2 时校验微软签名并运行随包的官方 Evergreen 引导程序，需要联网。GUI 保持普通用户运行，后台独立运行。
+安装包使用 NSIS 3 Modern UI 2，提供 NodeLane 品牌欢迎页、安装与维护页、进度及完成页。安装入口在提权前取得玩家 SID；检查版本、架构、完整包摘要和 WireGuard 签名的 Wintun。缺少 WebView2 时校验微软签名并运行随包的官方 Evergreen 引导程序，需要联网。GUI 保持普通用户运行，后台独立运行。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，只保留程序、原生 `Uninstall.exe`、驱动、构建信息和许可；PowerShell 安装工具与 WebView2 引导程序仅在临时目录执行。
 
-更新时退出客户端，在同一玩家账户下运行新版完整安装包。安装器保留身份与用户绑定，停止并等待后台退出后替换程序；新版后台就绪失败时恢复旧程序。成功后保留一份旧程序在 `%ProgramFiles%\NodeLaneRoom.previous`，不会保存第二份身份。显式回滚在原玩家的普通 PowerShell 执行（只适用于身份格式和本机协议兼容的版本）：
+更新时退出客户端，在同一玩家账户下运行新版完整安装包。“安装与维护”显示当前和目标版本，同版本可重新安装，普通更新拒绝降级。安装器保留身份与用户绑定，停止并等待后台退出后替换程序；新版后台就绪或系统登记失败时恢复旧程序。成功后保留一份旧程序在 `%ProgramFiles%\NodeLaneRoom.previous`，不会保存第二份身份。再次运行安装包，若存在新版安装器生成的备份，可选择“恢复上一次安装的程序”；仅适用于身份格式和本机协议兼容的版本。原脚本版安装可以直接更新，脚本版备份不提供此恢复选项。
 
-```powershell
-& "$env:ProgramFiles\NodeLaneRoom\setup.ps1" -Rollback
-```
+卸载在 Windows 设置的“已安装的应用”选择 **NodeLane Room → 卸载**，或双击安装目录中的 `Uninstall.exe`。独立卸载向导默认保留设备身份与用户绑定；勾选清除数据还需再次确认。卸载会停止并等待后台退出，移除程序、旧版备份、开始菜单和系统登记；停止失败时保留程序和卸载入口。共享 WebView2 不卸载。`Uninstall.exe /S` 可静默卸载并保留身份，仍需管理员授权。
 
 当前交付为完整包手动更新，不提供在线更新源或静默自动更新。Windows 服务、UAC 和驱动的真机结果见 [验证记录](docs/validation.md)，不可将打包通过视为真机验收通过。
 
@@ -112,7 +110,7 @@ Steam 是本轮唯一自动导入来源，图像类型参见 [Steamworks 图像�
 
 证书最多 10 分钟，剩余约 7 分钟开始续签。控制失联期间不接受新操作，已有链路最多保留至当前凭据到期；实际可用时间也取决于对端和 relay 的剩余凭据。端口权限变化会受控重启 Nebula，短暂重连，这是规避固定上游版本防火墙热更新竞争的措施。
 
-卸载前先 `room leave`，再在管理员 PowerShell 执行发布包中的 `uninstall.ps1`。默认保留设备身份；`-PurgeState` 同时清除身份。后台退出会关闭隧道和 WFP 动态会话，并释放 Nebula TUN。
+仅 Go 开发归档使用发布包中的 `uninstall.ps1`：可先 `room leave`，再在管理员 PowerShell 执行卸载脚本。默认保留设备身份；`-PurgeState` 同时清除身份。后台退出会关闭隧道和 WFP 动态会话，并释放 Nebula TUN。
 
 ## Linux 桌面与客户端开发
 

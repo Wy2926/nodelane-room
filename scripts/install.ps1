@@ -1,8 +1,8 @@
 #Requires -RunAsAdministrator
-param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [switch]$Rollback, [switch]$CheckOnly)
+param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [switch]$Rollback, [switch]$CheckOnly, [string]$SourceDir = $PSScriptRoot, [switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 trap {
-  if (-not $CheckOnly) {
+  if (-not $CheckOnly -and -not $Quiet) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'NodeLane Room installation failed') | Out-Null
   }
@@ -14,7 +14,7 @@ $base = [IO.Path]::GetFullPath($env:ProgramFiles)
 $target = Join-Path $base 'NodeLaneRoom'
 $previous = Join-Path $base 'NodeLaneRoom.previous'
 $pending = Join-Path $base 'NodeLaneRoom.pending'
-$source = $PSScriptRoot
+$source = [IO.Path]::GetFullPath($SourceDir)
 if ($Rollback) { $source = $previous }
 
 function Assert-Tree([string]$Path, [switch]$Trusted) {
@@ -81,6 +81,37 @@ function Wait-Ready([string]$Version) {
   throw 'The installed service did not become ready with the expected version'
 }
 
+function Register-Application([string]$Version) {
+  if (Test-Path -LiteralPath (Join-Path $target 'nlroom.exe')) {
+    $managedGUI = Test-Path -LiteralPath (Join-Path $target 'Uninstall.exe')
+    $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
+    New-Item -Path $registry -Force | Out-Null
+    $properties = @{
+      DisplayName = 'NodeLane Room'; DisplayVersion = $version; Publisher = 'NodeLane'
+      InstallLocation = $target; DisplayIcon = (Join-Path $target 'nlroom.exe')
+      UninstallString = if ($managedGUI) { '"' + (Join-Path $target 'Uninstall.exe') + '"' } else { '"' + "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $target 'uninstall.ps1') + '"' }
+    }
+    foreach ($entry in $properties.GetEnumerator()) { New-ItemProperty -Path $registry -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
+    if ($managedGUI) {
+      New-ItemProperty -Path $registry -Name QuietUninstallString -Value ('"' + (Join-Path $target 'Uninstall.exe') + '" /S') -PropertyType String -Force | Out-Null
+    } else {
+      Remove-ItemProperty -Path $registry -Name QuietUninstallString -ErrorAction SilentlyContinue
+    }
+    foreach ($name in @('NoModify', 'NoRepair')) { New-ItemProperty -Path $registry -Name $name -Value 1 -PropertyType DWord -Force | Out-Null }
+    $size = [int][Math]::Ceiling((Get-ChildItem -LiteralPath $target -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
+    New-ItemProperty -Path $registry -Name EstimatedSize -Value $size -PropertyType DWord -Force | Out-Null
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'))
+    $shortcut.TargetPath = Join-Path $target 'nlroom.exe'; $shortcut.WorkingDirectory = $target; $shortcut.Save()
+  }
+}
+
+function Unregister-Application {
+  $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
+  if (Test-Path -LiteralPath $registry) { Remove-Item -LiteralPath $registry -Force }
+  $shortcut = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'
+  if (Test-Path -LiteralPath $shortcut) { Remove-Item -LiteralPath $shortcut -Force }
+}
+
 Assert-Tree $source
 foreach ($path in @($target, $previous, $pending)) { Assert-Bundle $path }
 $build = Get-Content -LiteralPath (Join-Path $source 'BUILD.txt') -Raw
@@ -91,10 +122,16 @@ $version = $Matches[1]
 $nativeArch = $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()
 if ($nativeArch -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
 $driver = "dist/windows/wintun/bin/$arch/wintun.dll"
-$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'install.ps1', 'uninstall.ps1', 'setup.ps1', 'NodeLaneRoom.cmd', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt', $driver, 'dist/windows/wintun/LICENSE.txt')
+$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt', $driver, 'dist/windows/wintun/LICENSE.txt')
 $hasGUI = Test-Path -LiteralPath (Join-Path $source 'nlroom.exe') -PathType Leaf
+$managedGUI = $hasGUI -and (Test-Path -LiteralPath (Join-Path $source 'Uninstall.exe') -PathType Leaf)
 if (-not $hasGUI -and (Test-Path -LiteralPath (Join-Path $target 'nlroom.exe'))) { throw 'Use the complete desktop installer to update this GUI installation' }
-if ($hasGUI) { $files += @('nlroom.exe', 'PAYLOAD.sha256', 'MicrosoftEdgeWebview2Setup.exe') }
+if ($managedGUI) {
+  $files += @('nlroom.exe', 'PAYLOAD.sha256', 'Uninstall.exe')
+} else {
+  $files += @('install.ps1', 'uninstall.ps1', 'setup.ps1', 'NodeLaneRoom.cmd')
+  if ($hasGUI) { $files += @('nlroom.exe', 'PAYLOAD.sha256', 'MicrosoftEdgeWebview2Setup.exe') }
+}
 foreach ($file in $files) {
   if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Incomplete package: $file" }
 }
@@ -110,7 +147,8 @@ if ($hasGUI) {
     if ($name.StartsWith('/') -or $name.Split('/') -contains '..' -or $hashes.ContainsKey($name)) { throw 'Invalid payload path' }
     $hashes[$name] = $hash
   }
-  foreach ($name in @($files | Where-Object { $_ -ne 'PAYLOAD.sha256' }) + @(Get-ChildItem -LiteralPath (Join-Path $source 'licenses') -Recurse -File | ForEach-Object { $_.FullName.Substring($source.Length + 1).Replace('\', '/') })) {
+  # NSIS creates Uninstall.exe at runtime from its embedded uninstaller code.
+  foreach ($name in @($files | Where-Object { $_ -notin @('PAYLOAD.sha256', 'Uninstall.exe') }) + @(Get-ChildItem -LiteralPath (Join-Path $source 'licenses') -Recurse -File | ForEach-Object { $_.FullName.Substring($source.Length + 1).Replace('\', '/') })) {
     if (-not $hashes.ContainsKey($name) -or (Get-FileHash -LiteralPath (Join-Path $source $name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $hashes[$name]) { throw "Payload verification failed: $name" }
   }
 }
@@ -169,7 +207,7 @@ try {
       Get-ItemProperty -LiteralPath ('HKLM:\SOFTWARE\WOW6432Node\' + $runtimeKey.Substring(9)) -Name pv -ErrorAction SilentlyContinue
     ) | Where-Object { $_.pv -and $_.pv -ne '0.0.0.0' }
     if (-not $runtime) {
-      $bootstrap = Join-Path $pending 'MicrosoftEdgeWebview2Setup.exe'
+      $bootstrap = if ($managedGUI) { Join-Path $PSScriptRoot 'MicrosoftEdgeWebview2Setup.exe' } else { Join-Path $pending 'MicrosoftEdgeWebview2Setup.exe' }
       $signed = Get-AuthenticodeSignature -LiteralPath $bootstrap
       if ($signed.Status -ne 'Valid' -or $signed.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation(?:,|$)') { throw 'WebView2 bootstrapper signature verification failed' }
       $setup = Start-Process -FilePath $bootstrap -ArgumentList @('/silent', '/install') -WindowStyle Hidden -PassThru
@@ -193,18 +231,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Service registration failed' }
   }
   Wait-Ready $version
-  if ($hasGUI) {
-    $registry = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom'
-    New-Item -Path $registry -Force | Out-Null
-    $properties = @{
-      DisplayName = 'NodeLane Room'; DisplayVersion = $version; Publisher = 'NodeLane'
-      InstallLocation = $target; DisplayIcon = (Join-Path $target 'nlroom.exe')
-      UninstallString = ('"' + "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" + '" -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $target 'uninstall.ps1') + '"')
-    }
-    foreach ($entry in $properties.GetEnumerator()) { New-ItemProperty -Path $registry -Name $entry.Key -Value $entry.Value -PropertyType String -Force | Out-Null }
-    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'NodeLane Room.lnk'))
-    $shortcut.TargetPath = Join-Path $target 'nlroom.exe'; $shortcut.WorkingDirectory = $target; $shortcut.Save()
-  }
+  Register-Application $version
   Write-Output "NodeLane Room $version installed. Open the application as the installation user."
 } catch {
   $failure = $_
@@ -215,13 +242,17 @@ try {
       if ($LASTEXITCODE -ne 0) { throw 'Failed to remove new service; installation files retained for recovery' }
     }
     Remove-Bundle $target
+    if (-not $movedOld -and $hasGUI) { Unregister-Application }
   }
-  if ($movedOld) { Move-Bundle $previous $target }
+  if ($movedOld) {
+    Move-Bundle $previous $target
+  }
   if ($existing -and $stopped -and $wasRunning) {
     Start-Service -Name NodeLaneRoom
     Wait-Ready $oldVersion
     Write-Output 'Previous networking service restored.'
   }
+  if ($movedOld) { Register-Application $oldVersion }
   throw $failure
 } finally {
   $lock.Dispose()

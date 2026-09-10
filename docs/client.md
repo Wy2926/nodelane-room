@@ -108,7 +108,7 @@ flowchart LR
 
 首期目标为 Windows 10/11、Ubuntu 22.04/24.04 与 Debian 12/13，先验收 x64，再验收 ARM64；不把 Go 交叉编译通过等同于 GUI 真机支持。Tauri Windows 依赖 WebView2，Linux 依赖 WebKitGTK 4.1 等系统库，须在目标发行版构建和测试。[构建前置条件](https://v2.tauri.app/start/prerequisites/)
 
-Windows 安装器整合 GUI、服务、Wintun 与微软官方 WebView2 引导程序；正式发布须签名，开发验收生成明确标识的未签名测试包。Linux 交付 deb 配套 systemd，RPM 后续按目标发行版需求增加。完整包更新保留身份与安装用户绑定，替换前停止并等待后台；Windows 新程序启动失败自动恢复旧程序，Linux 由 dpkg 报告配置失败并支持重新配置或安装兼容旧包。不迁移旧身份或旧数据库。AppImage 不能单独解决后台权限与服务安装，暂不作为唯一交付物。操作单处维护于 [安装与更新](../README.md#windows-客户端)。
+Windows 使用 [NSIS 3 Modern UI 2](https://nsis.sourceforge.io/Docs/Modern%20UI%202/Readme.html) 打包，整合 GUI、服务、Wintun 与微软官方 WebView2 引导程序，提供品牌安装、更新恢复与独立卸载界面。安装生命周期工具只解压到临时目录，运行目录不包含脚本；正式发布须签名，开发验收生成明确标识的未签名测试包。Linux 交付 deb 配套 systemd，RPM 后续按目标发行版需求增加。完整包更新保留身份与安装用户绑定，替换前停止并等待后台；Windows 新程序启动失败自动恢复旧程序，Linux 由 dpkg 报告配置失败并支持重新配置或安装兼容旧包。不迁移旧身份或旧数据库。AppImage 不能单独解决后台权限与服务安装，暂不作为唯一交付物。操作单处维护于 [安装与更新](../README.md#windows-客户端)。
 
 仅构建 GUI 可运行 `cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked --release --features custom-protocol`，前置为前端构建。安装包由 `python scripts/desktop/build.py --platform windows --arch amd64 --release <同一源码构建的 Go 发布目录>` 生成到 `dist/desktop/`；Linux 改用 `--platform linux`，须具备对应系统库与打包工具。脚本不安装服务。Linux deb 安装后显式运行 `sudo nlroom-setup --owner <普通用户>` 绑定用户并启动服务；卸载保留身份与用户绑定。平台安装与完整联机验收范围以验证记录为准。
 

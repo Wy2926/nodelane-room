@@ -11,7 +11,7 @@ $transaction = $text.Substring($text.IndexOf('# The lock is'))
 $testRoot = Join-Path $root ('.local/install-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
-  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback')) {
+  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback', 'registration-failure')) {
     & {
       foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
       # Windows ACL/DPAPI and real SCM/driver acceptance are separate checks.
@@ -30,6 +30,11 @@ try {
         param($Version)
         if ($scenario -eq 'readiness-failure' -and $Version -eq '0.2.1') { throw 'simulated readiness failure' }
       }
+      function Register-Application {
+        param($Version)
+        Set-Content -LiteralPath (Join-Path $base 'registered-version') -Value $Version
+        if ($scenario -eq 'registration-failure' -and $Version -eq '0.2.1') { throw 'simulated registration failure' }
+      }
       $base = Join-Path $testRoot $scenario
       New-Item -ItemType Directory -Path $base | Out-Null
       $target = Join-Path $base 'NodeLaneRoom'
@@ -42,7 +47,10 @@ try {
       Set-Content -LiteralPath (Join-Path $target 'BUILD.txt') -Value 'old'
       Set-Content -LiteralPath (Join-Path $source 'BUILD.txt') -Value 'new'
       $files = @('BUILD.txt')
-      $hasGUI = $false
+      # Exercise the complete GUI payload without touching WebView2 or SCM.
+      $hasGUI = $true; $managedGUI = $true
+      $hashes = @{'BUILD.txt' = (Get-FileHash -LiteralPath (Join-Path $source 'BUILD.txt')).Hash.ToLowerInvariant()}
+      function Get-ItemProperty { param($LiteralPath, $Name, $ErrorAction) [pscustomobject]@{ pv = '1.0.0.0' } }
       $existing = [pscustomobject]@{ Status = 'Running' }
       $oldVersion = '0.2.0'; $version = '0.2.1'
       if ($scenario -eq 'rollback') {
@@ -51,11 +59,12 @@ try {
       }
       $failed = $false
       try { . ([scriptblock]::Create($transaction)) } catch { $failed = $true }
-      $expectedFailure = $scenario -in @('start-failure', 'readiness-failure', 'stop-failure')
+      $expectedFailure = $scenario -in @('start-failure', 'readiness-failure', 'stop-failure', 'registration-failure')
       if ($failed -ne $expectedFailure) { throw "Unexpected transaction result: $scenario" }
       $want = if ($expectedFailure) { 'old' } else { 'new' }
       if ((Get-Content -LiteralPath (Join-Path $target 'BUILD.txt')) -ne $want) { throw "Wrong active program after $scenario" }
       if (-not $expectedFailure -and (Get-Content -LiteralPath (Join-Path $previous 'BUILD.txt')) -ne 'old') { throw 'Missing previous version' }
+      if ($scenario -eq 'registration-failure' -and (Get-Content -LiteralPath (Join-Path $base 'registered-version')) -ne $oldVersion) { throw 'Failed upgrade left the wrong registered version' }
       try { Assert-Bundle (Join-Path $base '../outside'); throw 'Accepted unsafe path' } catch {
         if ($_.Exception.Message -ne 'Unsafe installation path') { throw }
       }

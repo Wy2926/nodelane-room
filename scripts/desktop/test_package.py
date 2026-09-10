@@ -6,11 +6,36 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from package import ROOT, payload_hashes, source_version, verify_binary, verify_release
+from package import ROOT, payload_hashes, source_version, verify_binary, verify_release, windows_payload
 
 
 class PackagingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        (ROOT / '.local').mkdir(exist_ok=True)
+
+    def test_windows_installed_payload_excludes_installer_tools(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.local') as tmp:
+            root = Path(tmp)
+            release, stage = root / 'release', root / 'stage'
+            release.mkdir()
+            stage.mkdir()
+            (release / 'licenses').mkdir()
+            driver = release / 'dist/windows/wintun'
+            driver.mkdir(parents=True)
+            (driver / 'LICENSE.txt').write_text('license')
+            required = ['nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt']
+            for name in required + ['nlroom.exe']:
+                (release / name).write_bytes(b'fixture')
+            with patch('package.collect'):
+                payload, engine = windows_payload(stage, release, release / 'nlroom.exe', required, 'x86_64-pc-windows-msvc')
+            self.assertEqual({p.name for p in engine.iterdir()}, {'setup.ps1', 'install.ps1', 'uninstall.ps1'})
+            self.assertFalse(any(p.suffix in ('.ps1', '.cmd', '.bat') for p in payload.rglob('*')))
+            self.assertFalse((payload / 'MicrosoftEdgeWebview2Setup.exe').exists())
+            self.assertIn('nlroom.exe', (payload / 'PAYLOAD.sha256').read_text())
+
     def test_versions_are_aligned(self):
         self.assertRegex(source_version(), r'^\d+\.\d+\.\d+$')
 
