@@ -39,8 +39,8 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, b, 0644)
 }
 func run() error {
-	release := flag.String("release", "dist/0.2.0", "release directory")
-	version := flag.String("version", "0.2.0", "product version")
+	release := flag.String("release", "", "node release directory")
+	version := flag.String("version", "", "node version")
 	installer := flag.String("installer", "deploy/node.sh", "native installer")
 	unit := flag.String("unit", "deploy/nlroom-node.service", "systemd unit")
 	flag.Parse()
@@ -56,7 +56,7 @@ func run() error {
 		Artifacts map[string]artifact `json:"artifacts"`
 	}{*version, map[string]artifact{}}
 	for _, arch := range []string{"amd64", "arm64"} {
-		bundle := filepath.Join(*release, "nodelane-room-"+*version+"-linux-"+arch)
+		bundle := filepath.Join(*release, "nodelane-room-node-"+*version+"-linux-"+arch)
 		files := map[string]string{"nlroom-node": filepath.Join(bundle, "nlroom-node"), "nlroom-node.service": *unit, "THIRD_PARTY_NOTICES.txt": filepath.Join(bundle, "THIRD_PARTY_NOTICES.txt"), "BUILD.txt": filepath.Join(bundle, "BUILD.txt")}
 		if e := filepath.WalkDir(filepath.Join(bundle, "licenses"), func(p string, d fs.DirEntry, e error) error {
 			if e != nil {
@@ -109,20 +109,6 @@ func run() error {
 	}
 	if e = os.WriteFile(filepath.Join(out, "SHA256SUMS"), []byte(sums), 0644); e != nil {
 		return e
-	}
-	for _, arch := range []string{"amd64", "arm64"} {
-		dest := filepath.Join(*release, "nodelane-room-"+*version+"-linux-"+arch, "releases")
-		if e = filepath.WalkDir(out, func(p string, d fs.DirEntry, e error) error {
-			if e != nil {
-				return e
-			}
-			if d.IsDir() {
-				return nil
-			}
-			return copyFile(p, filepath.Join(dest, d.Name()))
-		}); e != nil {
-			return e
-		}
 	}
 	fmt.Println("Native releases:", out)
 	return nil

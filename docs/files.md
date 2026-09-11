@@ -293,6 +293,7 @@ internal/ 产品内部实现
     tap.go TAP 句柄、地址与关闭清理
     tap_linux.go Linux 内核非持久 TAP 创建及 IPv4/IPv6 配置
     tap_windows.go 专用 TAP-Windows6 校验、异步 I/O 与地址配置
+    tap_windows_test.go 临时用户注册表验证 TAP 两种官方 ID 与专用网卡归属
     tap_other.go 未支持平台的明确错误
   localapi/ 本机服务协议与调用客户端
     client.go 经 Named Pipe/Unix socket 调用本机 RPC
@@ -304,6 +305,7 @@ internal/ 产品内部实现
     model.go 设备、房间、凭据与 LAN 客户端状态类型
     user.go 用户、设备、OIDC 登录与管理请求类型
     node.go 节点配置、登记、操作与同步类型
+    version.go 控制面、节点和客户端的独立发布版本
     telemetry.go 非持久化监控采样与窗口协议
   nodehost/ Linux 原生节点安装生命周期
     native.go 配置、发布包校验、更新、卸载与 systemd 操作
@@ -331,15 +333,17 @@ scripts/ 构建、安装与验证工具
   architecture/ 包依赖与文件索引检查
     boundaries_test.go 跨平台生产导入、数据库与数据面归属及客户端运行依赖边界
     files_test.go Git 维护文件与索引的遗漏、重复和失效检查
-  build-images.ps1 校验发布包并构建镜像，支持显式推送
-  build.ps1 Windows/Linux 多架构发布包构建
+  build-images.ps1 校验各组件发布包并按独立版本构建镜像，支持显式推送
+  build.ps1 按控制面、节点和客户端独立版本构建多架构发布包
   build.sh Linux 可执行文件构建
   desktop/ Windows 与 Linux 桌面构建、交付与原生验收
     build.py 锁定版本的原生 GUI 构建、构建摘要与完整安装包入口
     branding.py 从既有品牌图标几何生成安装向导位图
     Dockerfile Ubuntu 22.04 桌面构建、Windows 交叉编译与 WebView 测试工具
+    drivers.py 固定 TAP 驱动与 tapctl 的下载校验、只读提取及对应源码打包
     licenses.py 收集精确解析的桌面依赖声明与许可证
     package.py 校验版本和架构、分离运行文件与临时工具、生成 EXE/deb 与校验和
+    tap.ps1 签名及摘要校验、专用 TAP 创建、失败清理与按登记 GUID 卸载
     windows.nsi 保留玩家账户的双语安装、更新恢复与独立卸载向导
     locales/ 按语言独立维护的安装向导文案
       zh-CN.nsh 简体中文安装、恢复及卸载字典
@@ -351,10 +355,12 @@ scripts/ 构建、安装与验证工具
     test_package.py 版本、二进制架构、内容摘要与 Debian 生命周期测试
     test-windows.ps1 临时目录中的 GUI 文件替换、停止失败、登记失败和版本恢复测试
     test-uninstall.ps1 模拟 SCM 下的身份保留、显式清除、停止失败及卸载边界测试
+    test-setup.ps1 Windows PowerShell 提权状态管道的输出与退出错误测试
+    test-tap.ps1 模拟受限注册表、驱动暂存、专用网卡创建与按 GUID 清理的隔离测试
     test_live.py 为已打包 Linux 客户端创建和清理隔离联机验收环境
     test-linux.sh 仅容器内的 deb 安装、真实 UID 隔离、替换及卸载验收
     test_webview.py 通过真实 WebView 和本机服务操作玩家完整联机流程
-  check-release.py 归档校验和、内容、架构与权限检查
+  check-release.py 各组件归档校验和、版本、内容隔离、架构与权限检查
   Install.cmd Windows 双击安装入口
   install.ps1 Windows 完整包校验、用户绑定、安装更新与失败回滚
   NodeLaneRoom.cmd 玩家开发命令行启动入口
@@ -366,7 +372,7 @@ scripts/ 构建、安装与验证工具
   package-compose.py 部署模板归档与校验和生成
   release/ 原生安装资源打包工具
     main.go 从发布包生成同源下载资源与清单
-  setup.ps1 提权前捕获玩家 SID 并启动安装或显式回滚
+  setup.ps1 提权前捕获玩家 SID、受限管道回传安装状态并启动安装或回滚
   test-deploy.py 部署模板与发布镜像冒烟测试
   test-docker.py 隔离 TAP/中继/低 MTU 回归与独立数据库 Go/race 检查
   uninstall.ps1 Windows 停止等待、受保护目录卸载与可选状态清理

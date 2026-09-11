@@ -63,7 +63,7 @@ func (s *Store) adminRoomSnapshot(ctx context.Context, room string) (AdminRoomSn
 }
 
 func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
-	out := AdminSnapshot{PublicURL: s.PublicURL, Registry: s.Registry, Version: model.Version, Network: s.Store.Network.String(), ServerTime: time.Now().UTC(), CAExpiresAt: s.CA.Certificate.NotAfter(), Rooms: []model.Room{}, Operations: []model.NodeOperation{}, Events: []AdminEvent{}}
+	out := AdminSnapshot{PublicURL: s.PublicURL, Registry: s.Registry, Version: model.ControlVersion, Network: s.Store.Network.String(), ServerTime: time.Now().UTC(), CAExpiresAt: s.CA.Certificate.NotAfter(), Rooms: []model.Room{}, Operations: []model.NodeOperation{}, Events: []AdminEvent{}}
 	tx, err := s.Store.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return out, err

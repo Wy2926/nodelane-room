@@ -32,7 +32,7 @@ func main() {
 func command() *cobra.Command {
 	var dir, server, configPath string
 	var asJSON bool
-	root := &cobra.Command{Use: "nlroom-node", Short: "NodeLane Room 基础设施节点", SilenceUsage: true, Version: model.Version + " (protocol v2; Nebula " + model.NebulaVersion + ")"}
+	root := &cobra.Command{Use: "nlroom-node", Short: "NodeLane Room 基础设施节点", SilenceUsage: true, Version: model.NodeVersion + " (protocol v2; Nebula " + model.NebulaVersion + ")"}
 	root.PersistentFlags().StringVar(&dir, "state-dir", "/var/lib/nlroom-node", "Private node state directory")
 	root.PersistentFlags().StringVar(&server, "server", "", "Control HTTPS origin")
 	root.PersistentFlags().StringVar(&configPath, "config-file", "/etc/nlroom-node/config.json", "Native installation configuration")

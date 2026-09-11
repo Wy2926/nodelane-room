@@ -69,8 +69,8 @@ UninstPage custom un.Options un.OptionsLeave
 !insertmacro MUI_UNPAGE_FINISH
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
-!include "locales/en-US.nsh"
-!include "locales/zh-CN.nsh"
+!include "${__FILEDIR__}\locales\en-US.nsh"
+!include "${__FILEDIR__}\locales\zh-CN.nsh"
 !insertmacro MUI_RESERVEFILE_LANGDLL
 SetFont /LANG=2052 "Microsoft YaHei UI" 9
 
@@ -191,6 +191,9 @@ Section "Uninstall"
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
   File "${ENGINE}\uninstall.ps1"
+  File "${ENGINE}\tap.ps1"
+  SetOutPath "$PLUGINSDIR\tap"
+  File /r "${ENGINE}\tap\*"
   StrCpy $Arguments "-Quiet"
   ${If} $PurgeState == ${BST_CHECKED}
     StrCpy $Arguments "$Arguments -PurgeState"

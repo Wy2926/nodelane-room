@@ -62,6 +62,12 @@ function Remove-Application {
   foreach ($process in @(Get-Process -Name nlroom-service -ErrorAction SilentlyContinue)) {
     if ($process.Path -eq $servicePath -and -not $process.WaitForExit(10000)) { throw 'Networking process has not exited; installation retained' }
   }
+  $tapRecord = Join-Path $state 'tap.guid'
+  if (Test-Path -LiteralPath $tapRecord) {
+    . (Join-Path $PSScriptRoot 'tap.ps1')
+    Remove-NodeLaneTap (Join-Path $PSScriptRoot 'tap') ((Get-Content -LiteralPath $tapRecord -Raw).Trim())
+    Remove-Item -LiteralPath $tapRecord -Force
+  }
   if ($registered) {
     & $servicePath service uninstall
     if ($LASTEXITCODE -ne 0) { throw 'Service removal failed; installation retained' }

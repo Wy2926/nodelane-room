@@ -9,5 +9,5 @@ COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && rustup target add x86_64-pc-windows-msvc && rustup component add rustfmt && cargo install cargo-xwin --version 0.23.1 --locked
-RUN apt-get update && apt-get install -y --no-install-recommends systemd && rm -rf /var/lib/apt/lists/* && cargo install tauri-driver --version 2.0.6 --locked
+RUN apt-get update && apt-get install -y --no-install-recommends systemd msitools && rm -rf /var/lib/apt/lists/* && cargo install tauri-driver --version 2.0.6 --locked
 WORKDIR /workspace

@@ -2,8 +2,6 @@ package model
 
 import "time"
 
-const Version = "0.2.0"
-
 type NodeConfig struct {
 	Name       string `json:"name"`
 	Region     string `json:"region"`

@@ -1,5 +1,5 @@
 services:
   node:
     build:
-      context: ..
+      context: ${NODELANE_NODE_BUILD_CONTEXT:-..}
       target: node

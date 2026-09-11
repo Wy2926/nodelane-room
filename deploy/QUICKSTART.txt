@@ -1,11 +1,12 @@
-NodeLane Room 0.2.0 全新部署
+NodeLane Room 控制面 0.2.2 / 节点 0.2.1 部署
 
-0.2.0 控制面和节点镜像已发布至 docker.nodelane.net，支持 linux/amd64、linux/arm64。
+控制面 0.2.2 和节点 0.2.1 镜像位于 docker.nodelane.net，支持 linux/amd64、linux/arm64。
 配置完成后执行对应编排的 docker compose pull，再初始化并启动；摘要见 IMAGES.txt。
 
 控制面：已有 PostgreSQL/反代用 compose.host.yaml + .env.host.example；
 全套新建用 compose.yaml + .env.example + Caddyfile。不要合并两套。
-当前流程须构建新版控制镜像；历史 0.2.0 镜像尚不包含页面初始化。
+控制面使用 NODELANE_CONTROL_VERSION=0.2.2，节点使用 NODELANE_NODE_VERSION=0.2.1。
+数据库结构为 5，拒绝旧结构；使用独立空库，不迁移或清空旧库。
 每次部署只有 control 一个控制实例。up -d --wait 后执行
 docker compose exec control nodelane-server admin path，访问 HTTPS 域名加输出路径。
 根路径和旧 /admin 返回 404。随机入口随私有卷持久化，可设置 NODELANE_ADMIN_PATH 后重建。
@@ -35,5 +36,5 @@ docker compose -f compose.node.yaml exec node nlroom-node enroll
 证书自动续签，到期失联停止。替换服务器先在管理台撤销旧绑定并签发新密钥。
 端口变更先修改本机放行或 YAML 映射，再本机 config apply 对应版本。
 
-Windows 使用 0.2.0 安装包，全新身份连接 /v2；不要复用 V1 状态。
+Windows 使用 0.2.1 安装包，全新身份连接 /v2；不要复用 V1 状态。
 源码 docs/deployment.md 给出完整新部署步骤；docs/manual-v2-validation.md 是人工验收清单。

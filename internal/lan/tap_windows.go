@@ -33,23 +33,9 @@ func OpenTAP(name string, prefix netip.Prefix) (*TAP, error) {
 		return nil, err
 	}
 	defer root.Close()
-	keys, err := root.ReadSubKeyNames(-1)
+	valid, err := registeredTAP(root, guid.String())
 	if err != nil {
 		return nil, err
-	}
-	valid := false
-	for _, name := range keys {
-		key, e := registry.OpenKey(root, name, registry.READ)
-		if e != nil {
-			continue
-		}
-		id, _, _ := key.GetStringValue("NetCfgInstanceId")
-		component, _, _ := key.GetStringValue("ComponentId")
-		key.Close()
-		if strings.EqualFold(id, guid.String()) && strings.EqualFold(component, "tap0901") {
-			valid = true
-			break
-		}
 	}
 	if !valid {
 		return nil, fmt.Errorf("%s is not a TAP-Windows6 adapter", name)
@@ -102,6 +88,27 @@ func OpenTAP(name string, prefix netip.Prefix) (*TAP, error) {
 		return luid.SetIPAddresses(tapAddresses(prefix, mac))
 	}
 	return t, nil
+}
+
+func registeredTAP(root registry.Key, guid string) (bool, error) {
+	keys, err := root.ReadSubKeyNames(-1)
+	if err != nil {
+		return false, err
+	}
+	for _, name := range keys {
+		key, err := registry.OpenKey(root, name, registry.READ)
+		if err != nil {
+			continue
+		}
+		id, _, _ := key.GetStringValue("NetCfgInstanceId")
+		component, _, _ := key.GetStringValue("ComponentId")
+		key.Close()
+		// Both IDs are declared by the signed TAP-Windows6 INF.
+		if strings.EqualFold(id, guid) && (strings.EqualFold(component, "tap0901") || strings.EqualFold(component, `root\tap0901`)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // TAP-Windows6 public IOCTL ABI (tap-windows.h, MIT), with cancellable

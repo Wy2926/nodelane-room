@@ -132,7 +132,7 @@ func (r *Runtime) EnrollNode(ctx context.Context, key string) (model.NodeLocalSt
 		}
 	}
 	var sync model.NodeSync
-	if err := api.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.Version, Engine: "stopped"}}, &sync); err != nil {
+	if err := api.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, &sync); err != nil {
 		return r.nodeStatusLocked(), err
 	}
 	i.NodeID = sync.Node.ID
@@ -152,10 +152,10 @@ func (r *Runtime) EnrollNode(ctx context.Context, key string) (model.NodeLocalSt
 }
 func (r *Runtime) nodeReport() model.NodeReport {
 	s := r.Status()
-	return model.NodeReport{Version: model.Version, Engine: s.Engine, Error: s.Error, AppliedRevision: r.nodeState.AppliedRevision, AppliedConfig: r.nodeState.Applied, LeaseExpiresAt: s.LeaseExpiresAt, LastRenewal: r.nodeLastRenewal, Probes: r.nodeProbes()}
+	return model.NodeReport{Version: model.NodeVersion, Engine: s.Engine, Error: s.Error, AppliedRevision: r.nodeState.AppliedRevision, AppliedConfig: r.nodeState.Applied, LeaseExpiresAt: s.LeaseExpiresAt, LastRenewal: r.nodeLastRenewal, Probes: r.nodeProbes()}
 }
 func (r *Runtime) nodeStatusLocked() model.NodeLocalStatus {
-	return model.NodeLocalStatus{Status: r.Status(), Node: r.nodeState.Desired, Report: r.nodeReport(), Server: r.nodeServer, Registered: r.identity.NodeID != "", Version: model.Version}
+	return model.NodeLocalStatus{Status: r.Status(), Node: r.nodeState.Desired, Report: r.nodeReport(), Server: r.nodeServer, Registered: r.identity.NodeID != "", Version: model.NodeVersion}
 }
 func (r *Runtime) NodeStatus() model.NodeLocalStatus {
 	r.op.Lock()

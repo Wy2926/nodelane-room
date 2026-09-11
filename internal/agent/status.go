@@ -14,7 +14,10 @@ func (r *Runtime) Status() model.Status {
 	r.stateMu.Lock()
 	s := r.status
 	r.stateMu.Unlock()
-	s.Version, s.ProtocolVersion = model.Version, localapi.ProtocolVersion
+	s.Version, s.ProtocolVersion = model.ClientVersion, localapi.ProtocolVersion
+	if r.nodeMode {
+		s.Version = model.NodeVersion
+	}
 	s.LANVersion = model.LANVersion
 	r.netMu.Lock()
 	defer r.netMu.Unlock()

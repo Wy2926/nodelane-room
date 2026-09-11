@@ -28,7 +28,7 @@ func main() {
 func command() *cobra.Command {
 	var dir string
 	var asJSON bool
-	root := &cobra.Command{Use: "nlroom-cli", Short: "NodeLane Room CLI for automation and diagnostics", SilenceUsage: true, Version: model.Version + " (Nebula " + model.NebulaVersion + ")"}
+	root := &cobra.Command{Use: "nlroom-cli", Short: "NodeLane Room CLI for automation and diagnostics", SilenceUsage: true, Version: model.ClientVersion + " (Nebula " + model.NebulaVersion + ")"}
 	root.PersistentFlags().StringVar(&dir, "state-dir", platform.DefaultDir(), "Agent state directory")
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "Print machine-readable JSON")
 	print := func(cmd *cobra.Command, v any) error {

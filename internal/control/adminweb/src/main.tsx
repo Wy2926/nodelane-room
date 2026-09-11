@@ -259,7 +259,7 @@ function App() {
             {connection}
           </Badge>
           <small>
-            {session.username} · v{data?.version || "0.2.0"}
+            {session.username}{data?.version ? ` · v${data.version}` : ""}
           </small>
           <Action
             run={async () => {

@@ -4,13 +4,70 @@
 
 ## 当前源码与产物
 
-当前为访客/OIDC 账号、默认 4 人房间、统一 Ethernet LAN、数据库结构 5、本机 IPC 2；最近产品验证为 2026-09-11 的账号回归。下表保留原检查结果，后续改动不能据此自动判定通过；网络设计见 [游戏网络](game-network.md)。
+当前为访客/OIDC 账号、默认 4 人房间、统一 Ethernet LAN、数据库结构 5、本机 IPC 2；当前发布为控制面 0.2.2、节点 0.2.1、客户端 0.2.1；三端版本独立维护。下表保留原检查结果，后续改动不能据此自动判定通过；网络设计见 [游戏网络](game-network.md)。
 
 | 对象 | 适用范围 |
 |---|---|
 | 当前 LAN 源码 | 单播、广播/组播、帧授权和分片已实现；组件和 Linux TAP 检查见下节，游戏本体仍未验收 |
-| 当前完整安装包 | LAN 改造后尚未重新生成和验收；Windows TAP 驱动须独立准备 |
+| 当前完整安装包 | Windows amd64 0.2.1 已重新构建，内置签名 TAP 9.27.0，修复注册表枚举与两种官方 TAP ID 校验；安装包本身未签名，完整安装与驱动加载仍待真机验收 |
 | 历史 0.2.0 安装包与镜像 | 使用旧数据面，不能与当前客户端混用；发布源码提交和镜像摘要见 [IMAGES.txt](../deploy/IMAGES.txt)，旧包/WebView 结果只列于历史证据 |
+
+## 控制面 0.2.2 OIDC 修复发布（2026-09-11）
+
+控制面镜像 `sha256:d979e84c6b6ce84798cc76053ecd7e2497322319ae478224369d729930fa5a4c`，amd64/arm64 均已推送并核对远端摘要；节点、客户端保持 0.2.1。构建源码清单 SHA256 `93a1f06a90a1b69bf9ba26505bceb4fa3f77f1f41aca07d77d732c005e70f88c`，记录见 [镜像清单](../deploy/IMAGES.txt)。未更新线上容器。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| OIDC 浏览器与授权边界 | 本地 IdP 与真实浏览器复现旧页面的 `Origin: null`；修复后确认成功并领取设备会话，Referer 仅包含 origin。8 种错误来源/Cookie/CSRF 请求拒绝，正确确认通过。[浏览器](../.local/oidc-confirm/browser-after.log)、[回归](../.local/oidc-confirm/confirmation-security.log) |
+| Go 与独立 PostgreSQL | Windows Go 1.27.1、Linux Go 1.26.8 的 vet 和全量普通测试，以及 Linux 全量 race 通过；数据库用例实际运行，包含真实 Nebula Ethernet、隔离、撤销、中继和 P2P 集成。[Windows](../.local/release-0.2.2/windows-test.log)、[Linux](../.local/release-0.2.2/linux-test.log)、[race](../.local/release-0.2.2/linux-race.log) |
+| 发布镜像 | 双架构程序实际运行并校验版本、二进制摘要及节点下载清单；ARM 经仿真。控制面 0.2.2 与节点 0.2.1 的隔离 host 编排通过 HTTPS 初始化、登记、重建恢复和撤销。[程序](../.local/release-0.2.2/image-verification.json)、[部署](../.local/release-0.2.2/deploy-test.log) |
+| 归档、管理台与安装脚本 | 分组件归档校验通过，节点 0.2.1 产物摘要不变；管理台构建和 13 项测试通过。Windows 安装 10 项、卸载 8 项、状态管道 3 项、TAP 14 项模拟回归通过；Python 打包 6 项通过，6 项 Linux 生命周期按平台跳过。[归档](../.local/release-0.2.2/archive-check.log)、[管理台](../.local/release-0.2.2/admin-tests.log)、[安装脚本](../.local/release-0.2.2/installer-tests.log) |
+
+本轮未执行线上 Logto 登录、Windows 服务/驱动真机安装、双机 NAT/Minecraft、外网 Steam 和 MMDB 样本检查；客户端安装包未重新构建。
+
+## 0.2.1 Windows TAP 校验修复（2026-09-11）
+
+在下方安装包修复基础上，修复两处实际安装问题：注册表改为先枚举名称，避开受保护的非驱动 `Properties` 项；安装器和 Go 后台同时接受官方 INF 的 `root\tap0901`、`tap0901`，仍校验专用网卡 GUID。先前包 SHA256 `149dd6e3534f78a538a6250b36c42019cf27a37bd4ef41cb21c4a45ba7fe99e7` 只修复第一处，用户实测在第二处失败。Windows amd64/arm64 客户端后台已重建，GUI 和驱动保持不变。未操作宿主服务、网卡或注册表权限；测试仅创建并清理临时 HKCU 键。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| 本机只读复现 | Windows PowerShell 5.1.26100.7705 普通用户下，原查询在网卡类 `Properties` 项复现访问拒绝；新查询成功读取 25 个驱动项。[日志](../.local/tap-registry-fix/registry-read.log) |
+| 脚本与打包回归 | TAP 14 项、安装事务 10 项、卸载 8 项、状态管道 3 项通过；真实创建 ID 的新回归在修复前复现误判。服务/网卡操作均为模拟。Python 打包 6 项通过，6 项 Linux 生命周期用例按平台跳过。[修复前](../.local/tap-component-fix/before.log)、[通过日志](../.local/tap-component-fix/script-tests.log) |
+| 后台网卡识别 | 临时 HKCU 注册表 7 个用例通过，覆盖两个官方 ID、大小写、其他 GUID/驱动、近似和空 ID；测试键已清理。Windows 两份开发归档已重建，归档摘要与架构检查通过。[注册表](../.local/tap-component-fix/registry-test.log)、[构建](../.local/tap-component-fix/client-build.log)、[归档](../.local/tap-component-fix/archive-check.log) |
+| 完整安装包 | 同名 Windows amd64 0.2.1 EXE 已替换，15,624,110 字节；SHA256 `84ed70edc1f6f52d7758d980d1167317f7ec6154712113b4dbb95beccf360e9b`。NSIS 编译、7z 完整性、613 个 payload 文件摘要、修复脚本及 GUI/新后台一致性通过；TAP 摘要、CAT/SYS/tapctl/WebView2 签名均有效。[包校验](../.local/tap-component-fix/installer-verification.json)、[归档](../.local/tap-component-fix/installer-archive.log)、[签名](../.local/tap-component-fix/signatures.json) |
+| Go 检查 | 修改文件 gofmt、vet、全量普通测试与文件索引检查通过，包含真实 Nebula Ethernet、隔离/撤销、中继和 P2P 集成；未配置测试数据库，数据库用例跳过，本轮未运行 Linux/race。此前两次测试在 `TestNebulaNativeRelay` 的 Windows `RIOConn.WriteTo`（`udp_rio_windows.go:298`）发生 `0xc0000005`，此次未复现，问题未修复。[vet](../.local/tap-component-fix/go-vet.log)、[全量测试](../.local/tap-component-fix/go-tests.log)、[此前崩溃](../.local/tap-registry-fix/engine-recheck.log) |
+
+完整 UAC 安装、驱动加载、卸载和双机 NAT/Minecraft 仍未验收；上述包校验不代表 Windows 网络链路已验收。
+
+## 0.2.1 Windows 安装包修复（2026-09-11）
+
+在下方发布源码基础上修改安装脚本、驱动打包和日志回传；客户端版本保持 0.2.1。按用户要求移除新增的旧服务兼容分支，并手动停止、删除宿主原有 `nodelane.exe` 服务，保留程序文件和身份数据；服务项与进程已确认不存在。[移除记录](../.local/tap-package/service-removal.log)。未安装新服务或驱动，控制面与节点镜像未改动。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| 完整安装包 | `dist/desktop/nlroom-0.2.1-windows-amd64-setup.exe`，15,630,001 字节；SHA256 `6d611dc7e0f5fa423c324e2a4ef15687611ee49b7f3092a7aaca5c5dc15f4cb8`。NSIS 编译、7z 完整性、613 个 payload 文件摘要和 GUI/后台一致性通过。[校验](../.local/tap-package/installer-verification.json)、[归档](../.local/tap-package/installer-archive.log) |
+| 内置驱动 | TAP-Windows6 9.27.0 的 CAT/SYS Microsoft 签名、OpenVPN 2.6.22 tapctl 签名和 WebView2 签名均有效；摘要与 PE 架构通过检查。对应完整源码和许可随包提供。[签名](../.local/tap-package/signatures.json) |
+| Windows 脚本 | Windows PowerShell 5.1 下安装事务 10 项、卸载 8 项、状态管道 3 项、TAP 操作 11 项通过；服务和网卡操作均为模拟，状态管道使用真实普通用户子进程。覆盖驱动失败后的程序恢复、新建网卡登记与清理、拒绝操作其他 VPN 网卡及具体错误回传。Python 打包 6 项通过，6 项 Linux 生命周期用例按平台跳过。[日志](../.local/tap-package/script-tests.log) |
+| Go 与开发归档 | Windows vet、全量普通测试和文件索引检查通过；未配置 Windows 数据库，数据库用例跳过，本轮未重跑 Linux/race。客户端四份开发归档已重新构建并核对摘要、版本和架构。[vet](../.local/tap-package/go-vet.log)、[测试](../.local/tap-package/go-tests.log)、[归档](../.local/tap-package/archive-check.log) |
+
+此修复包替换了下方首次发布的同名 EXE；旧摘要仅供历史追溯。Windows UAC 下的完整安装、驱动加载和卸载仍未验收。
+
+## 0.2.1 首次发布检查（2026-09-11）
+
+基于 `5898fa2d5ef20b8f2681e0e021622ed7fffff7ee` 的未提交版本拆分与打包修改；源码清单、镜像摘要和旧版摘要见 [IMAGES.txt](../deploy/IMAGES.txt)。两份镜像已推送到 `docker.nodelane.net`，未更新线上容器。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| 独立版本与归档 | 控制面/节点各两份 Linux 归档、客户端四份 Windows/Linux 归档通过 SHA256、版本、二进制隔离、架构及权限校验；控制面内置节点安装清单为 0.2.1。[归档](../.local/release-0.2.1-archive-check.log) |
+| Windows Go | gofmt、vet、全量普通测试通过，包含进程内真实 Nebula 集成；未配置 Windows 测试数据库，数据库用例跳过。[vet](../.local/release-0.2.1-vet.log)、[测试](../.local/release-0.2.1-tests.log) |
+| Linux 与独立 PostgreSQL | vet、全量普通测试和全量 race 全部通过，数据库用例实际执行；真实 TAP/Nebula 回归含 IPv4/IPv6、32 KB 数据报、MTU 1280、广播/组播、动态策略、跨房拒绝和撤销。[结果](../.local/nodelane-test-20260911-141921-558e83/results.json) |
+| 前端与原生桥接 | 管理台 13 项、桌面 36 项测试及构建通过；Windows Rust 4 项通过，已安装服务烟测跳过。[管理台](../.local/release-0.2.1-admin-tests.log)、[桌面](../.local/release-0.2.1-desktop-build.log)、[Rust](../.local/release-0.2.1-rust-tests.log) |
+| 部署与镜像 | 源码 Dockerfile、独立发布包的 host 编排、发布镜像三种部署冒烟全部通过，覆盖初始化、节点操作、容器重建恢复和撤销；所有临时资源已清理。[源码](../.local/nodelane-deploy-test-0ab06f65c9f0/results.json)、[发布包](../.local/nodelane-deploy-test-126a02d86c0f/results.json)、[镜像](../.local/nodelane-deploy-test-e9c2b237e68b/results.json) |
+| 双架构发布 | 两份镜像的 amd64/arm64 程序均实际执行 `--version` 并核对二进制 SHA256；ARM 经仿真。推送后远端 OCI index 与本地构建摘要一致。[程序校验](../.local/release-0.2.1-image-verification.json)、[发布摘要](../deploy/IMAGES.txt) |
+| Windows 完整安装包 | `dist/desktop/nlroom-0.2.1-windows-amd64-setup.exe`，13,446,861 字节；SHA256 `0b0e3bb80af1c08f173fcb501b659b5d01481a13f393fa1122e179e5f7066560`。NSIS 3.11 编译、归档完整性、610 个 payload 文件摘要、GUI/后台一致性和工具分离通过；WebView2 bootstrapper 的 Microsoft 签名有效。[包校验](../.local/release-0.2.1-installer-verification.json)、[解包](../.local/release-0.2.1-installer-archive.log) |
+| 安装与打包测试 | Windows 临时目录/模拟 SCM 的安装 6 项、卸载 8 项通过；Python 打包 6 项通过，6 项 Linux 生命周期测试按平台跳过，含三端版本不同仍可打包客户端及客户端版本不符拒绝。[安装](../.local/release-0.2.1-installer-tests.log)、[卸载](../.local/release-0.2.1-uninstall-tests.log)、[打包](../.local/release-0.2.1-package-tests.log) |
+
+首次 Windows NSIS 编译因语言文件路径失败，已改为脚本目录绝对引用并显式使用 UTF-8，随后完整编译和解包校验通过。本次完整 GUI 仅打包 Windows amd64；Windows ARM64 与 Linux 仅生成 CLI/后台归档，未生成对应 GUI 安装包。完整安装包未签名；Windows 真机服务/驱动、Linux 宿主 systemd、双机 NAT/Minecraft 和真实游戏本体仍未验收。本轮未运行外网 Steam 与 MMDB 样本检查，未运行完整原生 WebView 流程。
 
 ## 最近账号检查（2026-09-11）
 

@@ -115,7 +115,7 @@ func run() error {
 	paths := doc["paths"].(map[string]any)
 
 	paths["/v2/auth/verify"].(M)["post"].(M)["summary"] = "Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce"
-	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh database schema version 5 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
+	doc["info"] = M{"title": "NodeLane Room V2", "version": model.ControlVersion, "description": "Fresh database schema version 5 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
 	str := M{"type": "string"}
 	empty := object(M{})
 	ok := object(M{"ok": M{"type": "boolean", "enum": []bool{true}}}, "ok")
@@ -184,6 +184,8 @@ func run() error {
 	paths["/v2/auth/oidc/browser"].(M)["get"].(M)["parameters"] = []any{M{"name": "id", "in": "query", "required": true, "schema": str}}
 	paths["/v2/auth/oidc/callback"].(M)["get"].(M)["parameters"] = []any{M{"name": "state", "in": "query", "required": true, "schema": str}, M{"name": "code", "in": "query", "schema": str}, M{"name": "error", "in": "query", "schema": str}}
 	paths["/v2/auth/oidc/confirm"].(M)["post"].(M)["requestBody"] = M{"required": true, "content": M{"application/x-www-form-urlencoded": M{"schema": object(M{"id": str, "csrf": str}, "id", "csrf")}}}
+	paths["/v2/auth/oidc/callback"].(M)["get"].(M)["description"] = "Confirmation HTML uses Referrer-Policy: strict-origin to preserve the form POST Origin without exposing callback code or state in Referer."
+	paths["/v2/auth/oidc/confirm"].(M)["post"].(M)["description"] = "Requires the control service Origin, the login transaction browser cookie and its CSRF token. Missing, null or foreign Origin and cross-site requests are rejected."
 	schemas["LoginStart"].(M)["description"] = "proof is SHA256 of a 64-hex-character random private proof. Sign UTF8(nodelane-login-start:<device_id>:<proof_hash>) with the device Ed25519 key. Only a valid device signature can start enrollment."
 	schemas["LoginClaim"].(M)["description"] = "proof is the original private proof; sign UTF8(nodelane-login-claim:<id>:<proof>). A successful claim is consumed once. Never log proof or returned sessions."
 	schemas["OIDCSettings"].(M)["properties"].(M)["client_secret"].(M)["writeOnly"] = true

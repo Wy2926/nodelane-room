@@ -11,7 +11,7 @@ $transaction = $text.Substring($text.IndexOf('# The lock is'))
 $testRoot = Join-Path $root ('.local/install-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
-  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback', 'registration-failure')) {
+  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback', 'registration-failure', 'tap-failure', 'tap-created', 'tap-created-start-failure', 'tap-cleanup-failure')) {
     & {
       foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
       # Windows ACL/DPAPI and real SCM/driver acceptance are separate checks.
@@ -24,7 +24,19 @@ try {
       }
       function Start-Service {
         param($Name)
-        if ($scenario -eq 'start-failure' -and (Get-Content (Join-Path $target 'BUILD.txt')) -eq 'new') { throw 'simulated start failure' }
+        if ($scenario -in @('start-failure', 'tap-created-start-failure', 'tap-cleanup-failure') -and (Get-Content (Join-Path $target 'BUILD.txt')) -eq 'new') { throw 'simulated start failure' }
+      }
+      function Install-NodeLaneTap {
+        param($Directory)
+        if ($scenario -eq 'tap-failure') { throw 'simulated TAP failure' }
+        if ($scenario -in @('tap-created', 'tap-created-start-failure', 'tap-cleanup-failure')) { return '{a986c01f-4256-4921-bce7-d3d3fb61898b}' }
+        return $null
+      }
+      function Remove-NodeLaneTap {
+        param($Directory, $Guid)
+        if ($Guid -ne '{a986c01f-4256-4921-bce7-d3d3fb61898b}') { throw 'Wrong adapter cleanup' }
+        $script:tapRemoved = $true
+        if ($scenario -eq 'tap-cleanup-failure') { throw 'simulated TAP cleanup failure' }
       }
       function Wait-Ready {
         param($Version)
@@ -52,19 +64,25 @@ try {
       $hashes = @{'BUILD.txt' = (Get-FileHash -LiteralPath (Join-Path $source 'BUILD.txt')).Hash.ToLowerInvariant()}
       function Get-ItemProperty { param($LiteralPath, $Name, $ErrorAction) [pscustomobject]@{ pv = '1.0.0.0' } }
       $existing = [pscustomobject]@{ Status = 'Running' }
+      $ownerFile = Join-Path $base 'state/owner.sid'
+      New-Item -ItemType Directory -Path (Split-Path $ownerFile -Parent) | Out-Null
+      $script:tapRemoved = $false
+      $tapDirectory = Join-Path $base 'tap'
       $oldVersion = '0.2.0'; $version = '0.2.1'
       if ($scenario -eq 'rollback') {
         Move-Item -LiteralPath $source -Destination $previous
         $source = $previous
       }
       $failed = $false
-      try { . ([scriptblock]::Create($transaction)) } catch { $failed = $true }
-      $expectedFailure = $scenario -in @('start-failure', 'readiness-failure', 'stop-failure', 'registration-failure')
-      if ($failed -ne $expectedFailure) { throw "Unexpected transaction result: $scenario" }
+      try { . ([scriptblock]::Create($transaction)) } catch { $failed = $true; $failure = $_ }
+      $expectedFailure = $scenario -in @('start-failure', 'readiness-failure', 'stop-failure', 'registration-failure', 'tap-failure', 'tap-created-start-failure', 'tap-cleanup-failure')
+      if ($failed -ne $expectedFailure) { throw "Unexpected transaction result: $scenario ($failure)" }
       $want = if ($expectedFailure) { 'old' } else { 'new' }
       if ((Get-Content -LiteralPath (Join-Path $target 'BUILD.txt')) -ne $want) { throw "Wrong active program after $scenario" }
       if (-not $expectedFailure -and (Get-Content -LiteralPath (Join-Path $previous 'BUILD.txt')) -ne 'old') { throw 'Missing previous version' }
       if ($scenario -eq 'registration-failure' -and (Get-Content -LiteralPath (Join-Path $base 'registered-version')) -ne $oldVersion) { throw 'Failed upgrade left the wrong registered version' }
+      if ($scenario -eq 'tap-created' -and (Get-Content -LiteralPath (Join-Path $base 'state/tap.guid')) -ne '{a986c01f-4256-4921-bce7-d3d3fb61898b}') { throw 'Created TAP ownership was not recorded' }
+      if ($script:tapRemoved -ne ($scenario -in @('tap-created-start-failure', 'tap-cleanup-failure'))) { throw 'Wrong TAP cleanup on installation failure' }
       try { Assert-Bundle (Join-Path $base '../outside'); throw 'Accepted unsafe path' } catch {
         if ($_.Exception.Message -ne 'Unsafe installation path') { throw }
       }

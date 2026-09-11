@@ -28,7 +28,7 @@ func main() {
 
 func command() *cobra.Command {
 	var stateDir string
-	root := &cobra.Command{Use: "nodelane-server", Short: "NodeLane Room control service", SilenceUsage: true}
+	root := &cobra.Command{Use: "nodelane-server", Short: "NodeLane Room control service", SilenceUsage: true, Version: model.ControlVersion + " (protocol v2; Nebula " + model.NebulaVersion + ")"}
 	root.PersistentFlags().StringVar(&stateDir, "state-dir", "/var/lib/nodelane-control", "Private control instance state directory")
 	var listen, tlsCert, tlsKey, releaseDir, geoIPPath, geoIPURL, adminPath string
 	var behindProxy bool

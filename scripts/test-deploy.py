@@ -8,6 +8,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -19,11 +20,14 @@ import time
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--node-root", type=Path, help="separate node release directory for --root release builds")
     parser.add_argument("--images", action="store_true", help="use versioned registry images instead of building")
     parser.add_argument("--host", action="store_true", help="test compose.host.yaml with isolated database/proxy fixtures (no host-port routing)")
     parser.add_argument("--pull", action="store_true", help="pull the versioned images before testing (requires --images)")
     parser.add_argument("--extended", action="store_true", help="wait for real automatic renewal and expiration; test lifecycle actions")
-    parser.add_argument("--version", default="0.2.0")
+    versions = dict((role.lower(), version) for role, version in re.findall(r'const (Control|Node|Client)Version = "([^"]+)"', (Path(__file__).resolve().parents[1] / 'internal/model/version.go').read_text()))
+    parser.add_argument("--control-version", default=versions['control'])
+    parser.add_argument("--node-version", default=versions['node'])
     parser.add_argument("--registry", default="docker.nodelane.net")
     args = parser.parse_args()
     if args.pull and not args.images:
@@ -36,10 +40,13 @@ def main():
     password = secrets.token_hex(24)
     hidden = [password]
     env = dict(os.environ, ROOM_DOMAIN="room.test", POSTGRES_PASSWORD=password,
-               NODELANE_VERSION=args.version if args.images else run, NODELANE_REGISTRY=args.registry,
+               NODELANE_CONTROL_VERSION=args.control_version if args.images else run,
+               NODELANE_NODE_VERSION=args.node_version if args.images else run, NODELANE_REGISTRY=args.registry,
                NODE_PORT="4242", NODE_NAME="compose-test", NODE_REGION="local",
                NODE_PUBLIC_HOST="node", NODE_CONTROL_URL="https://room.test")
     env.update(CONTROL_BIND_IP="127.0.0.1")
+    if args.node_root:
+        env['NODELANE_NODE_BUILD_CONTEXT'] = str(args.node_root.resolve())
     checks = []
 
     def command(argv, *, stdin=None, log=None, check=True):
@@ -167,7 +174,7 @@ def main():
             passed("web database/CA setup, login, pre-created node and one-use enrollment over HTTPS")
             command(compose+["exec","-T","node","curl","--fail","--silent","http://127.0.0.1:9090/readyz"])
             manifest=json.loads(command(compose+["exec","-T","node","curl","--fail","--silent","https://room.test/install/manifest.json"]).stdout)
-            if manifest['version']!='0.2.0' or set(manifest['artifacts'])!={'linux/amd64','linux/arm64'}: raise RuntimeError('native release manifest mismatch')
+            if manifest['version']!=args.node_version or set(manifest['artifacts'])!={'linux/amd64','linux/arm64'}: raise RuntimeError('native release manifest mismatch')
             script=command(compose+["exec","-T","node","curl","--fail","--silent","https://room.test/install/node.sh"]).stdout
             denied=command(compose+["exec","-T","node","bash","-s","--","--server","https://room.test"],stdin=script,check=False)
             if denied.returncode==0 or '容器内' not in denied.stderr: raise RuntimeError('native installer did not reject container: '+denied.stdout+denied.stderr)

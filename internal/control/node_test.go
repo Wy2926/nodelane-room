@@ -57,7 +57,7 @@ func TestEnrollmentRejectsBeforeChallengeAndScopes(t *testing.T) {
 	player.Identity.Node = false
 	statusError(t, player.Authenticate(ctx), 403)
 	other := user(t, server, "player")
-	statusError(t, other.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.Version, Engine: "stopped"}}, nil), 401)
+	statusError(t, other.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, nil), 401)
 	var stored string
 	must(t, s.Pool.QueryRow(ctx, "SELECT key_hash FROM enrollment_keys WHERE node_id=$1", n.ID).Scan(&stored))
 	if stored == key {
@@ -105,7 +105,7 @@ func TestEnrollmentConcurrentConsumptionAndRecovery(t *testing.T) {
 	recovered := client.NewAPI(winner.Identity)
 	must(t, recovered.Authenticate(ctx))
 	var sync model.NodeSync
-	must(t, recovered.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.Version, Engine: "stopped"}}, &sync))
+	must(t, recovered.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, &sync))
 	if sync.Node.ID != n.ID {
 		t.Fatal("lost registration")
 	}
@@ -126,7 +126,7 @@ func TestDisableReplaceAndAddressQuarantine(t *testing.T) {
 	}
 	action("disable")
 	statusError(t, a.Call(ctx, "POST", "/v2/node/lease", model.LeaseRequest{PublicKey: pub}, nil), 403)
-	must(t, a.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.Version, Engine: "stopped"}}, nil))
+	must(t, a.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, nil))
 	var revoked bool
 	must(t, s.Pool.QueryRow(ctx, "SELECT revoked FROM certificates WHERE fingerprint=$1", lease.Fingerprint).Scan(&revoked))
 	if !revoked {
@@ -216,12 +216,12 @@ func TestNodeEnrollmentDrainAndInfrastructureLease(t *testing.T) {
 		t.Fatal("incorrect binding")
 	}
 	var snap model.NodeSync
-	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.Version, Engine: "running"}}, &snap))
+	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "running"}}, &snap))
 	if len(snap.Snapshot.Nodes) != 1 {
 		t.Fatal("missing node")
 	}
 	must(t, s.Write(ctx, func(tx pgx.Tx) error { _, e := s.nodeAction(ctx, tx, "test", n.ID, "drain"); return e }))
-	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.Version, Engine: "running"}}, &snap))
+	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "running"}}, &snap))
 	if len(snap.Snapshot.Nodes) != 1 || !snap.Snapshot.Nodes[0].Draining {
 		t.Fatal("drain must preserve authorization and remove candidacy")
 	}
@@ -235,7 +235,7 @@ func TestNodeDesiredAndAppliedEndpointAndOperationDedup(t *testing.T) {
 	a := nodeAPI(t, server)
 	must(t, a.Enroll(ctx, key))
 	c := n.Config()
-	report := model.NodeReport{Version: model.Version, Engine: "running", AppliedRevision: 1, AppliedConfig: &c}
+	report := model.NodeReport{Version: model.NodeVersion, Engine: "running", AppliedRevision: 1, AppliedConfig: &c}
 	var sync model.NodeSync
 	must(t, a.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: 1, Report: report}, &sync))
 	fresh := c

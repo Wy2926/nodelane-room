@@ -125,6 +125,10 @@ func confirmLogin(t *testing.T, server *httptest.Server, attempt model.LoginAtte
 	if resp.StatusCode != 200 {
 		return resp.StatusCode
 	}
+	// A real browser derives the form's Origin from this policy; Go does not.
+	if resp.Header.Get("Referrer-Policy") != "strict-origin" {
+		t.Fatal("confirmation must preserve Origin without referring callback code/state")
+	}
 	match := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindSubmatch(b)
 	if len(match) != 2 {
 		t.Fatalf("confirmation form missing (status %d)", resp.StatusCode)
@@ -138,6 +142,77 @@ func confirmLogin(t *testing.T, server *httptest.Server, attempt model.LoginAtte
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode
+}
+
+func TestOIDCConfirmationRequiresOriginCookieAndCSRF(t *testing.T) {
+	_, server := oidcFixture(t, "")
+	a := user(t, server, "guest")
+	proof := randomID() + randomID()
+	attempt, err := a.BeginLogin(context.Background(), proof, true)
+	must(t, err)
+	jar, err := cookiejar.New(nil)
+	must(t, err)
+	browser := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	resp, err := browser.Get(attempt.URL)
+	must(t, err)
+	b, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	must(t, err)
+	match := regexp.MustCompile(`name="csrf" value="([^"]+)"`).FindSubmatch(b)
+	if resp.StatusCode != 200 || len(match) != 2 {
+		t.Fatalf("confirmation form missing (status %d)", resp.StatusCode)
+	}
+	var cookie string
+	for _, c := range jar.Cookies(resp.Request.URL) {
+		if c.Name == loginCookie(attempt.ID) {
+			cookie = c.Value
+		}
+	}
+	if cookie == "" {
+		t.Fatal("browser binding cookie missing")
+	}
+	csrf := string(match[1])
+	wrongCookie := randomID() + randomID()
+	for _, tc := range []struct {
+		name, origin, site, cookie, csrf string
+		status                           int
+	}{
+		{"missing origin", "", "same-origin", cookie, csrf, 403},
+		{"null origin", "null", "same-origin", cookie, csrf, 403},
+		{"foreign origin", "https://untrusted.invalid", "same-site", cookie, csrf, 403},
+		{"cross-site fetch", server.URL, "cross-site", cookie, csrf, 403},
+		{"missing csrf", server.URL, "same-origin", cookie, "", 403},
+		{"wrong csrf", server.URL, "same-origin", cookie, hash("wrong"), 403},
+		{"missing cookie", server.URL, "same-origin", "", csrf, 403},
+		{"other browser", server.URL, "same-origin", wrongCookie, hash("confirm:" + wrongCookie), 403},
+		{"valid confirmation", server.URL, "same-origin", cookie, csrf, 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest("POST", server.URL+"/v2/auth/oidc/confirm", strings.NewReader(url.Values{"id": {attempt.ID}, "csrf": {tc.csrf}}.Encode()))
+			must(t, err)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("Origin", tc.origin)
+			req.Header.Set("Sec-Fetch-Site", tc.site)
+			if tc.cookie != "" {
+				req.AddCookie(&http.Cookie{Name: loginCookie(attempt.ID), Value: tc.cookie})
+			}
+			resp, err := server.Client().Do(req)
+			must(t, err)
+			resp.Body.Close()
+			if resp.StatusCode != tc.status {
+				t.Fatalf("confirmation: got %d, want %d", resp.StatusCode, tc.status)
+			}
+			result, err := a.ClaimLogin(context.Background(), attempt.ID, proof)
+			must(t, err)
+			if tc.status == 403 {
+				if result.State != "verified" || result.Session != nil {
+					t.Fatal("rejected confirmation changed device authorization")
+				}
+			} else if result.State != "ready" || result.Session == nil || result.Session.User.Kind != "registered" {
+				t.Fatal("valid confirmation did not authorize device")
+			}
+		})
+	}
 }
 
 func TestGuestUpgradePreservesUserRoomAndRejectsMerge(t *testing.T) {

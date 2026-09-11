@@ -37,6 +37,21 @@ class PackagingTests(unittest.TestCase):
     def test_versions_are_aligned(self):
         self.assertRegex(source_version(), r'^\d+\.\d+\.\d+$')
 
+    def test_client_version_is_independent_and_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.local') as tmp:
+            root = Path(tmp)
+            for name in ('desktop/package.json', 'desktop/src-tauri/tauri.conf.json', 'desktop/src-tauri/Cargo.toml', 'internal/model/version.go'):
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text((ROOT / name).read_text(encoding='utf-8'), encoding='utf-8')
+            version = source_version(root)
+            go = root / 'internal/model/version.go'
+            go.write_text(f'const ControlVersion = "8.1.0"\nconst NodeVersion = "9.2.0"\nconst ClientVersion = "{version}"\n')
+            self.assertEqual(source_version(root), version)
+            go.write_text(go.read_text().replace(f'ClientVersion = "{version}"', 'ClientVersion = "7.3.0"'))
+            with self.assertRaisesRegex(SystemExit, 'client source versions must match'):
+                source_version(root)
+
     def test_installer_languages_have_complete_matching_resources(self):
         dictionaries = []
         for locale in ('zh-CN', 'en-US'):
@@ -62,7 +77,7 @@ class PackagingTests(unittest.TestCase):
             struct.pack_into('<H', header, 18, 62)
             for name in ('nlroom', 'nlroom-cli', 'nlroom-service'):
                 (root / name).write_bytes(header)
-            (root / 'BUILD.txt').write_text('Version: 0.2.0\nTarget: linux/amd64\n')
+            (root / 'BUILD.txt').write_text('Component: client\nVersion: 0.2.0\nTarget: linux/amd64\n')
             verify_release(root, root / 'nlroom', 'linux', 'amd64', '0.2.0')
             with self.assertRaisesRegex(SystemExit, 'version mismatch'):
                 verify_release(root, root / 'nlroom', 'linux', 'amd64', '0.2.1')

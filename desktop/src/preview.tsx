@@ -66,7 +66,7 @@ function makeRoom(name: string, selected: Game): Room {
 function status(): Status {
   return {
     user: initialized ? {id: "preview-user", name: "旅人", kind: "guest", state: "active", created_at: new Date().toISOString()} : undefined,
-    version: "0.2.0",
+    version: "0.2.1",
     protocol_version: 2,
     lan_version: 1,
     server: "https://room.nodelane.net",

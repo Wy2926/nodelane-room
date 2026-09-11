@@ -1,14 +1,26 @@
 #Requires -RunAsAdministrator
-param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [switch]$Rollback, [switch]$CheckOnly, [string]$SourceDir = $PSScriptRoot, [switch]$Quiet)
+param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [switch]$Rollback, [switch]$CheckOnly, [string]$SourceDir = $PSScriptRoot, [switch]$Quiet, [string]$LogPipe)
 $ErrorActionPreference = 'Stop'
+function Write-InstallMessage([string]$Message) {
+  Write-Output $Message
+  if ($script:installLog) { $script:installLog.WriteLine($Message) }
+}
 trap {
-  Write-Output $_.Exception.Message
+  Write-InstallMessage ('Installation failed: ' + $_.Exception.Message)
   if (-not $CheckOnly -and -not $Quiet) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'NodeLane Room installation failed') | Out-Null
   }
   exit 1
 }
+if ($LogPipe) {
+  if ($LogPipe -notmatch '^NodeLaneRoom-install-[0-9a-f]{32}$') { throw 'Invalid installation status pipe' }
+  $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $LogPipe, [IO.Pipes.PipeDirection]::Out)
+  $pipe.Connect(10000)
+  $script:installLog = [IO.StreamWriter]::new($pipe, [Text.UTF8Encoding]::new($false))
+  $script:installLog.AutoFlush = $true
+}
+Write-InstallMessage 'Checking package, installation permissions and existing service...'
 $null = [System.Security.Principal.SecurityIdentifier]::new($OwnerSid)
 if (-not [Environment]::Is64BitProcess) { throw 'Run the installer with native 64-bit PowerShell' }
 $base = [IO.Path]::GetFullPath($env:ProgramFiles)
@@ -120,7 +132,7 @@ if ($build -notmatch '(?m)^Target: windows/(amd64|arm64)\s*$') { throw 'Missing 
 $arch = $Matches[1]
 if ($build -notmatch '(?m)^Version: (\d+\.\d+\.\d+)\s*$') { throw 'Invalid package version' }
 $version = $Matches[1]
-$nativeArch = $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()
+$nativeArch = switch (@(Get-CimInstance Win32_Processor -Property Architecture)[0].Architecture) { 9 { 'amd64' }; 12 { 'arm64' }; default { throw 'Unsupported native Windows architecture' } }
 if ($nativeArch -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
 $files = @('nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt')
 $hasGUI = Test-Path -LiteralPath (Join-Path $source 'nlroom.exe') -PathType Leaf
@@ -170,11 +182,17 @@ if (Test-Path -LiteralPath (Join-Path $target 'BUILD.txt')) {
   if (-not $Rollback -and [version]$version -lt [version]$oldVersion) { throw 'Downgrade refused; use the explicit rollback command' }
 }
 if ($existing -and -not $oldVersion) { throw 'Installed service has no verifiable version; refusing replacement' }
+if ($managedGUI) {
+  $tapDirectory = Join-Path $PSScriptRoot 'tap'
+  . (Join-Path $PSScriptRoot 'tap.ps1')
+  Assert-TapPackage $tapDirectory
+}
 if ($CheckOnly) { Write-Output "Package $version verified. No installation changes made."; return }
 
 # The lock is in administrator-controlled Program Files, shared with uninstall.
 $lock = [IO.File]::Open((Join-Path $base 'NodeLaneRoom.install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
 $movedOld = $false; $movedNew = $false; $stopped = $false
+$createdTap = $null
 $wasRunning = $existing -and $existing.Status -eq 'Running'
 try {
   if (-not (Test-Path -LiteralPath $target) -and (Test-Path -LiteralPath $previous)) { throw 'Interrupted installation: restore NodeLaneRoom.previous to NodeLaneRoom before retrying' }
@@ -220,21 +238,34 @@ try {
   }
   Stop-Network
   $stopped = $true
+  if ($managedGUI) {
+    Write-InstallMessage 'Preparing the signed TAP driver and dedicated nodelane0-lan adapter...'
+    $createdTap = Install-NodeLaneTap $tapDirectory
+  }
   Remove-Bundle $previous
   if (Test-Path -LiteralPath $target) { Move-Bundle $target $previous; $movedOld = $true }
   Move-Bundle $pending $target
   $movedNew = $true
+  Write-InstallMessage 'Starting the networking service...'
   if ($existing) { Start-Service -Name NodeLaneRoom } else {
     & (Join-Path $target 'nlroom-service.exe') service install --owner-sid $OwnerSid
     if ($LASTEXITCODE -ne 0) { throw 'Service registration failed' }
   }
   Wait-Ready $version
   Register-Application $version
-  Write-Output "NodeLane Room $version installed. Open the application as the installation user."
+  if ($createdTap) {
+    Assert-Tree (Split-Path $ownerFile -Parent) -Trusted
+    Set-Content -LiteralPath (Join-Path (Split-Path $ownerFile -Parent) 'tap.guid') -Value $createdTap -Encoding ascii
+  }
+  Write-InstallMessage "NodeLane Room $version installed. Open the application as the installation user."
 } catch {
   $failure = $_
+  if ($movedNew) { Stop-Network }
+  $tapCleanupError = $null
+  if ($createdTap) {
+    try { Remove-NodeLaneTap $tapDirectory $createdTap } catch { $tapCleanupError = $_ }
+  }
   if ($movedNew) {
-    Stop-Network
     if (-not $existing -and (Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue)) {
       & (Join-Path $target 'nlroom-service.exe') service uninstall
       if ($LASTEXITCODE -ne 0) { throw 'Failed to remove new service; installation files retained for recovery' }
@@ -251,6 +282,7 @@ try {
     Write-Output 'Previous networking service restored.'
   }
   if ($movedOld) { Register-Application $oldVersion }
+  if ($tapCleanupError) { Write-InstallMessage ('The previous application was restored, but TAP cleanup needs attention: ' + $tapCleanupError.Exception.Message) }
   throw $failure
 } finally {
   $lock.Dispose()

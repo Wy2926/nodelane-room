@@ -2,7 +2,7 @@
 name: ${NODE_PROJECT_NAME:-nlroom-node}
 services:
   node:
-    image: ${NODELANE_REGISTRY:-docker.nodelane.net}/nodelane-room-node:${NODELANE_VERSION:-0.2.0}
+    image: ${NODELANE_REGISTRY:-docker.nodelane.net}/nodelane-room-node:${NODELANE_NODE_VERSION:-0.2.1}
     user: '0:0'
     command: [run, --server, '${NODE_CONTROL_URL:?set NODE_CONTROL_URL}', --listen-port, '${NODE_PORT:-4242}']
     environment:

@@ -176,7 +176,9 @@ var loginPage = template.Must(template.New("login").Parse(`<!doctype html><html 
 
 func renderLogin(w http.ResponseWriter, message, id, name, device, csrf string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// Keep the form POST's Origin without leaking callback code/state in Referer.
+	// no-referrer makes browsers send Origin: null, which checkOrigin rejects.
+	w.Header().Set("Referrer-Policy", "strict-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	_ = loginPage.Execute(w, struct{ Message, ID, Name, Device, CSRF string }{message, id, name, device, csrf})
 }

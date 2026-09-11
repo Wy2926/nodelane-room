@@ -1,10 +1,10 @@
 # NodeLane Room V2
 
-**NodeLane**（`nodelane.net`）旗下游戏组网子产品，版本 **0.2.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
+**NodeLane**（`nodelane.net`）旗下游戏组网子产品，控制面 **0.2.2**、节点 **0.2.1**、客户端 **0.2.1**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
 
 玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面设计见 [客户端设计](docs/client.md)，修改代码先用 [任务导航](docs/files.md#按任务读取) 定位。
 
-V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 5，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。当前 LAN 变更尚未发布；[镜像清单](deploy/IMAGES.txt) 中历史 0.2.0 镜像不包含本轮架构，不能与当前客户端混用。本机 IPC 为版本 2。当前检查与未验收项见 [验证记录](docs/validation.md)。
+V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 5，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。0.2.1 包含当前 Ethernet LAN 架构；[镜像清单](deploy/IMAGES.txt) 提供镜像摘要，历史 0.2.0 使用旧数据面，不能与当前客户端混用。本机 IPC 为版本 2。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
 ## 控制面和节点
 
@@ -14,13 +14,13 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 ## Windows 客户端
 
-桌面玩家使用 `dist/desktop/nlroom-0.2.0-windows-amd64-setup.exe`（本地构建的未签名测试包）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。默认连接 `https://room.nodelane.net`，填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
+桌面玩家使用 `dist/desktop/nlroom-0.2.1-windows-amd64-setup.exe`（本地构建的未签名测试包）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。默认连接 `https://room.nodelane.net`，填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
 
-安装包使用 NSIS 3 Modern UI 2，提供 NodeLane 品牌欢迎页、安装与维护页、进度及完成页。安装入口在提权前取得玩家 SID；检查版本、架构和完整包摘要。缺少 WebView2 时校验微软签名并运行随包的官方 Evergreen 引导程序，需要联网。GUI 保持普通用户运行，后台独立运行。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，只保留程序、原生 `Uninstall.exe`、构建信息和许可；PowerShell 安装工具与 WebView2 引导程序仅在临时目录执行。
+安装包使用 NSIS 3 Modern UI 2，提供 NodeLane 品牌欢迎页、安装与维护页、进度及完成页。安装入口在提权前取得玩家 SID；检查版本、架构和完整包摘要，提权后的具体错误回传到安装日志。内置官方已签名的 TAP-Windows6 9.27.0 驱动，校验后创建专用网卡（规则见下方 LAN 网卡）。缺少 WebView2 时校验微软签名并运行随包的官方 Evergreen 引导程序，需要联网。GUI 保持普通用户运行，后台独立运行。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，只保留程序、原生 `Uninstall.exe`、构建信息和许可；PowerShell、驱动安装工具与 WebView2 引导程序仅在临时目录执行。
 
-更新时退出客户端，在同一玩家账户下运行新版完整安装包。“安装与维护”显示当前和目标版本，同版本可重新安装，普通更新拒绝降级。安装器保留身份与用户绑定，停止并等待后台退出后替换程序；新版后台就绪或系统登记失败时恢复旧程序。成功后保留一份旧程序在 `%ProgramFiles%\NodeLaneRoom.previous`，不会保存第二份身份。再次运行安装包，若存在新版安装器生成的备份，可选择“恢复上一次安装的程序”；仅适用于身份格式和本机协议兼容的版本。原脚本版安装可以直接更新，脚本版备份不提供此恢复选项。
+更新时退出客户端，在同一玩家账户下运行新版完整安装包。“安装与维护”显示当前和目标版本，同版本可重新安装，普通更新拒绝降级。安装器保留身份与用户绑定，停止并等待后台退出后替换程序；新版后台就绪或系统登记失败时恢复旧程序。成功后保留一份旧程序在 `%ProgramFiles%\NodeLaneRoom.previous`，不会保存第二份身份。再次运行安装包，若存在新版安装器生成的备份，可选择“恢复上一次安装的程序”；仅适用于当前 `nlroom-service.exe` 服务结构及身份格式、本机协议兼容的版本。
 
-卸载在 Windows 设置的“已安装的应用”选择 **NodeLane Room → 卸载**，或双击安装目录中的 `Uninstall.exe`。独立卸载向导默认保留设备身份与用户绑定；勾选清除数据还需再次确认。卸载会停止并等待后台退出，移除程序、旧版备份、开始菜单和系统登记；停止失败时保留程序和卸载入口。共享 WebView2 不卸载。`Uninstall.exe /S` 可静默卸载并保留身份，仍需管理员授权。
+卸载在 Windows 设置的“已安装的应用”选择 **NodeLane Room → 卸载**，或双击安装目录中的 `Uninstall.exe`。独立卸载向导默认保留设备身份与用户绑定；勾选清除数据还需再次确认。卸载会停止并等待后台退出，移除程序、安装器创建并登记的专用网卡、旧版备份、开始菜单和系统登记；停止失败时保留程序和卸载入口。共享 TAP 驱动包和 WebView2 保留。`Uninstall.exe /S` 可静默卸载并保留身份，仍需管理员授权。
 
 设置 → 版本与更新可查看版本；“检查更新”目前仅提供界面和未接入提示。当前交付仍为完整包手动更新，不提供在线更新源或静默自动更新。Windows 服务、UAC 和驱动的真机结果见 [验证记录](docs/validation.md)，不可将打包通过视为真机验收通过。
 
@@ -64,7 +64,7 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 
 管理台可配置广播、组播；额外 Ethernet 类型仅在老游戏需要时填写，如 IPX 的 `0x8137`、IEEE 802.3 的 `0`。动态端口游戏可配置 TCP、UDP 各一条 `1–65535`。须使用支持当前 LAN 与 IPC 的匹配客户端，能力字段见游戏网络文档。
 
-- Windows：先由管理员从 [OpenVPN TAP-Windows6 官方项目](https://github.com/OpenVPN/tap-windows6) 准备受信签名驱动和一张独占的 TAP 网卡，连接名称设为 **`nodelane0-lan`**，驱动 MTU 为 1500；不要重命名其他 VPN 正在使用的网卡。当前打包流程不捆绑 TAP 驱动；已移除旧 Wintun 分发，需先独立准备 TAP。客户端服务只打开这一名称且 ComponentId 为 `tap0901` 的网卡，配置地址并在退出时清除；缺失时报告准备步骤，不自动安装。驱动版本、签名、摘要与卸载流程须在正式打包前锁定并完成真机验收。
+- Windows：完整桌面安装包内置 [TAP-Windows6 9.27.0](https://github.com/OpenVPN/tap-windows6/releases/tag/9.27.0) 与 OpenVPN 2.6.22 的 `tapctl`，固定下载摘要并验证 Microsoft/OpenVPN 签名。`tapctl` 仅用于管理网卡；`licenses/tap-windows6/` 中的两个 `.tar.gz` 是随附源码及许可，不执行，也不安装 OpenVPN 客户端或服务。安装器只暂存驱动包，再创建 **`nodelane0-lan`** 专用网卡，MTU 为 1500；不更新或重命名其他 VPN 网卡。已存在的同名网卡须为官方 TAP ID（`root\tap0901` 或 `tap0901`）且驱动至少 9.27.0，否则停止安装。仅安装器新建的 GUID 写入受保护的 `tap.guid`，失败时清理、卸载时核对名称和 GUID 后移除；预先手动准备的网卡保留。CLI 开发归档需管理员自行准备专用 TAP。客户端服务只打开网卡并配置、清理地址，不执行驱动安装。Windows 驱动实际加载及完整安装卸载仍须真机验收。
 - Linux：后台以 root 或所需网络管理权限运行，使用内核 `/dev/net/tun` 创建非持久 `nodelane0-lan` TAP，停止时释放；不桥接物理网卡。
 - 入房后用 `status --json` 或 `doctor` 查看 `lan.ready`、MAC、IPv6、MTU。MAC 与控制端绑定成功才就绪；游戏选择此虚拟网卡或其虚拟 IP。是否自动出现房间仍取决于游戏的接口选择与已配置发现规则。
 
@@ -93,10 +93,10 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 
 ## Linux 桌面与客户端开发
 
-桌面使用 `dist/desktop/nlroom_0.2.0_amd64.deb`，在 Ubuntu 22.04/24.04、Debian 12/13 上由 apt 安装依赖；首次安装需显式绑定玩家：
+Linux 桌面完整包需按下方步骤单独构建，包名为 `dist/desktop/nlroom_0.2.1_amd64.deb`。在 Ubuntu 22.04/24.04、Debian 12/13 上由 apt 安装依赖；首次安装需显式绑定玩家：
 
 ```sh
-sudo apt install ./nlroom_0.2.0_amd64.deb
+sudo apt install ./nlroom_0.2.1_amd64.deb
 sudo nlroom-setup --owner "$USER"
 nlroom
 ```
@@ -149,22 +149,24 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 .\scripts\build.ps1 -Targets 'linux/amd64','linux/arm64'
 ```
 
-产物默认在 `dist/0.2.0/`，包含 Windows ZIP 安装包、Linux tar.gz、SHA256SUMS 和第三方许可。Windows 包包含 `nlroom-cli.exe`、`nlroom-service.exe` 及安装入口；Linux 包包含相同两项客户端程序、控制面和节点二进制、运行镜像 Dockerfile、控制面与数据节点的 Compose 编排，解压后无需源码或 Go 即可构建部署。发布包不包含 README、AGENTS、docs 或驱动使用说明；操作步骤见源码中的 [部署指南](docs/deployment.md)，法律声明和许可证保留。可执行文件尚未由 NodeLane 代码签名证书签名。构建脚本不安装服务、不创建云资源。
+版本分别维护在 `internal/model/version.go` 的 `ControlVersion`、`NodeVersion`、`ClientVersion`；客户端同时更新 desktop 的 npm/Tauri/Cargo 程序版本，管理台 npm 程序版本随控制面更新。协议版本独立维护。构建按组件写入 `dist/control/<版本>/`、`dist/node/<版本>/`、`dist/client/<版本>/`，归档名包含组件、版本、系统和架构；`-Components client` 或 `-Components node` 可单独构建。控制面构建同时准备其固定节点版本的 amd64/arm64 原生安装资源。
 
-构建后用 `python scripts/check-release.py dist/0.2.0` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
+客户端归档仅含 CLI、后台及许可，Windows 另含安装入口；控制面与节点使用各自 Linux 归档，控制面附部署模板和同源节点安装包。每个组件目录独立生成 SHA256SUMS。完整桌面安装包仍写入 `dist/desktop/`；程序尚未由 NodeLane 代码签名证书签名。构建不安装服务、不创建云资源。
+
+构建后用 `python scripts/check-release.py dist` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
 
 桌面前端用 `npm --prefix desktop ci` 安装依赖，`npm --prefix desktop run dev` 启动；`http://127.0.0.1:1420/preview.html?state=room/setup/error` 提供标明示例的预览。`npm --prefix desktop run build` 构建后，可用 `cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked --release --features custom-protocol` 仅构建 GUI。
 
-桌面完整包需要 Rust 1.95、Node.js 24、Windows NSIS 或 Linux WebKitGTK 4.1 系统依赖。GUI、Rust、Go 和传入发布目录的版本必须一致；构建器校验架构并记录摘要，产物附带 SHA256。在对应平台执行：
+桌面完整包需要 Rust 1.95、Node.js 24、Windows NSIS 或 Linux WebKitGTK 4.1 系统依赖。Windows 打包会下载并校验固定的 TAP 驱动、网卡工具及对应源码，缓存位于 `.local/desktop-drivers`；Linux 交叉打包另需 `msitools`，构建镜像已包含。GUI、Rust、Go 和传入发布目录的版本必须一致；构建器校验架构并记录摘要，产物附带 SHA256。在对应平台执行：
 
 ```sh
-python scripts/desktop/build.py --platform windows --arch amd64 --release dist/0.2.0/nodelane-room-0.2.0-windows-amd64
-python scripts/desktop/build.py --platform linux --arch amd64 --release dist/0.2.0/nodelane-room-0.2.0-linux-amd64
+python scripts/desktop/build.py --platform windows --arch amd64 --release dist/client/0.2.1/nodelane-room-client-0.2.1-windows-amd64
+python scripts/desktop/build.py --platform linux --arch amd64 --release dist/client/0.2.1/nodelane-room-client-0.2.1-linux-amd64
 ```
 
 `scripts/desktop/Dockerfile` 提供 Ubuntu 22.04 构建环境、Windows 交叉编译工具和原生 WebView 验收工具。`--skip-web` 仅复用已构建并检查的前端资源。当前生成的 EXE 为未签名测试包，deb 尚未进入签名软件仓库；构建不安装宿主服务、不发布产物。ARM64 参数用于相应工具链，未通过 ARM 真机验收。
 
-桌面检查：`npm --prefix desktop test`、`cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked`、`python scripts/desktop/test_package.py`，Windows 另运行 `scripts/desktop/test-windows.ps1` 和 `scripts/desktop/test-uninstall.ps1`。打包后可构建上述 Dockerfile 为 `nodelane-desktop-build:local`，再运行 `python scripts/desktop/test_live.py --package dist/desktop/nlroom_0.2.0_amd64.deb`，通过真实 WebView、普通用户 socket、隔离 HTTPS/数据库与 Nebula 验证流程。它仅安装到临时容器，结束后清理；不代替宿主 systemd 或 Windows 服务验收。
+桌面检查：`npm --prefix desktop test`、`cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked`、`python scripts/desktop/test_package.py`，Windows 另运行 `scripts/desktop/test-windows.ps1`、`scripts/desktop/test-uninstall.ps1`，并使用 Windows PowerShell 5.1 运行 `scripts/desktop/test-setup.ps1`、`scripts/desktop/test-tap.ps1`。打包后可构建上述 Dockerfile 为 `nodelane-desktop-build:local`，再运行 `python scripts/desktop/test_live.py --package dist/desktop/nlroom_0.2.1_amd64.deb`，通过真实 WebView、普通用户 socket、隔离 HTTPS/数据库与 Nebula 验证流程。它仅安装到临时容器，结束后清理；不代替宿主 systemd 或 Windows 服务验收。
 
 ## 实时网络监控
 
@@ -180,6 +182,6 @@ python scripts/desktop/build.py --platform linux --arch amd64 --release dist/0.2
 
 每次运行创建唯一 Compose 项目。临时密钥、身份和数据库保存在容器临时存储中，只有 HTTPS 公钥证书共享给客户端；邀请码和登记令牌不写入日志。退出时清理该次容器、网络、证书卷和带本次唯一标签的测试镜像，检查结果与构建/验证日志保存在 `.local/nodelane-test-*/`。源码配置位于 `deploy/test/`，不会放入发布包。
 
-部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/0.2.0/nodelane-room-0.2.0-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。`--extended` 额外验证真实十分钟证书续签与断控到期。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
+部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/control/0.2.2/nodelane-room-control-0.2.2-linux-amd64 --node-root dist/node/0.2.1/nodelane-room-node-0.2.1-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。`--extended` 额外验证真实十分钟证书续签与断控到期。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
 
 源码入口见 [文件索引](docs/files.md)，调用方与权限分工见 [架构说明](docs/architecture.md)，接口见 [OpenAPI](docs/openapi.yaml)。当前不包含支付、多账号合并、管理员 OIDC、多管理员角色、TOTP 或云资源自动创建；LAN 兼容范围和游戏验收要求见游戏网络文档。

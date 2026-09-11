@@ -24,7 +24,7 @@ func main() {
 
 func command() *cobra.Command {
 	var dir string
-	root := &cobra.Command{Use: "nlroom-service", Short: "NodeLane Room background networking service", SilenceUsage: true, Version: model.Version + " (Nebula " + model.NebulaVersion + ")"}
+	root := &cobra.Command{Use: "nlroom-service", Short: "NodeLane Room background networking service", SilenceUsage: true, Version: model.ClientVersion + " (Nebula " + model.NebulaVersion + ")"}
 	root.PersistentFlags().StringVar(&dir, "state-dir", platform.DefaultDir(), "Agent state directory")
 	daemon := &cobra.Command{Use: "daemon", Short: "Run the background agent (Administrator on Windows)", RunE: func(cmd *cobra.Command, _ []string) error {
 		run := func(ctx context.Context) error {

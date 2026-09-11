@@ -110,7 +110,7 @@ func fetchSteam(ctx context.Context, c *http.Client, raw string, limit int64) ([
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "NodeLane-Room/"+model.Version)
+	req.Header.Set("User-Agent", "NodeLane-Room/"+model.ControlVersion)
 	resp, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: 无法下载 Steam 资料或图片，请稍后重试", ErrInvalid)

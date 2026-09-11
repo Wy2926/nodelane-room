@@ -13,6 +13,7 @@ import urllib.request
 
 from licenses import collect
 from branding import render
+from drivers import bundle_tap
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,13 +23,14 @@ def source_version(root=ROOT):
     if not re.fullmatch(r'\d+\.\d+\.\d+', version): raise SystemExit('Use a numeric desktop release version')
     tauri = json.loads((root / 'desktop/src-tauri/tauri.conf.json').read_text(encoding='utf-8'))['version']
     cargo = re.search(r'(?m)^version = "([^"]+)"', (root / 'desktop/src-tauri/Cargo.toml').read_text())[1]
-    go = re.search(r'const Version = "([^"]+)"', (root / 'internal/model/node.go').read_text())[1]
-    if any(v != version for v in (tauri, cargo, go)): raise SystemExit('GUI, Rust and Go source versions must match')
+    go = re.search(r'const ClientVersion = "([^"]+)"', (root / 'internal/model/version.go').read_text())[1]
+    if any(v != version for v in (tauri, cargo, go)): raise SystemExit('GUI, Rust and Go client source versions must match')
     return version
 
 
 def verify_release(release, gui, platform, arch, version):
     build = (release / 'BUILD.txt').read_text(encoding='utf-8-sig')
+    if 'Component: client' not in build.splitlines(): raise SystemExit('Expected client release component')
     if not re.search(rf'(?m)^Target: {platform}/{arch}\s*$', build): raise SystemExit('Release architecture mismatch')
     if not re.search(rf'(?m)^Version: {re.escape(version)}\s*$', build): raise SystemExit('Release version mismatch')
     extension = '.exe' if platform == 'windows' else ''
@@ -100,6 +102,11 @@ def main():
         stage = Path(tmp)
         if args.platform == 'windows':
             payload, engine = windows_payload(stage, args.release, args.gui, required, target)
+            bundle_tap(engine / 'tap', payload / 'licenses', args.arch)
+            for name in ('tap0901.sys', 'tapctl.exe'):
+                verify_binary(engine / 'tap' / name, 'windows', args.arch)
+            shutil.copy2(ROOT / 'scripts/desktop/tap.ps1', engine / 'tap.ps1')
+            payload_hashes(payload)
             # Official Evergreen bootstrapper; the elevated installer verifies
             # Microsoft's Authenticode signature before executing it.
             with urllib.request.urlopen('https://go.microsoft.com/fwlink/p/?LinkId=2124703', timeout=60) as response:
@@ -118,7 +125,7 @@ def main():
             prefix = '/' if os.name == 'nt' else '-'
             defines = dict(PAYLOAD=payload, ENGINE=engine, OUTPUT=partial, VERSION=version, ARCH=args.arch,
                            ICON=ROOT / 'desktop/src-tauri/icons/icon.ico', ART=art)
-            subprocess.run([compiler, prefix + 'WX'] + [f'{prefix}D{k}={v}' for k, v in defines.items()] + [str(ROOT / 'scripts/desktop/windows.nsi')], check=True)
+            subprocess.run([compiler, prefix + 'WX', prefix + 'INPUTCHARSET', 'UTF8'] + [f'{prefix}D{k}={v}' for k, v in defines.items()] + [str(ROOT / 'scripts/desktop/windows.nsi')], check=True)
         else:
             def copy(source, relative, mode=0o644):
                 target = stage / relative

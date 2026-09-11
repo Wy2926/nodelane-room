@@ -2,7 +2,7 @@
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home nodelane
 ARG TARGETARCH
-ARG VERSION=0.2.0
+ARG VERSION
 COPY ${TARGETARCH}/THIRD_PARTY_NOTICES.txt /usr/share/doc/nodelane/THIRD_PARTY_NOTICES.txt
 COPY ${TARGETARCH}/licenses /usr/share/doc/nodelane/licenses
 COPY ${TARGETARCH}/BUILD.txt /usr/share/doc/nodelane/BUILD.txt

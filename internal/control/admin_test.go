@@ -274,7 +274,7 @@ func TestAdminRateLogoutAndSSERecovery(t *testing.T) {
 		if strings.HasPrefix(line, "data: ") {
 			var snap AdminSnapshot
 			must(t, json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &snap))
-			found = snap.Version == model.Version
+			found = snap.Version == model.ControlVersion
 			break
 		}
 	}

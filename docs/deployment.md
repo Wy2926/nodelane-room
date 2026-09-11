@@ -1,6 +1,6 @@
 # 控制面部署指南
 
-当前源码的 Ethernet LAN 架构使用数据库结构版本 5、API /v2。旧结构拒绝打开，不做迁移或清空；新部署使用独立空库。此变更尚未发布，[镜像清单](../deploy/IMAGES.txt) 中历史 0.2.0 镜像不包含该架构，须构建匹配的控制服务、节点和客户端。
+当前源码的 Ethernet LAN 架构使用数据库结构版本 5、API /v2。旧结构拒绝打开，不做迁移或清空；新部署使用独立空库。控制面为 0.2.2，节点和客户端为 0.2.1；[镜像清单](../deploy/IMAGES.txt) 记录镜像摘要。历史 0.2.0 镜像不包含该架构，不能与当前客户端混用。
 
 ## 构建材料
 
@@ -36,7 +36,7 @@ docker compose -f deploy/compose.host.yaml exec control nodelane-server admin pa
 docker compose -f deploy/compose.host.yaml exec control nodelane-server admin bootstrap
 ```
 
-Linux 发布包也可用相同构建覆盖文件，从包内程序构建镜像。完整产物由 `scripts/build.ps1`、`scripts/check-release.py`、`scripts/package-compose.py` 和 `scripts/build-images.ps1` 构建及校验；推送须显式 `-Push`。
+控制面 Linux 发布包可用相同构建覆盖文件；节点编排从独立包构建时，设置 `NODELANE_NODE_BUILD_CONTEXT` 为节点包解压目录。节点独立发布包在解压目录执行 `docker build --target node -t docker.nodelane.net/nodelane-room-node:0.2.1 .`。完整产物由 `scripts/build.ps1`、`scripts/check-release.py`、`scripts/package-compose.py` 和 `scripts/build-images.ps1` 构建及校验；推送须显式 `-Push`。`scripts/build-images.ps1 -Components control` 或 `-Components node` 仅构建所选镜像，各自读取源码中的组件版本。Compose 分别使用 `NODELANE_CONTROL_VERSION`、`NODELANE_NODE_VERSION`，不再接受共享 `NODELANE_VERSION`。版本维护和产物路径见 [构建](../README.md#开发与构建)。
 
 `releases/` 随控制镜像复制到 `/opt/nodelane/releases`，同源提供 node.sh、manifest.json、校验和及 amd64/arm64 原生节点包。裸程序使用 `--release-dir` 指定只读目录；不要把上传目录配置为安装资源目录。
 
@@ -131,15 +131,15 @@ docker compose exec control nodelane-server admin bootstrap
 curl -fsSL https://room.example.com/install/node.sh | bash -s -- --server https://room.example.com
 ```
 
-非默认池附加 `--network <控制台地址池>`，固定版本附加 `--version 0.2.0`。脚本定义完整流程后才执行，检查目标、网段、系统和权限，下载明确版本并校验 SHA256 后安装。不会自动修改防火墙、Docker 或 TUN 设备权限。
+非默认池附加 `--network <控制台地址池>`，固定版本附加 `--version 0.2.1`。脚本定义完整流程后才执行，检查目标、网段、系统和权限，下载明确版本并校验 SHA256 后安装。不会自动修改防火墙、Docker 或 TUN 设备权限。
 
 程序 `/usr/local/bin/nlroom-node`；配置 `/etc/nlroom-node/config.json`；状态 `/var/lib/nlroom-node`（0700，身份文件 0600）；systemd 服务使用专用 `nlroom-node` 账号和 CAP_NET_ADMIN。安装后从 `/dev/tty` 隐藏读取密钥。失败保留配置和身份，修复后执行 `nlroom-node enroll`；已登记时验证并恢复，不重新消耗密钥。
 
-重复 curl 保留已有身份及配置并启动服务。不同控制端或不明身份冲突会报错，不能覆盖。程序升级用 `nlroom-node update 0.2.0`：只接受控制端当前清单公布的明确版本，校验归档与程序版本，原子替换，等待新进程健康，失败回退程序；不回退身份。异常断电留下 update.lock 时先检查没有更新进程，再人工处理锁文件。卸载用 `nlroom-node uninstall`，默认保留配置、身份和服务账号；弃用服务器还应在控制台永久撤销身份。
+重复 curl 保留已有身份及配置并启动服务。不同控制端或不明身份冲突会报错，不能覆盖。程序升级用 `nlroom-node update 0.2.1`：只接受控制端当前清单公布的明确版本，校验归档与程序版本，原子替换，等待新进程健康，失败回退程序；不回退身份。异常断电留下 update.lock 时先检查没有更新进程，再人工处理锁文件。卸载用 `nlroom-node uninstall`，默认保留配置、身份和服务账号；弃用服务器还应在控制台永久撤销身份。
 
 ## 路径二：Compose / 1Panel
 
-管理台可下载已填写控制 URL、端口和 0.2.0 镜像的节点 YAML，不含密钥。或使用 `compose.node.yaml` 与 `.env.node.example`，填写 NODE_CONTROL_URL、NODE_PORT、NODE_STATE_DIR；固定 NODELANE_VERSION=0.2.0。先由宿主准备持久状态目录（0700、属主 root:root），例如 `sudo install -d -m 0700 -o 0 -g 0 ./state`；管理台生成 YAML 时使用其中的绝对路径。确保 `/dev/net/tun` 可用。节点容器仅额外授予 NET_ADMIN，映射需要的 UDP 端口。
+管理台可下载已填写控制 URL、端口和 0.2.1 镜像的节点 YAML，不含密钥。或使用 `compose.node.yaml` 与 `.env.node.example`，填写 NODE_CONTROL_URL、NODE_PORT、NODE_STATE_DIR；固定 NODELANE_NODE_VERSION=0.2.1。先由宿主准备持久状态目录（0700、属主 root:root），例如 `sudo install -d -m 0700 -o 0 -g 0 ./state`；管理台生成 YAML 时使用其中的绝对路径。确保 `/dev/net/tun` 可用。节点容器仅额外授予 NET_ADMIN，映射需要的 UDP 端口。
 
 ```bash
 docker compose -f compose.node.yaml up -d --wait
