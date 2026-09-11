@@ -59,11 +59,11 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
   src/ 客户端界面、样式与本机调用
     main.tsx 正式客户端挂载
     preview.tsx 独立开发预览夹具，模拟交互并明确无真实网络
-    test-setup.ts DOM 测试环境与对话框模拟
+    test-setup.ts DOM 测试环境、滚动与对话框模拟
     app/ 应用编排与系统导航
-      App.tsx 本机状态、页面与房间弹窗组合
-      App.test.tsx 房间流程、成员菜单、失败保护、键盘与默认线上地址测试
-      Shell.tsx 主机顶部导航、玩家信息与底部控制中心
+      App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
+      App.test.tsx 房间流程、诊断实测与脱敏、离线设置和更新占位测试
+      Shell.tsx 统一顶部导航、玩家入口与无边框窗口控制
       navigation.ts 页面标识与中文标题
       Feedback.tsx 服务故障、忙碌与操作反馈
       use-actions.ts 操作互斥、复制与确认管理
@@ -71,7 +71,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       tokens.css 色彩、字阶、间距、尺寸、材质、焦点与动效令牌
       index.css 全客户端样式入口
       base.css 控件、排版、焦点与减少动态效果
-      layout.css 主机舞台、导航、控制栏与响应式布局
+      layout.css 主机舞台、顶部导航、窗口按钮与响应式布局
       forms.css 输入、模态弹窗、邀请码与端口样式
       feedback.css 错误、提示、空状态与开发预览标识
     native/ 真实 Tauri 本机桥接
@@ -79,7 +79,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       use-service.ts 不重叠状态轮询、退避与原生通知
       use-service.test.ts 版本一致性、并发刷新与服务恢复测试
     shared/ 共用数据与简单 UI
-      model.ts 玩家、游戏、房间与本机请求类型
+      model.ts 玩家、游戏、房间、本机请求与诊断返回类型
       time.ts 时间与状态新鲜度格式化
       ui/ 跨页面控件
         Empty.tsx 空状态与加载说明
@@ -88,7 +88,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         PortList.tsx 授权端口列表
     features/ 按玩家流程组织的页面
       catalog/ 服务端游戏目录与主机游戏选择
-        GameLibrary.tsx 横向封面、键盘选择、搜索与联机入口
+        GameLibrary.tsx 横向封面、键盘选择、搜索与建房入口
         Artwork.tsx 本机游戏图像展示与原创素材回退
         artwork-loader.ts 有界图像请求和缓存
         use-catalog.ts 目录、管理房间与陈旧状态加载
@@ -110,11 +110,11 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
           Confirmation.tsx 权限操作和离房退出确认
       device/ 初始化与桌面偏好
         Setup.tsx 默认线上控制端、设备昵称与首次使用
-        Settings.tsx 设备信息、主机主题、开机启动与退出
-        device.css 欢迎界面与主机系统设置样式
+        Settings.tsx 分类偏好、设备信息、更新界面占位与退出
+        device.css 欢迎界面、分类设置与更新面板样式
       diagnostics/ 真实网络诊断
-        Diagnostics.tsx 状态检查、手动诊断与脱敏复制
-        diagnostics.css 网络状态与诊断结果样式
+        Diagnostics.tsx 连接概览、系统检查、实测成员链路与脱敏摘要
+        diagnostics.css 连接状态、系统检查与成员指标可视化样式
   src-tauri/ 原生窗口、托盘与受限本机 IPC 桥接
     Cargo.toml 原生依赖与程序信息
     Cargo.lock Rust 精确依赖锁定

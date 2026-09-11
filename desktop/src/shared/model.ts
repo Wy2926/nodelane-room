@@ -101,3 +101,18 @@ export type Request = {
   body?: unknown;
 };
 export type Failure = { code: string; error: string };
+export type Diagnostic = {
+  nebula_version: string;
+  control: string;
+  engine: string;
+  error?: string;
+  lease_expires_at?: string;
+  platform: {
+    os: string;
+    arch: string;
+    wintun_present?: boolean;
+    tun_device_present?: boolean;
+    interface_error?: string;
+    interfaces?: { name: string; up: boolean; mtu: number; addresses: string[] }[];
+  };
+};

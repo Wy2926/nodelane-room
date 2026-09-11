@@ -54,13 +54,15 @@ CLI 提供 `--json`、`--watch`、退出码和房间子命令，GUI 发布后继
 
 视觉参考仅来自游戏主机系统：[Sony PS5 系统设计](https://www.sony.com/en/SonyInfo/design/stories/PS5/)的沉浸背景、横向游戏选择和控制中心，以及 Xbox 的清晰焦点与大尺寸操作区。客户端不复用管理台布局、组件或配色，也不使用 PS/Xbox 标志与专属按键符号。
 
-采用“午夜”主题。顶部保留房间和游戏库，玩家与时间靠右；个人入口打开设备资料与桌面偏好，底部常驻控制栏容纳真实网络状态及系统入口。游戏页先选封面，再展示当前游戏与创建／加入操作。房间切换卡带游戏封面，成员以独立玩家名片展示头像、角色、可复制 IP 和实测链路；房主管理操作收在成员菜单中，Escape 关闭并回到菜单入口。设置按个人资料、主题、开机启动、设备信息和退出组织。头像复用原创氛围素材和昵称首字符，不代表账号头像或在线状态。
+采用“午夜”主题与[无边框窗口](https://v2.tauri.app/learn/window-customization/)，顶部集成房间、游戏库、网络诊断、设置、个人入口及最小化／最大化／关闭；空白标题区支持拖动和双击最大化，关闭行为沿用托盘或最小化。完全移除底部栏。首页仅保留创建房间与邀请码入房两个入口；游戏库保留封面选择、搜索和创建房间，不展示邀请码入口、游戏介绍或端口。房间切换卡带游戏封面，成员名片保留头像、角色、可复制 IP 和实测链路；房主管理操作收在成员菜单中，Escape 关闭并回到菜单入口。头像复用原创氛围素材和昵称首字符，不代表账号头像或在线状态。
+
+诊断按连接概览、虚拟 IP／授权、系统检查和成员链路呈现；系统报告标注检查时间，逐成员延迟与丢包仅在当前快照和授权有效时展示，未知值不填零。原始 JSON 不进入界面；复制使用字段白名单生成脱敏中文摘要。设置按桌面偏好、设备信息、版本与更新、退出与联机分类；服务不可用时仍可打开设置和诊断。检查更新目前仅为界面占位，点击明确提示尚未接入在线服务，不请求发布源、不下载、不声称已是最新版。
 
 数值只在 [tokens.css](../desktop/src/styles/tokens.css) 维护，组件通过语义变量引用。
 
 | 令牌组 | 变量与职责 |
 |---|---|
-| 文字 | `--font-mono`、`--text-xs/sm/md/lg/xl/title/display`；系统中西文字体、等宽网络地址、正文与响应式展示字阶 |
+| 文字 | `--font-mono`、`--text-xs/sm/md/lg/xl/title/display`；系统中西文字体、等宽网络地址、16px 正文、13–14px 辅助信息与响应式展示字阶 |
 | 排版 | `--weight-regular/title/medium`、`--leading-body/title`、`--tracking-label`；轻标题、中等按钮、舒展正文 |
 | 表面 | `--bg/surface/panel/panel-raised/input/hover`；舞台、玻璃面板、弹窗、输入和悬停层次 |
 | 卡片 | `--card/card-active/card-edge`、`--shadow-card`；玩家名片、房间选择与系统设置的轻玻璃表面和本机强调 |
@@ -68,11 +70,11 @@ CLI 提供 `--json`、`--watch`、退出码和房间子命令，GUI 发布后继
 | 操作 | `--accent/accent-soft`、`--primary/on-primary`、`--focus-ring`；冰蓝强调、银白主按钮和双层焦点环 |
 | 状态 | `--success/warning/danger`、`--warning-surface/danger-surface`；配合明确文字表达运行、异常和危险操作 |
 | 间距 | `--space-1/2/3/4/5/6/8/10/12/16`；4px 基础节奏到大留白 |
-| 尺寸 | `--radius-sm/md/lg/pill`、`--control-height`、`--page-gutter/max`、`--header-height/dock-height`；组件形状与响应式框架 |
+| 尺寸 | `--radius-sm/md/lg/pill`、`--control-height`、`--page-gutter/max`、`--header-height`；组件形状与响应式框架 |
 | 材质 | `--blur-panel`、`--shadow/shadow-dialog`、`--scene-scrim`；有层次的透明表面、对比遮罩与阴影 |
-| 动效与层级 | `--duration-fast/normal/scene`、`--ease-out`、`--layer-scene/dock/feedback`；轻交互、场景淡入、固定控制栏与通知 |
+| 动效与层级 | `--duration-fast/normal/scene`、`--ease-out`、`--layer-scene/header/feedback`；轻交互、场景淡入、固定顶部导航与通知 |
 
-游戏库支持左右方向键、Home/End、前后按钮和横向滚动；搜索后始终选中可见游戏。Tab/Enter 操作全部主要功能，弹窗自动聚焦输入，Escape 关闭非忙碌弹窗。减少动态效果时取消动画与过渡；系统强制配色保留选中边界。小窗口允许内容纵向滚动，控制栏始终可达。
+游戏库支持左右方向键、Home/End、前后按钮和横向滚动；搜索后始终选中可见游戏。Tab/Enter 操作全部主要功能，弹窗自动聚焦输入，Escape 关闭非忙碌弹窗。减少动态效果时取消动画与过渡；系统强制配色保留选中边界。小窗口允许内容纵向滚动，顶部导航和窗口按钮始终可达。
 
 游戏图片继续通过原有本机图片通道读取。缺图使用随包原创氛围图 `desktop/public/assets/console-ambient.png`，由内置 Image Gen 生成；提示语为“午夜蓝游戏主机氛围背景，右侧透明银蓝丝带、稀疏微光，左侧与底部留暗部，无文字、标志或界面”。它仅作装饰，不代表游戏或网络状态。
 

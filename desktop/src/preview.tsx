@@ -1,6 +1,6 @@
 // Development-only UI fixture. This entry is not part of the desktop build.
 import { createRoot } from "react-dom/client";
-import { mockIPC } from "@tauri-apps/api/mocks";
+import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { App } from "./app/App";
 import type { Game, Request, Room, Status } from "./shared/model";
 import "./styles/index.css";
@@ -30,12 +30,15 @@ function status(): Status {
     ports: [], members: connected ? [
       { device_id: "preview-player", name: "旅人", ip: "10.203.0.2", last_seen: new Date().toISOString() },
       { device_id: "preview-friend", name: "远山", ip: "10.203.0.3", last_seen: new Date().toISOString() },
-    ] : [], endpoints: [], peers: [], snapshot_at: new Date().toISOString(),
+    ] : [], endpoints: [], peers: connected ? [{ device_id: "preview-friend", name: "远山", ip: "10.203.0.3", mode: "unknown" }] : [], snapshot_at: new Date().toISOString(),
   };
 }
 Object.defineProperty(window, "isTauri", { value: true, configurable: true });
+mockWindows("main");
 mockIPC(async (command, args) => {
   const payload = args as Record<string, unknown> | undefined;
+  if (command === "plugin:window|is_maximized") return false;
+  if (command.startsWith("plugin:window|")) throw { code: "preview", error: "窗口控制仅在桌面应用中生效。" };
   if (command === "game_image") return `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${payload?.game}/${payload?.kind === "background" ? "library_hero.jpg" : "library_600x900.jpg"}`;
   if (command === "plugin:autostart|is_enabled") return autoStart;
   if (command === "plugin:autostart|enable") { autoStart = true; return; }
@@ -60,7 +63,7 @@ mockIPC(async (command, args) => {
     case "invite": return { code: "UI-PREVIEW-ONLY", expires_at: new Date(Date.now() + 600000).toISOString() };
     case "leave": connected = false; return {};
     case "close": connected = false; room = undefined; return {};
-    case "doctor": return { preview: true, engine: "stopped", message: "界面示例，未建立隧道，未进行网络测量。" };
+    case "doctor": return { nebula_version: "1.11.1", control: "idle", engine: "stopped", platform: { os: "windows", arch: "amd64", wintun_present: true, interfaces: [{ name: "示例以太网", up: true, mtu: 1500, addresses: ["192.0.2.10/24"] }, { name: "示例无线网卡", up: false, mtu: 1500, addresses: [] }] } };
     default: throw { code: "preview", error: "此操作需要真实桌面服务；预览中未执行。" };
   }
 }, { shouldMockEvents: true });

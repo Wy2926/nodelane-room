@@ -27,7 +27,7 @@ export function App() {
   return (
     <Shell page={page} setPage={setPage} service={service}>
       <Feedback service={service} actions={actions} refreshAll={refreshAll} />
-      {!service.status && !service.error && (
+      {!service.status && !service.error && page !== "settings" && page !== "doctor" && (
         <Empty title="正在连接本机服务">
           <p>读取设备与房间状态…</p>
         </Empty>
@@ -35,8 +35,8 @@ export function App() {
       {service.status && !service.status.device_id && !service.error && page !== "settings" && page !== "doctor" && (
         <Setup actions={actions} />
       )}
-      {service.status && !service.status.device_id && page === "settings" && <Settings status={service.status} actions={actions} usable={!service.error && !actions.busy} />}
-      {service.status && !service.status.device_id && page === "doctor" && <Diagnostics status={service.status} actions={actions} usable={!service.error && !actions.busy} serviceError={service.error} />}
+      {page === "settings" && <Settings status={service.status} actions={actions} usable={!!service.status && !service.error && !actions.busy} />}
+      {page === "doctor" && <Diagnostics status={service.status} actions={actions} usable={!!service.status && !service.error && !actions.busy} serviceError={service.error} />}
       {service.status && !service.status.device_id && <RoomDialogs actions={actions} status={service.status} serviceError={service.error} onJoined={() => setPage("rooms")} />}
       {service.status?.device_id && (
         <Session
@@ -87,10 +87,6 @@ function Session({
       {page === "games" && (
         <GameLibrary {...{ catalog, status, actions, usable, refreshAll }} />
       )}
-      {page === "doctor" && (
-        <Diagnostics {...{ status, actions, usable, serviceError }} />
-      )}
-      {page === "settings" && <Settings {...{ status, actions, usable }} />}
       <RoomDialogs
         actions={actions}
         status={status}

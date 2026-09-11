@@ -1,6 +1,6 @@
 label {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   margin: 18px 0;
 }
@@ -74,10 +74,10 @@ dialog form > .primary {
   flex-wrap: wrap;
   gap: 7px;
   margin: 10px 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 .port {
-  font-size: 11px;
+  font-size: var(--text-xs);
   border: 1px solid var(--line);
   padding: 5px 9px;
   border-radius: 6px;
@@ -90,7 +90,7 @@ dialog form > .primary {
   color: var(--muted);
 }
 .tag {
-  font-size: 10px;
+  font-size: var(--text-xs);
   border-radius: 4px;
   color: var(--accent);
   background: var(--accent-soft);

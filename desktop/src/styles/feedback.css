@@ -9,7 +9,7 @@
   border-radius: 12px;
   padding: 13px 18px;
   margin-bottom: 20px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .banner p {
   margin: 3px 0 0;
@@ -31,7 +31,7 @@
 .working {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--dock-height) + 18px);
+  bottom: var(--space-6);
   transform: translateX(-50%);
   z-index: var(--layer-feedback);
   border-radius: 99px;
@@ -41,9 +41,7 @@
   box-shadow: var(--shadow);
 }
 .working {
-  bottom: auto;
-  top: 15px;
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 .empty {
   padding: 60px 20px;
@@ -67,5 +65,5 @@
 .empty p {
   margin-bottom: 0;
 }
-.preview-badge { position: fixed; right: 18px; bottom: calc(var(--dock-height) + 8px); z-index: var(--layer-feedback); padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); background: var(--bg); font-size: 10px; pointer-events: none; }
+.preview-badge { position: fixed; right: 18px; bottom: var(--space-2); z-index: var(--layer-feedback); padding: 5px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); background: var(--bg); font-size: var(--text-xs); pointer-events: none; }
 @media (max-width: 650px) { .banner { flex-wrap: wrap; } .toast { max-width: calc(100vw - 40px); width: max-content; } }

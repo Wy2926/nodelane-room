@@ -136,10 +136,10 @@ export function RoomPage({
       ) : (
         !selected && (
           status.selected_room ? <Empty title="正在同步房间"><p>正在获取房间授权与连接状态。</p></Empty> : <section className="room-welcome">
-            <div className="welcome-copy"><span className="eyebrow">GOOD TIMES. GREAT COMPANY.</span><h2>你的下一局，<br />从这里开始<span>。</span></h2><p>距离再远，也在同一个房间。<br />选一款游戏，让今晚成为你们的主场。</p><button className="primary" disabled={!usable} onClick={() => setPage("games")}>选择游戏 <ArrowRight size={20} aria-hidden="true" /></button></div>
+            <div className="welcome-copy"><span className="eyebrow">一起，开启下一局</span><h2>距离再远，<br />也在同一个房间<span>。</span></h2><p>创建你们的世界，或加入朋友的冒险。<br />今晚的主场，由你们决定。</p></div>
             <div className="welcome-cards">
-              <button className="launch-card" disabled={!usable} onClick={() => setPage("games")}><GameController size={32} weight="light" aria-hidden="true" /><span><strong>开启新世界</strong><small>浏览游戏，创建你们的房间</small></span><ArrowRight size={20} aria-hidden="true" /></button>
-              <button className="launch-card" disabled={!usable} onClick={() => { setError(undefined); setDialog({ type: "join" }); }}><Ticket size={32} weight="light" aria-hidden="true" /><span><strong>朋友在等你</strong><small>输入邀请码，加入这场冒险</small></span><ArrowRight size={20} aria-hidden="true" /></button>
+              <button className="launch-card launch-create" disabled={!usable} onClick={() => setPage("games")}><span className="launch-icon"><GameController size={32} weight="light" aria-hidden="true" /></span><span className="launch-copy"><strong>创建房间</strong><small>选择一款游戏，邀请朋友一起玩</small></span><ArrowRight size={23} aria-hidden="true" /></button>
+              <button className="launch-card" disabled={!usable} onClick={() => { setError(undefined); setDialog({ type: "join" }); }}><span className="launch-icon"><Ticket size={32} weight="light" aria-hidden="true" /></span><span className="launch-copy"><strong>邀请码入房</strong><small>朋友已经开好房间？输入邀请码加入</small></span><ArrowRight size={23} aria-hidden="true" /></button>
             </div>
           </section>
         )

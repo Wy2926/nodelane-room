@@ -43,7 +43,7 @@ docker compose -f compose.node.yaml exec node nlroom-node enroll
 
 卸载在 Windows 设置的“已安装的应用”选择 **NodeLane Room → 卸载**，或双击安装目录中的 `Uninstall.exe`。独立卸载向导默认保留设备身份与用户绑定；勾选清除数据还需再次确认。卸载会停止并等待后台退出，移除程序、旧版备份、开始菜单和系统登记；停止失败时保留程序和卸载入口。共享 WebView2 不卸载。`Uninstall.exe /S` 可静默卸载并保留身份，仍需管理员授权。
 
-当前交付为完整包手动更新，不提供在线更新源或静默自动更新。Windows 服务、UAC 和驱动的真机结果见 [验证记录](docs/validation.md)，不可将打包通过视为真机验收通过。
+设置 → 版本与更新可查看版本；“检查更新”目前仅提供界面和未接入提示。当前交付仍为完整包手动更新，不提供在线更新源或静默自动更新。Windows 服务、UAC 和驱动的真机结果见 [验证记录](docs/validation.md)，不可将打包通过视为真机验收通过。
 
 开发和脚本用户也可解压 Go 发布 ZIP，在玩家账户下运行 `Install.cmd`；`NodeLaneRoom.cmd` 打开已配置临时 PATH 的普通 PowerShell。该归档不含 GUI。
 

@@ -5,6 +5,8 @@
   "permissions": [
     "allow-player-request", "allow-game-image", "allow-exit-app", "allow-notify-state",
     "core:event:allow-listen", "core:event:allow-unlisten",
+    "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-is-maximized", "core:window:allow-close",
     "clipboard-manager:allow-write-text",
     "autostart:allow-enable", "autostart:allow-disable", "autostart:allow-is-enabled"
   ]
