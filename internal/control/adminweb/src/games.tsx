@@ -14,6 +14,11 @@ export function GameEditor({
   const [name, setName] = useState(game.name);
   const [ports, setPorts] = useState<GamePort[]>(game.ports);
   const [enabled, setEnabled] = useState(game.enabled);
+  const [broadcast, setBroadcast] = useState(game.network.broadcast);
+  const [multicast, setMulticast] = useState(game.network.multicast);
+  const [ethernetTypes, setEthernetTypes] = useState(
+    game.network.ethernet_types.map((n) => `0x${n.toString(16)}`).join(", "),
+  );
   const [revision] = useState(game.revision);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -25,7 +30,22 @@ export function GameEditor({
     setBusy(true);
     setError("");
     try {
-      await api(`/games/${game.id}`, { name, ports, enabled, revision }, "PUT");
+      const tokens = ethernetTypes.split(/[\s,]+/).filter(Boolean);
+      if (
+        tokens.some((v) => !/^(0x[0-9a-f]+|\d+)$/i.test(v) || Number(v) > 65535)
+      )
+        throw new Error("以太网协议请输入十进制或 0x 开头的十六进制编号");
+      const network = {
+        version: 1,
+        broadcast,
+        multicast,
+        ethernet_types: tokens.map(Number),
+      };
+      await api(
+        `/games/${game.id}`,
+        { name, ports, enabled, revision, network },
+        "PUT",
+      );
       await saved();
     } catch (e) {
       setError((e as Error).message);
@@ -69,10 +89,42 @@ export function GameEditor({
           required
           onChange={(e) => setName(e.target.value)}
         />
+        <h3>局域网发现</h3>
+        <p className="muted">
+          通过游戏网卡传递发现和联机报文。客户端需要支持 LAN v1；Windows
+          需准备专用 TAP-Windows6 网卡。
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={broadcast}
+            onChange={(e) => setBroadcast(e.target.checked)}
+          />
+          允许游戏广播
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={multicast}
+            onChange={(e) => setMulticast(e.target.checked)}
+          />
+          允许游戏组播
+        </label>
+        <Field
+          label="额外以太网协议"
+          value={ethernetTypes}
+          onChange={(e) => setEthernetTypes(e.target.value)}
+          placeholder="例如 0x8137"
+        />
+        <p className="muted">
+          仅用于非 IP 游戏协议；0 表示 IEEE 802.3/LLC。IPv4、IPv6 和 ARP
+          使用内置校验，不能在此绕过端口授权。
+        </p>
         <h3>开放端口</h3>
         <p className="muted">
-          按游戏实际需要添加 TCP/UDP 端口；结束端口留空表示单个端口。合计最多 32
-          个，不可重复或包含 4243。
+          按游戏实际需要添加 TCP/UDP
+          端口；结束端口留空表示单个端口。不限制端口数量，可配置完整的 1–65535
+          范围，不可重复。LAN 模式的诊断不会占用游戏端口。
         </p>
         {ports.map((port, i) => (
           <div className="game-port" key={i}>
@@ -124,7 +176,6 @@ export function GameEditor({
         ))}
         <button
           type="button"
-          disabled={ports.length >= 32}
           onClick={() => setPorts([...ports, { protocol: "tcp", port: 0 }])}
         >
           添加端口
@@ -138,7 +189,7 @@ export function GameEditor({
           启用，允许客户端选择此游戏
         </label>
         <p className="notice">
-          保存后已有房间同步采用新的端口配置。停用会移除已有游戏端口授权，并停止新建、加入该游戏的房间。
+          保存后已有房间同步采用新的网络配置，规则变化会短暂重启网络。停用会移除已有游戏授权，并停止新建、加入该游戏的房间。
         </p>
         <button className="primary" disabled={busy}>
           {busy ? "正在保存…" : "保存游戏配置"}
@@ -215,7 +266,7 @@ export function Games({
       </Card>
       <Card title={`游戏列表 · ${games.length}`}>
         <p className="muted">
-          通用游戏始终可选，玩家可自行开放端口；已配置游戏的端口统一在此管理。
+          所有游戏使用相同的 LAN 网络，端口与发现规则统一在此管理。
         </p>
         <Field
           label="搜索游戏"
@@ -246,27 +297,21 @@ export function Games({
                 </Badge>
               </td>
               <td>
-                {game.id === "custom" ? (
-                  "由客户端自定义"
-                ) : (
-                  <>
-                    {game.ports.map((p) => (
-                      <small key={`${p.protocol}/${p.port}`}>
-                        {p.protocol.toUpperCase()}/{p.port}
-                        {p.port_end && p.port_end !== p.port
-                          ? `–${p.port_end}`
-                          : ""}{" "}
-                        {p.description}
-                      </small>
-                    ))}
-                    {!game.ports.length && "待配置"}
-                  </>
-                )}
+                <>
+                  {game.ports.map((p) => (
+                    <small key={`${p.protocol}/${p.port}`}>
+                      {p.protocol.toUpperCase()}/{p.port}
+                      {p.port_end && p.port_end !== p.port
+                        ? `–${p.port_end}`
+                        : ""}{" "}
+                      {p.description}
+                    </small>
+                  ))}
+                  {!game.ports.length && "待配置"}
+                </>
               </td>
               <td>
-                {game.id !== "custom" && (
-                  <button onClick={() => setEditing(game)}>配置</button>
-                )}
+                <button onClick={() => setEditing(game)}>配置</button>
               </td>
             </tr>
           ))}

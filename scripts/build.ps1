@@ -17,7 +17,6 @@ if ($LASTEXITCODE -ne 0) { throw 'admin build failed' }
 $goRoot=(Invoke-Go env GOROOT).Trim()
 $release = Join-Path $root "dist/$Version"
 New-Item -ItemType Directory -Force -Path $release | Out-Null
-$moduleDir = (Invoke-Go list -m -f '{{.Dir}}' github.com/slackhq/nebula).Trim()
 $nebulaModule = (Invoke-Go list -m -f '{{.Path}} {{.Version}}{{with .Replace}} => {{.Path}} {{.Version}}{{end}}' github.com/slackhq/nebula).Trim()
 $previous = @{ GOOS=$env:GOOS; GOARCH=$env:GOARCH; CGO_ENABLED=$env:CGO_ENABLED }
 try {
@@ -81,10 +80,6 @@ try {
       Get-ChildItem -LiteralPath $fields[2] -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE|PATENTS)' } | Copy-Item -Destination $destination -Force
     }
     if ($env:GOOS -eq 'windows') {
-      $driverDir = Join-Path $bundle "dist/windows/wintun/bin/$($env:GOARCH)"
-      New-Item -ItemType Directory -Force -Path $driverDir | Out-Null
-      Copy-Item -LiteralPath (Join-Path $moduleDir "dist/windows/wintun/bin/$($env:GOARCH)/wintun.dll") -Destination $driverDir -Force
-      Get-ChildItem -LiteralPath (Join-Path $moduleDir 'dist/windows/wintun') -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE|PATENTS)' } | Copy-Item -Destination (Join-Path $bundle 'dist/windows/wintun') -Force
       foreach ($script in @('install.ps1','uninstall.ps1','setup.ps1','Install.cmd','NodeLaneRoom.cmd')) {
         Copy-Item -LiteralPath (Join-Path $root "scripts/$script") -Destination $bundle -Force
       }

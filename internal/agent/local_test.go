@@ -27,6 +27,8 @@ func TestPlayerRPCBoundary(t *testing.T) {
 		{`{"action":"status","room":"../admin"}`, "invalid_request"},
 		{`{"action":"status","extra":true}`, "invalid_request"},
 		{`{"action":"service-install"}`, "unknown_action"},
+		{`{"action":"port","body":{"protocol":"udp","port":7000}}`, "unknown_action"},
+		{`{"action":"remove-port","body":{"protocol":"udp","port":7000}}`, "unknown_action"},
 		{`{"action":"games"}`, "unconfigured"},
 	} {
 		w := httptest.NewRecorder()

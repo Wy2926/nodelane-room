@@ -7,6 +7,7 @@ All resources are scoped to a unique Compose project and removed on exit.
 import argparse
 import datetime
 import json
+import ipaddress
 import os
 from pathlib import Path
 import secrets
@@ -95,8 +96,9 @@ class TestRun:
 
     def stopped(self, service):
         self.eventually(service + " stopped", lambda: self.status(service)["engine"] == "stopped")
-        result = self.execute(service, "ip", "link", "show", "nodelane0", check=False)
-        self.require(result.returncode != 0, "TUN remains after stop")
+        for name in ("nodelane0-lan",):
+            result = self.execute(service, "ip", "link", "show", name, check=False)
+            self.require(result.returncode != 0, "virtual interface remains after stop")
 
     def invite(self, value):
         code = value["code"]
@@ -148,7 +150,7 @@ class TestRun:
         self.require(a["ip"] != b["ip"], "duplicate overlay address")
         for service, peer in (("alice", b), ("bob", a)):
             route = self.execute(service, "ip", "-j", "route", "get", peer["ip"])
-            self.require(json.loads(route.stdout)[0]["dev"] == "nodelane0", "traffic bypasses TUN")
+            self.require(json.loads(route.stdout)[0]["dev"] == "nodelane0-lan", "traffic bypasses TAP")
             for protocol in ("tcp", "udp"):
                 self.eventually("allowed " + protocol, lambda: self.echo(service, peer["ip"], protocol))
                 self.require(not self.echo(service, peer["ip"], protocol, 26002), "unregistered port passed")
@@ -173,7 +175,7 @@ class TestRun:
             paths[service] = {"ip": a["ip"] if service == "alice" else b["ip"],
                               "peer_mode": "relay", "probes": probes,
                               "rtt_ms": state.get("rtt_ms"), "loss_percent": state.get("loss_percent")}
-        self.passed("bidirectional TUN TCP/UDP, actual relay paths, measured RTT and closed-port rejection", peers=paths)
+        self.passed("bidirectional TAP TCP/UDP, actual relay paths, measured RTT and closed-port rejection", peers=paths)
         return a, b
 
     def monitoring(self, alice, bob):
@@ -213,10 +215,20 @@ class TestRun:
         self.passed("admin telemetry retains >=30s of real relay, RTT/loss, member and forwarded UDP traffic, observed exits",
                     reporters=len(data["series"]), retention_seconds=data["retention_seconds"])
 
+    def configure(self, game_id, ports, discovery=True):
+        game = next(g for g in self.rpc("alice", "games") if g["id"] == game_id)
+        update = {"username": "test-admin", "password": self.admin_password,
+                  "path": "games/" + game_id, "method": "PUT", "body": {
+                      "name": game["name"], "revision": game["revision"], "enabled": True,
+                      "ports": ports, "network": {"version": 1, "broadcast": discovery,
+                                                   "multicast": discovery, "ethernet_types": []}}}
+        self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps(update))
+
     def business(self):
         a_id = self.rpc("alice", "init", server="https://control:8443", name="Alice")
         b_id = self.rpc("bob", "init", server="https://control:8443", name="Bob")
         self.require(a_id != b_id, "devices share an identity")
+        self.configure("custom", [{"protocol": "tcp", "port": 26002}])
         created = self.rpc("alice", "create", body={"name": "Docker regression", "game": "custom"})
         room = created["room"]["id"]
         old_code = self.invite(created["invitation"])
@@ -225,54 +237,40 @@ class TestRun:
         self.require("control API 403" in error["error"], "old invitation rejected for unexpected reason")
         self.rpc("bob", "join", body={"code": code})
         self.eventually("two members", lambda: len(self.rpc("alice", "members")["members"]) == 2)
-        self.passed("independent registration, create/join and invitation rotation")
         for service in ("alice", "bob"):
             self.eventually(service + " online", lambda: self.connected(service))
             cli = json.loads(self.execute(service, "nlroom-cli", "--state-dir", "/state/client", "status", "--json").stdout)
-            self.require(cli["engine"] == "running" and cli["room"]["id"] == room, "CLI status differs from joined room")
-        denial = self.rpc("bob", "create", body={"name": "Second active room", "game": "custom"}, denied=True)
-        self.require("control API 409" in denial["error"], "single-room restriction rejected for unexpected reason")
-        self.passed("CLI reports joined room; a device cannot create a second active room")
+            self.require(cli["engine"] == "running" and cli["room"]["id"] == room and cli["protocol_version"] == 2,
+                         "CLI status differs from joined room")
+        self.rpc("bob", "create", body={"name": "Second active room", "game": "custom"}, denied=True)
+        self.passed("independent registration, create/join, invitation rotation and one active room via current IPC")
         b_ip = self.status("bob")["ip"]
         for protocol in ("tcp", "udp"):
-            self.require(not self.echo("alice", b_ip, protocol), "game port open before registration")
-        self.passed("default deny before game port registration")
-        for service in ("alice", "bob"):
-            for protocol in ("tcp", "udp"):
-                self.rpc(service, "port", body={"protocol": protocol, "port": 26001})
-        self.eventually("four registered endpoints", lambda: len(self.rpc("alice", "members")["endpoints"]) == 4)
+            self.require(not self.echo("alice", b_ip, protocol), "game port open before server authorization")
+        self.configure("custom", [{"protocol": protocol, "port": 26001} for protocol in ("tcp", "udp")])
         a, b = self.traffic()
         self.monitoring(a, b)
-        self.rpc("alice", "remove-port", body={"protocol":"tcp","port":26001})
-        self.eventually("custom port removal", lambda: not self.echo("bob", a["ip"]))
-        self.rpc("alice", "port", body={"protocol":"tcp","port":26001})
-        self.eventually("custom port restored", lambda: self.echo("bob", a["ip"]))
-        self.passed("custom port removal and re-registration update real traffic")
-        self.isolation()
+        self.passed("default deny and administrator configuration apply to the generic LAN game")
         self.rpc("bob", "leave")
         self.stopped("bob")
         self.require(not self.echo("alice", b["ip"]), "traffic survives leave")
         self.rpc("bob", "join", body={"code": code})
         self.eventually("bob rejoined", lambda: self.connected("bob"))
-        self.passed("leave stops TUN and traffic; valid invitation permits rejoin")
-
-        # Cross-room denial with two clients: move Bob into his own room.
+        self.passed("leave stops TAP and traffic; valid invitation permits rejoin")
         self.rpc("bob", "leave")
         self.stopped("bob")
         self.rpc("bob", "create", body={"name": "Other Docker room", "game": "custom"})
-        for protocol in ("tcp", "udp"):
-            self.rpc("bob", "port", body={"protocol": protocol, "port": 26001})
         b = self.eventually("bob other room", lambda: self.connected("bob"))
         self.eventually("Bob left original snapshot", lambda: len(self.rpc("alice", "members")["members"]) == 1)
         for service, peer in (("alice", b), ("bob", a)):
             for protocol in ("tcp", "udp"):
                 self.require(not self.echo(service, peer["ip"], protocol), "cross-room traffic passed")
-        self.passed("bidirectional cross-room TCP/UDP denied despite registered ports")
+        self.passed("bidirectional cross-room TCP/UDP denied despite identical game policies")
         self.rpc("bob", "close")
         self.stopped("bob")
         self.rpc("alice", "close", room=room)
         self.stopped("alice")
-        self.passed("room closure removes TUN devices")
+        self.passed("room closure removes TAP devices")
 
     def configured_game(self):
         games = self.rpc("alice", "games")
@@ -285,14 +283,11 @@ class TestRun:
             self.eventually(service + " configured game ready", lambda: self.connected(service))
         alice = self.status("alice")
         self.eventually("automatic server-configured TCP", lambda: self.echo("bob", alice["ip"], port=25565))
-        self.rpc("alice", "port", body={"protocol":"tcp","port":26001}, denied=True)
         self.require(not self.echo("bob", alice["ip"], port=26001), "unconfigured port accepted")
-        update = {"username":"test-admin","password":self.admin_password,"path":"games/"+game["id"],"method":"PUT",
-                  "body":{"name":game["name"],"revision":game["revision"],"enabled":True,"ports":[{"protocol":"tcp","port":26002}]}}
-        self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps(update))
+        self.configure(game["id"], [{"protocol": "tcp", "port": 26002}])
         self.eventually("new configured port passes", lambda: self.echo("bob", alice["ip"], port=26002))
         self.require(not self.echo("bob", alice["ip"], port=25565), "removed configured port still passes")
-        self.passed("server game list, automatic ports, custom override denial and live port replacement")
+        self.passed("server game list, LAN game ports and live policy replacement")
         bob = self.status("bob")
         self.rpc("alice", "kick", body={"device_id": bob["device_id"]})
         self.stopped("bob")
@@ -301,7 +296,7 @@ class TestRun:
         self.require("control API 403" in denial["error"], "kicked member rejected for unexpected reason")
         self.rpc("alice", "close")
         self.stopped("alice")
-        self.passed("generic game kick removes TUN, stops traffic and denies rejoin")
+        self.passed("generic game kick removes TAP, stops traffic and denies rejoin")
 
     def verify(self):
         print("Running Linux vet, full tests and full race tests with the dedicated database...", flush=True)
@@ -319,6 +314,88 @@ class TestRun:
             print(("PASS " if result.returncode == 0 else "FAIL ") + "Linux " + name, flush=True)
             failed |= result.returncode != 0
         return not failed
+
+    def lan_game(self):
+        def configure(ports, discovery=True):
+            game = next(g for g in self.rpc("alice", "games") if g["id"] == "minecraft-java")
+            update = {"username": "test-admin", "password": self.admin_password,
+                      "path": "games/" + game["id"], "method": "PUT", "body": {
+                          "name": game["name"], "revision": game["revision"], "enabled": True,
+                          "ports": ports, "network": {"version": 1, "broadcast": discovery,
+                                                       "multicast": discovery, "ethernet_types": [0, 33079]}}}
+            result = self.execute("control", "python3", "/opt/test/admin.py", input=json.dumps(update))
+            return json.loads(result.stdout)["revision"]
+
+        configure([{"protocol": protocol, "port": 1, "port_end": 65535} for protocol in ("tcp", "udp")])
+        created = self.rpc("alice", "create", body={"name": "Ethernet LAN regression", "game": "minecraft-java"})
+        self.rpc("bob", "join", body={"code": self.invite(created["invitation"])})
+
+        def ready(service):
+            state = self.connected(service)
+            return state if state and state.get("lan", {}).get("ready") else None
+
+        peers = {service: self.eventually(service + " TAP ready", lambda service=service: ready(service))
+                 for service in ("alice", "bob")}
+        for service in peers:
+            link = json.loads(self.execute(service, "ip", "-j", "link", "show", "nodelane0-lan").stdout)[0]
+            self.require(link["mtu"] == 1500, "game TAP MTU is not 1500")
+            # Only isolated test containers are changed; no host routes or firewall.
+            self.execute(service, "ip", "link", "set", "eth0", "mtu", "1280")
+            self.fixture(service, "listen-game-probe-port")
+            self.fixture(service, "listen-discovery", ip=peers[service]["ip"])
+        for interface in ("eth0", "eth1"):
+            self.execute("relay", "ip", "link", "set", interface, "mtu", "1280")
+        probe_evidence = {}
+        for service, other in (("alice", "bob"), ("bob", "alice")):
+            own, peer = peers[service], peers[other]
+            route = json.loads(self.execute(service, "ip", "-j", "route", "get", peer["ip"]).stdout)[0]
+            self.require(route["dev"] == "nodelane0-lan", "LAN traffic bypasses TAP")
+            self.eventually("LAN TCP", lambda: self.echo(service, peer["ip"]))
+            for address, size in ((peer["ip"], 1472), (peer["ip"], 32000),
+                                  (peer["lan"]["ipv6"], 1452), (peer["lan"]["ipv6"], 32000)):
+                self.eventually("LAN UDP payload " + str(size), lambda: self.fixture(
+                    service, "echo", ip=address, protocol="udp", port=26001, size=size)["ok"])
+            self.require(self.echo(service, peer["ip"], "udp", 4243), "game UDP 4243 conflicts with diagnostics")
+            prefix = self.execute(service, "ip", "-j", "-4", "addr", "show", "nodelane0-lan")
+            bits = json.loads(prefix.stdout)[0]["addr_info"][0]["prefixlen"]
+            directed = str(ipaddress.ip_network(own["ip"] + "/" + str(bits), strict=False).broadcast_address)
+            for destination in ("255.255.255.255", directed, "239.10.20.30"):
+                self.eventually("LAN discovery " + destination, lambda: self.fixture(
+                    service, "discover", ip=own["ip"], peer=peer["ip"], destination=destination)["ok"])
+            self.eventually("LAN relay", lambda: any(p["device_id"] == peer["device_id"] and p["mode"] == "relay"
+                                                     for p in self.status(service)["peers"]))
+            samples = []
+            for _ in range(3):
+                try:
+                    rtt = self.rpc(service, "ping", target=peer["device_id"])["rtt_ms"]
+                    self.require(rtt > 0, "LAN probe returned an invalid RTT")
+                    samples.append({"result": "reply", "rtt_ms": rtt})
+                except RuntimeError as exc:
+                    if "overlay probe timed out" not in str(exc):
+                        raise
+                    samples.append({"result": "timeout"})
+                time.sleep(1)
+            self.require(any(s["result"] == "reply" for s in samples), "all three LAN probes timed out")
+            probe_evidence[service] = samples
+        self.passed("real TAP MTU 1500 over MTU 1280 Nebula relay: IPv4/IPv6, 32KB UDP, broadcast/multicast, game UDP 4243 and probes", probes=probe_evidence)
+        revision = configure([{"protocol": "udp", "port": 26002}], discovery=False)
+        # This port was already allowed by the full-range policy. Its success
+        # alone cannot prove that either client has applied the narrower policy.
+        for service in peers:
+            def applied(service=service):
+                state = ready(service)
+                return state and state["game"]["revision"] == revision
+            self.eventually(service + " narrowed LAN policy applied", applied)
+        self.eventually("LAN narrowed UDP", lambda: self.echo("alice", peers["bob"]["ip"], "udp", 26002))
+        self.require(not self.echo("alice", peers["bob"]["ip"], "udp", 26001), "LAN removed port survives")
+        self.require(not self.fixture("alice", "discover", ip=peers["alice"]["ip"], peer=peers["bob"]["ip"],
+                                     destination="255.255.255.255")["ok"], "disabled broadcast survives")
+        self.rpc("alice", "kick", body={"device_id": peers["bob"]["device_id"]})
+        self.stopped("bob")
+        self.require(not self.echo("alice", peers["bob"]["ip"], "udp", 26002), "revoked Ethernet traffic survives")
+        self.rpc("alice", "close")
+        self.stopped("alice")
+        self.passed("LAN live policy narrowing, discovery disablement and member revocation remove real traffic and TAP")
 
     def finish(self):
         print("Removing this run's containers, private volumes and networks...", flush=True)
@@ -354,6 +431,7 @@ def main():
         run.isolation()
         run.business()
         run.configured_game()
+        run.lan_game()
         ok = run.verify() if args.verify else True
     except (RuntimeError, ValueError, subprocess.SubprocessError, OSError) as exc:
         message = run.redact(str(exc))

@@ -36,12 +36,11 @@ func TestRoomLifecycleAcrossReplicas(t *testing.T) {
 	if len(snap.Members) != 2 {
 		t.Fatalf("members: %+v", snap.Members)
 	}
-	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/endpoints", model.EndpointRequest{Protocol: "tcp", Port: 25565}, nil))
 	must(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/transfer", model.MemberRequest{DeviceID: guest.Identity.ID()}, nil))
 	statusError(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{}, nil), 403)
 	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{}, nil))
 	must(t, ownerAPI.Call(ctx, "GET", "/v2/rooms/"+r.Room.ID, nil, &snap))
-	if !snap.Room.Closed || len(snap.Members) != 0 || len(snap.Endpoints) != 0 {
+	if !snap.Room.Closed || len(snap.Members) != 0 {
 		t.Fatalf("not closed: %+v", snap)
 	}
 	found := false
@@ -154,7 +153,7 @@ func TestAuthenticationReplayAndIdentityBinding(t *testing.T) {
 		t.Fatal("forged signature accepted")
 	}
 }
-func TestExpiryReclaimAndEndpointAuthorization(t *testing.T) {
+func TestExpiryReclaimAndRoomAuthorization(t *testing.T) {
 	s, ca := database(t)
 	server := apiServer(t, s, ca)
 	host := user(t, server, "host")
@@ -163,8 +162,6 @@ func TestExpiryReclaimAndEndpointAuthorization(t *testing.T) {
 	ctx := context.Background()
 	path := "/v2/rooms/" + r.Room.ID
 	statusError(t, stranger.Call(ctx, "GET", path, nil, nil), 403)
-	statusError(t, stranger.Call(ctx, "POST", path+"/endpoints", model.EndpointRequest{Protocol: "tcp", Port: 25565}, nil), 403)
-	statusError(t, host.Call(ctx, "POST", path+"/endpoints", model.EndpointRequest{Protocol: "udp", Port: model.ProbePort}, nil), 400)
 	l := lease(t, host, r.Room.ID)
 	_, err := s.Pool.Exec(ctx, "UPDATE rooms SET expires_at=now()-interval '1 second' WHERE id=$1", r.Room.ID)
 	must(t, err)
@@ -238,7 +235,7 @@ func TestIdempotencyAndSSESnapshotRecovery(t *testing.T) {
 	if status != 409 {
 		t.Fatalf("cross-endpoint replay: %d", status)
 	}
-	must(t, a.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/heartbeat", nil, nil))
+	must(t, a.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: 1}, nil))
 	watchCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	seen := false

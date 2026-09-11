@@ -25,7 +25,7 @@ export function useService() {
       inFlight = true;
       try {
         const next = await rpc<Status>({ action: "status" });
-        if (next.protocol_version !== 1)
+        if (next.protocol_version !== 2)
           throw { code: "incompatible", error: "protocol mismatch" };
         if (next.version !== clientVersion)
           throw { code: "version_mismatch", error: "version mismatch" };

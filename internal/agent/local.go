@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/localapi"
-	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/platform"
 )
 
@@ -104,13 +103,7 @@ func (r *Runtime) localHandler() http.Handler {
 			out, err = r.Games(req.Context())
 		case "ping":
 			out, err = r.Ping(req.Context(), in.Target)
-		case "port", "remove-port":
-			var p model.EndpointRequest
-			err = json.Unmarshal(in.Body, &p)
-			if err == nil {
-				err = r.SetPort(req.Context(), p, in.Action == "remove-port")
-			}
-			out = map[string]bool{"ok": err == nil}
+
 		case "create", "join", "invite", "kick", "transfer", "leave", "close":
 			out, err = r.Action(req.Context(), in.Action, in.Room, in.Body)
 		default:

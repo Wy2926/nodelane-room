@@ -308,17 +308,23 @@ export function RoomPanel({
               路径是最近一次定向观察；两端可能在切换瞬间不同。逐方向数据见成员详情。
             </p>
           </Card>
-          <Card title="已登记端口">
+          <Card title="游戏网络授权">
+            <p>
+              广播{snapshot.game.network.broadcast ? "已开启" : "已关闭"} · 组播
+              {snapshot.game.network.multicast ? "已开启" : "已关闭"}
+            </p>
             <Table
-              heads={["成员", "协议", "端口", "到期时间"]}
-              empty={!snapshot.endpoints.length}
+              heads={["协议", "端口范围", "用途"]}
+              empty={!snapshot.game.ports.length}
             >
-              {snapshot.endpoints.map((e) => (
-                <tr key={e.id}>
-                  <td>{names.get(e.device_id) || e.device_id.slice(0, 12)}</td>
-                  <td>{e.protocol}</td>
-                  <td>{e.port}</td>
-                  <td>{date(e.expires_at)}</td>
+              {snapshot.game.ports.map((p) => (
+                <tr key={`${p.protocol}/${p.port}`}>
+                  <td>{p.protocol}</td>
+                  <td>
+                    {p.port}
+                    {p.port_end ? `–${p.port_end}` : ""}
+                  </td>
+                  <td>{p.description}</td>
                 </tr>
               ))}
             </Table>

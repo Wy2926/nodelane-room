@@ -35,7 +35,7 @@ type bucket struct {
 	count  int
 }
 type Service struct {
-	conn           *net.UDPConn
+	conn           net.PacketConn
 	mu             sync.Mutex
 	allowed        map[string]bool
 	network        netip.Prefix
@@ -55,6 +55,12 @@ func Start(ip, network string, infrastructure bool) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	return StartWithConn(conn, network, infrastructure)
+}
+
+// StartWithConn also supports the LAN device's in-memory Nebula socket, leaving
+// all host TCP/UDP ports available to games on the Ethernet interface.
+func StartWithConn(conn net.PacketConn, network string, infrastructure bool) (*Service, error) {
 	n, err := netip.ParsePrefix(network)
 	if err != nil {
 		conn.Close()
@@ -92,11 +98,12 @@ func (s *Service) read() {
 	defer close(s.done)
 	buf := make([]byte, 1025)
 	for {
-		n, addr, err := s.conn.ReadFromUDP(buf)
+		n, remote, err := s.conn.ReadFrom(buf)
 		if err != nil {
 			return
 		}
-		if n > 1024 || addr.Port != model.ProbePort {
+		addr, ok := remote.(*net.UDPAddr)
+		if !ok || n > 1024 || addr.Port != model.ProbePort {
 			continue
 		}
 		ip := addr.IP.String()
@@ -146,7 +153,7 @@ func (s *Service) send(ip string, p Packet) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.conn.WriteToUDP(b, &net.UDPAddr{IP: net.ParseIP(ip), Port: model.ProbePort})
+	_, err = s.conn.WriteTo(b, &net.UDPAddr{IP: net.ParseIP(ip), Port: model.ProbePort})
 	return err
 }
 func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {

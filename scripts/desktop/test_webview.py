@@ -83,11 +83,10 @@ def main():
         first = wait(lambda: script("return document.querySelector('.invitation')?.textContent"), 'created invitation')
         click('dialog button[aria-label="关闭对话框"]')
         wait(lambda: status()['engine'] == 'running', 'real Nebula network')
-        fill('input[name=port]', '26001')
-        button('添加')
-        wait(lambda: contains('已登记'), 'authorized game port')
-        button('删除')
-        wait(lambda: not script("return !!document.querySelector('.port-row')"), 'port removal')
+        wait(lambda: status().get('lan', {}).get('ready'), 'LAN adapter ready')
+        wait(lambda: contains('服务端端口配置'), 'server game policy')
+        if script("return !!document.querySelector('input[name=port]')"):
+            raise RuntimeError('Removed local port editor remains visible')
         button('生成新邀请码')
         renewed = wait(lambda: script("return document.querySelector('.invitation')?.textContent"), 'renewed invitation')
         if first == renewed: raise RuntimeError('Invitation was not rotated')
@@ -122,7 +121,7 @@ def main():
         wait(lambda: subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'nlroom'], stdout=subprocess.DEVNULL).returncode == 1, 'GUI process exit', 10)
         exited = True
         wait(lambda: status()['engine'] == 'running', 'service survives GUI exit')
-        print('PASS native WebView: init, catalog, create, ports, invitation rotation/copy, leave/manage/close, join, measured ping, diagnostics and GUI exit')
+        print('PASS native WebView: init, catalog, create, LAN readiness/server policy, invitation rotation/copy, leave/manage/close, join, measured ping, diagnostics and GUI exit')
     except Exception:
         if session:
             try:

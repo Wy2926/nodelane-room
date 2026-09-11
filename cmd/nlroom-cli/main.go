@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -72,9 +71,6 @@ func command() *cobra.Command {
 				}
 				ports = append(ports, value)
 			}
-			if g.ID == "custom" {
-				ports = append(ports, "自定义")
-			}
 			fmt.Fprintf(w, "%s\t%s\t%s\n", g.ID, g.Name, strings.Join(ports, ", "))
 		}
 		return w.Flush()
@@ -88,7 +84,7 @@ func command() *cobra.Command {
 		return call(cmd, localapi.Request{Action: "create", Body: b})
 	}}
 	create.Flags().StringVar(&roomName, "name", "", "Room name")
-	create.Flags().StringVar(&gameName, "game", "custom", "Game ID from games; custom for user-defined ports")
+	create.Flags().StringVar(&gameName, "game", "custom", "Game ID from games; all network permissions are server-configured")
 	_ = create.MarkFlagRequired("name")
 	room.AddCommand(create)
 	room.AddCommand(&cobra.Command{Use: "join <invitation>", Args: cobra.ExactArgs(1), Short: "Join and connect to a room", RunE: func(cmd *cobra.Command, args []string) error {
@@ -106,25 +102,7 @@ func command() *cobra.Command {
 			return call(cmd, localapi.Request{Action: action, Room: selected, Body: b})
 		}})
 	}
-	var removePort bool
-	portCommand := &cobra.Command{Use: "port <tcp|udp>/<port>", Short: "Add or remove a local port in a custom game room", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		parts := strings.Split(args[0], "/")
-		if len(parts) != 2 {
-			return fmt.Errorf("use tcp/25565 or udp/27015")
-		}
-		port, err := strconv.ParseUint(parts[1], 10, 16)
-		if err != nil {
-			return err
-		}
-		b, _ := json.Marshal(model.EndpointRequest{Protocol: parts[0], Port: uint16(port)})
-		action := "port"
-		if removePort {
-			action = "remove-port"
-		}
-		return call(cmd, localapi.Request{Action: action, Body: b})
-	}}
-	portCommand.Flags().BoolVar(&removePort, "remove", false, "Stop registering and revoke this local port")
-	room.AddCommand(portCommand)
+
 	root.AddCommand(room)
 	var watch bool
 	status := &cobra.Command{Use: "status", Short: "Show control and game connection states", RunE: func(cmd *cobra.Command, _ []string) error {

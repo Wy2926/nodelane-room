@@ -220,7 +220,6 @@ func TestAdminRoomSnapshotAfterOwnerLeaves(t *testing.T) {
 	room := create(t, owner)
 	join(t, member, room)
 	path := "/v2/rooms/" + room.Room.ID
-	must(t, member.Call(ctx, "POST", path+"/endpoints", model.EndpointRequest{Protocol: "tcp", Port: 25565}, nil))
 	must(t, owner.Call(ctx, "POST", path+"/leave", model.MemberRequest{}, nil))
 	status, data := a.request("GET", "/rooms/"+room.Room.ID, nil, false, false)
 	if status != 200 {
@@ -228,7 +227,7 @@ func TestAdminRoomSnapshotAfterOwnerLeaves(t *testing.T) {
 	}
 	var detail AdminRoomSnapshot
 	must(t, json.Unmarshal(data, &detail))
-	if detail.Room.ID != room.Room.ID || len(detail.Members) != 1 || detail.Members[0].DeviceID != member.Identity.ID() || len(detail.Endpoints) != 1 || detail.ServerTime.IsZero() {
+	if detail.Room.ID != room.Room.ID || len(detail.Members) != 1 || detail.Members[0].DeviceID != member.Identity.ID() || detail.ServerTime.IsZero() {
 		t.Fatal("admin snapshot lost room details after owner left")
 	}
 	var fields map[string]json.RawMessage
@@ -240,7 +239,7 @@ func TestAdminRoomSnapshotAfterOwnerLeaves(t *testing.T) {
 	}
 	var tombstone model.Snapshot
 	must(t, owner.Call(ctx, "GET", path, nil, &tombstone))
-	if len(tombstone.Members) != 0 || len(tombstone.Endpoints) != 0 {
+	if len(tombstone.Members) != 0 {
 		t.Fatal("former owner regained member visibility")
 	}
 	outsider := user(t, a.server, "outsider")
@@ -252,8 +251,8 @@ func TestAdminRoomSnapshotAfterOwnerLeaves(t *testing.T) {
 	}
 	status, data = a.request("GET", "/rooms/"+room.Room.ID, nil, false, false)
 	must(t, json.Unmarshal(data, &detail))
-	if status != 200 || !detail.Room.Closed || len(detail.Members) != 0 || len(detail.Endpoints) != 0 {
-		t.Fatal("closed room retained members or endpoints")
+	if status != 200 || !detail.Room.Closed || len(detail.Members) != 0 {
+		t.Fatal("closed room retained active members")
 	}
 }
 

@@ -20,26 +20,11 @@ export function useRoom(
   const room = isCurrent ? activeRoom : management?.room;
   const game = isCurrent ? status?.game : management?.game;
   const members = isCurrent ? status?.members || [] : management?.members || [];
-  const endpoints = isCurrent
-    ? status?.endpoints || []
-    : management?.endpoints || [];
   const roomFresh = isCurrent
     ? fresh(status?.snapshot_at) && !serviceError
     : !managementError && Date.now() - managementAt < 15000;
 
   const owner = room?.owner_id === status?.device_id;
-  const desiredPorts = status?.ports || [];
-  const pendingRemovals = isCurrent
-    ? endpoints.filter(
-        (e) =>
-          e.device_id === status?.device_id &&
-          Date.parse(e.expires_at) > Date.now() &&
-          !desiredPorts.some(
-            (p) => p.protocol === e.protocol && p.port === e.port,
-          ),
-      )
-    : [];
-  const localPorts = [...desiredPorts, ...pendingRemovals];
   const canManage =
     !!room &&
     owner &&
@@ -89,13 +74,10 @@ export function useRoom(
     room,
     game,
     members,
-    endpoints,
     roomFresh,
     owner,
     canManage,
     managementError,
-    localPorts,
-    desiredPorts,
   };
 }
 export type RoomView = ReturnType<typeof useRoom>;

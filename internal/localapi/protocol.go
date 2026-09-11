@@ -2,7 +2,7 @@ package localapi
 
 import "encoding/json"
 
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 type Error struct {
 	Code    string `json:"code"`

@@ -101,7 +101,7 @@ Function InstallOptions
       ${NSD_Check} $RestoreRadio
     ${EndIf}
   no_restore:
-  ${NSD_CreateLabel} 0 112u 100% 42u "包含客户端、网络后台和 Wintun。缺少 WebView2 时联网安装微软运行时。$\r$\n更新会短暂中断联机；失败时自动恢复原程序。"
+  ${NSD_CreateLabel} 0 112u 100% 42u "包含客户端和网络后台；LAN 需要预先准备专用 TAP 网卡。缺少 WebView2 时联网安装微软运行时。$\r$\n更新会短暂中断联机；失败时自动恢复原程序。"
   Pop $0
   nsDialogs::Show
 FunctionEnd

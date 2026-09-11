@@ -5,6 +5,12 @@ export type Port = {
   description?: string;
 };
 export type Game = {
+  network: {
+    version: number;
+    broadcast: boolean;
+    multicast: boolean;
+    ethernet_types: number[];
+  };
   id: string;
   name: string;
   summary: string;
@@ -27,15 +33,11 @@ export type Room = {
   closed: boolean;
 };
 export type Member = {
+  mac?: string;
   device_id: string;
   name: string;
   ip: string;
   last_seen: string;
-};
-export type Endpoint = Port & {
-  id: string;
-  device_id: string;
-  expires_at: string;
 };
 export type Peer = {
   device_id: string;
@@ -46,6 +48,15 @@ export type Peer = {
   loss_percent?: number;
 };
 export type Status = {
+  lan_version: number;
+  lan?: {
+    version: number;
+    interface: string;
+    mac: string;
+    ipv6: string;
+    mtu: number;
+    ready: boolean;
+  };
   version: string;
   protocol_version: number;
   server: string;
@@ -57,9 +68,7 @@ export type Status = {
   selected_room: string;
   room?: Room;
   game?: Game;
-  ports: Port[] | null;
   members: Member[];
-  endpoints: Endpoint[];
   peers: Peer[];
   ip?: string;
   snapshot_at: string;
@@ -69,7 +78,6 @@ export type Management = {
   room: Room;
   game: Game;
   members: Member[];
-  endpoints: Endpoint[];
   server_time: string;
 };
 export type Invitation = { code: string; expires_at: string };
@@ -88,8 +96,6 @@ export type Action =
   | "transfer"
   | "leave"
   | "close"
-  | "port"
-  | "remove-port"
   | "ping"
   | "doctor";
 export type Request = {
@@ -110,9 +116,14 @@ export type Diagnostic = {
   platform: {
     os: string;
     arch: string;
-    wintun_present?: boolean;
+    tap_interface_present?: boolean;
     tun_device_present?: boolean;
     interface_error?: string;
-    interfaces?: { name: string; up: boolean; mtu: number; addresses: string[] }[];
+    interfaces?: {
+      name: string;
+      up: boolean;
+      mtu: number;
+      addresses: string[];
+    }[];
   };
 };

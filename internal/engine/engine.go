@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nodelane/nodelane-room/internal/lan"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/slackhq/nebula"
 	"github.com/slackhq/nebula/cert"
@@ -29,6 +30,8 @@ type Engine struct {
 	deviceFactory overlay.DeviceFactory
 	generation    uint64
 	epoch         string
+	lan           *lan.Device
+	tapFactory    func(string, netip.Prefix) (*lan.TAP, error)
 }
 
 func New(log *slog.Logger) *Engine {
@@ -38,7 +41,7 @@ func New(log *slog.Logger) *Engine {
 }
 
 // NewWithDeviceFactory permits an upstream user-space device in integration
-// tests. Production services call New and use Nebula's native OS TUN factory.
+// tests. Production services call New and use Ethernet TAP for players and native TUN for infrastructure.
 func NewWithDeviceFactory(log *slog.Logger, factory overlay.DeviceFactory) *Engine {
 	e := New(log)
 	e.deviceFactory = factory
@@ -52,20 +55,27 @@ func (e *Engine) Apply(c Config) error {
 		return err
 	}
 	if raw == e.raw && e.control != nil && e.control.State() == nebula.StateStarted {
+		if e.lan != nil {
+			if err = e.lan.Update(c.Lease, c.Snapshot); err != nil {
+				e.stop()
+				return err
+			}
+		}
+		e.applied = c
 		return nil
 	}
 	next := config.NewC(e.log)
 	if err = next.LoadString(raw); err != nil {
 		return err
 	}
-	if e.control != nil && (e.applied.Lease.IP != c.Lease.IP || e.applied.Lease.RoomID != c.Lease.RoomID || e.control.State() != nebula.StateStarted || !reflect.DeepEqual(e.config.Get("firewall"), next.Get("firewall")) || !reflect.DeepEqual(e.config.Get("listen"), next.Get("listen")) || e.config.GetBool("lighthouse.am_lighthouse", false) != next.GetBool("lighthouse.am_lighthouse", false) || e.config.GetBool("relay.am_relay", false) != next.GetBool("relay.am_relay", false)) {
+	if e.control != nil && (isPlayer(e.applied) != isPlayer(c) || e.applied.Lease.IP != c.Lease.IP || e.applied.Lease.RoomID != c.Lease.RoomID || e.control.State() != nebula.StateStarted || !reflect.DeepEqual(e.config.Get("firewall"), next.Get("firewall")) || !reflect.DeepEqual(e.config.Get("nodelane_lan"), next.Get("nodelane_lan")) || !reflect.DeepEqual(e.config.Get("listen"), next.Get("listen")) || e.config.GetBool("lighthouse.am_lighthouse", false) != next.GetBool("lighthouse.am_lighthouse", false) || e.config.GetBool("relay.am_relay", false) != next.GetBool("relay.am_relay", false)) {
 		// v1.11.1 assigns Interface.firewall without synchronization during reload.
 		// Stop packet readers before changing rules; keep ordinary PKI/node reloads.
 		e.stop()
 	}
 	if e.control == nil {
 		if !c.DisableTUN {
-			if err = CheckAddressConflict(c.Lease.Network, c.Interface); err != nil {
+			if err = CheckAddressConflict(c.Lease.Network, interfaceName(c)); err != nil {
 				return err
 			}
 		}
@@ -73,18 +83,37 @@ func (e *Engine) Apply(c Config) error {
 		if err = cfg.LoadString(raw); err != nil {
 			return err
 		}
-		ctrl, err := nebula.Main(cfg, false, model.NebulaVersion, e.log, e.deviceFactory)
+		factory := e.deviceFactory
+		if isPlayer(c) && factory == nil {
+			factory = e.lanFactory(c)
+		}
+		ctrl, err := nebula.Main(cfg, false, model.NebulaVersion, e.log, factory)
 		if err != nil {
+			if e.lan != nil {
+				e.lan.Close()
+				e.lan = nil
+			}
 			return err
 		}
 		if err = ctrl.Start(); err != nil {
 			ctrl.Stop()
+			_ = ctrl.Wait()
+			if e.lan != nil {
+				e.lan.Close()
+				e.lan = nil
+			}
 			return err
 		}
 		e.control = ctrl
 		e.config = cfg
 		e.generation++
 	} else {
+		if e.lan != nil {
+			if err = e.lan.Update(c.Lease, c.Snapshot); err != nil {
+				e.stop()
+				return err
+			}
+		}
 		// Upstream reload callbacks may only log an invalid configuration. Validate
 		// PKI and firewall rules first using the same upstream parsers.
 		if err = preflight(raw, c.Lease.Certificate); err != nil {
@@ -154,6 +183,10 @@ func (e *Engine) stop() {
 		_ = e.control.Wait()
 		e.control = nil
 		e.config = nil
+	}
+	if e.lan != nil {
+		_ = e.lan.Close()
+		e.lan = nil
 	}
 	e.raw = ""
 }

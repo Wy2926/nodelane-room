@@ -15,15 +15,14 @@ import (
 )
 
 type Identity struct {
-	Server        string                  `json:"server"`
-	Name          string                  `json:"name"`
-	PrivateKey    []byte                  `json:"private_key"`
-	RoomID        string                  `json:"room_id,omitempty"`
-	NodeID        string                  `json:"node_id,omitempty"`
-	Generation    int64                   `json:"generation,omitempty"`
-	Node          bool                    `json:"node"`
-	Ports         []model.EndpointRequest `json:"ports,omitempty"`
-	CAFingerprint string                  `json:"ca_fingerprint,omitempty"`
+	Server        string `json:"server"`
+	Name          string `json:"name"`
+	PrivateKey    []byte `json:"private_key"`
+	RoomID        string `json:"room_id,omitempty"`
+	NodeID        string `json:"node_id,omitempty"`
+	Generation    int64  `json:"generation,omitempty"`
+	Node          bool   `json:"node"`
+	CAFingerprint string `json:"ca_fingerprint,omitempty"`
 }
 
 func NewIdentity(server, name string) (Identity, error) {

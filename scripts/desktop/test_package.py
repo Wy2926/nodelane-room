@@ -23,9 +23,6 @@ class PackagingTests(unittest.TestCase):
             release.mkdir()
             stage.mkdir()
             (release / 'licenses').mkdir()
-            driver = release / 'dist/windows/wintun'
-            driver.mkdir(parents=True)
-            (driver / 'LICENSE.txt').write_text('license')
             required = ['nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt']
             for name in required + ['nlroom.exe']:
                 (release / name).write_bytes(b'fixture')

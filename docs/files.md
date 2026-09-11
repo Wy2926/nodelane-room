@@ -44,7 +44,7 @@ deploy/ 部署模板与测试环境
     compose.yaml 数据库、控制面、中继与双客户端拓扑
     Dockerfile 测试程序与工具镜像
     entrypoint.sh 测试角色启动与容器内网络隔离
-    peer.py 通用 TCP/UDP 联机测试辅助服务
+    peer.py IPv4/IPv6 大包、广播/组播与 TCP/UDP 联机夹具
 desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
   index.html 正式桌面前端入口
   preview.html 仅开发使用的交互式界面预览入口
@@ -97,7 +97,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         RoomPage.tsx 欢迎主屏、房间选择、成员与连接布局
         RoomHero.tsx 当前游戏背景、房间状态及权限操作
         Members.tsx 玩家名片、虚拟 IP、实测链路与折叠管理菜单
-        Connection.tsx 游戏连接说明、只读配置与通用端口管理
+        Connection.tsx LAN 就绪、游戏连接说明与后端只读配置
         use-room.ts 当前房间、管理快照与新鲜度判断
         rooms.css 欢迎舞台、房间卡片与连接布局
         members.css 玩家卡片、角色、菜单和实测链路样式
@@ -138,7 +138,7 @@ docs/ 协议、部署与验收说明
   client.md 桌面首版需求、进程命名、GUI 选型与跨平台实施边界
   deployment.md V2 部署与维护步骤
   files.md 文件层级与职责索引
-  game-network.md 通用单播、广播与组播 LAN 发现规划和验收边界
+  game-network.md Ethernet LAN 架构、MTU 评审、授权及游戏验收边界
   manual-v2-validation.md V2 人工及环境验收清单
   nebula-race-review.md 固定补丁原理与未处理的上游竞争
   openapi.yaml HTTP API 与数据结构契约
@@ -153,7 +153,7 @@ internal/ 产品内部实现
     node.go 节点登记、配置同步、续签与状态
     node_doctor.go 节点诊断检查
     node_local.go 节点本机命令与脱敏日志缓冲
-    player.go 玩家初始化、游戏目录、房间操作与通用端口增删
+    player.go 玩家初始化、游戏目录与房间操作
     runtime.go 共享运行状态、构造、持久化与后台主循环
     runtime_test.go 控制请求阻塞时的凭据到期测试
     status.go 玩家连接状态、实际探测与本机诊断
@@ -192,8 +192,8 @@ internal/ 产品内部实现
         auth.tsx 登录与创建或接入控制面的初始化表单
         auth.test.tsx 登录及接入已有控制面的交互测试
         components.tsx 表格、指标、表单及可访问对话框
-        games.tsx Steam 导入、游戏草稿及端口配置页面
-        games.test.tsx 游戏编辑版本保留、导入失败与通用类型交互测试
+        games.tsx Steam 导入、游戏草稿及统一 LAN/端口配置
+        games.test.tsx 游戏版本保护、导入、完整端口范围与 LAN 策略测试
         main.tsx 管理台导航、SSE、监控轮询与系统页面
         metrics.ts 新鲜度、速率、房间去重与出口观察计算
         metrics.test.ts 计数重置、断档、未知值与房间统计测试
@@ -206,9 +206,9 @@ internal/ 产品内部实现
     auth.go 设备挑战、会话与房间权限校验
     deployment.go 数据库配置校验、控制面创建与独立实例接入事务
     game_import.go Steam 链接、资料及图片下载与来源和大小校验
-    games.go 游戏目录、端口规则及房间授权同步事务
+    games.go 游戏目录、完整端口区间与 LAN 策略更新事务
     games_http.go 玩家游戏列表、图片和管理员导入配置接口
-    games_test.go 游戏目录授权、并发、图片回放及可选真实 Steam 导入测试
+    games_test.go LAN 能力/MAC、规则并发、目录与图片授权测试
     geoip.go 可并发切换的本地 MMDB 国家和省州查询
     geoip_update.go GeoIP 自动下载、月度检查、缓存校验及原子更新
     geoip_test.go 下载失败保留缓存、月度回退及官方样本并发查询测试
@@ -223,7 +223,7 @@ internal/ 产品内部实现
     player_http.go 玩家路由、认证、限速与幂等写入
     player_rooms_http.go 玩家房间查询、成员操作与领证接口
     player_test.go 房间、多副本、并发、授权与 SSE 测试
-    rooms.go 房间、成员、心跳、邀请、端点与授权快照
+    rooms.go 房间、成员、心跳、邀请与 LAN 授权快照
     schema.sql 当前数据库表、共享配置、CA、索引与约束
     setup.go 无数据库页面入口、私有启动定位与控制实例恢复
     setup_test.go 初始化授权、上传 CA、事务回滚和多实例共享状态测试
@@ -236,21 +236,35 @@ internal/ 产品内部实现
   device/ 设备身份与持久化配置
     identity.go 设备身份生成、标识与控制地址校验
     identity_test.go 控制地址校验测试
-  engine/ Nebula 数据面薄封装
+  engine/ Nebula 生命周期与公开设备接入
     config.go 配置校验、生成与地址冲突入口
     engine.go 数据面生命周期、重载、撤销与真实路径查询
+    lan.go 玩家 TAP DeviceFactory、网卡与内部探测状态
+    lan_integration_test.go 真实 Nebula 三成员 Ethernet 分片、广播与撤销测试
     nebula_integration_test.go 真实 Nebula 隔离、重载、撤销、中继与无中继 P2P 测试
     routes_linux.go Linux 路由冲突检查
     routes_other.go 其他平台路由检查占位
     routes_windows.go Windows 路由冲突检查
     telemetry.go 固定 Nebula hostmap 的实际路径、远端和隧道查询
+  lan/ 统一房间 Ethernet 数据面适配
+    device.go 房间帧封装/重组、成员更新、去重与交付生命周期
+    device_test.go 来源/端口授权、IPv4/IPv6 分片、发现、去重与撤销测试
+    fragments.go IP 分片有界重组与端口校验前的重叠拒绝
+    packet.go 标准 IP/Ethernet 报文解析、校验和与封装
+    policy.go 成员 MAC/IP、发现、附加类型与反向连接授权
+    probe.go 不占游戏端口的 Nebula 内部 PacketConn 与 TAP 读取
+    tap.go TAP 句柄、地址与关闭清理
+    tap_linux.go Linux 内核非持久 TAP 创建及 IPv4/IPv6 配置
+    tap_windows.go 专用 TAP-Windows6 校验、异步 I/O 与地址配置
+    tap_other.go 未支持平台的明确错误
   localapi/ 本机服务协议与调用客户端
     client.go 经 Named Pipe/Unix socket 调用本机 RPC
     client_unix_test.go Unix socket 请求、响应与错误兼容测试
     protocol.go 本机请求与节点日志响应类型
   model/ 共享协议类型
-    game.go 游戏目录、端口范围及管理请求类型
-    model.go 设备、房间、凭据、端点与状态类型
+    game.go 游戏目录、LAN 策略/心跳、端口区间与管理类型
+    lan.go LAN 版本、MAC、完整端口区间校验与 IPv6 地址推导
+    model.go 设备、房间、凭据与 LAN 客户端状态类型
     node.go 节点配置、登记、操作与同步类型
     telemetry.go 非持久化监控采样与窗口协议
   nodehost/ Linux 原生节点安装生命周期
@@ -260,7 +274,7 @@ internal/ 产品内部实现
     pki.go CA 创建、PEM 校验、签发与隧道密钥生成
     pki_test.go 上传 CA 的地址池、组约束、有效期及多证书拒绝测试
   platform/ 平台权限、存储与本机通信
-    diagnostics.go 系统、网卡与 TUN/Wintun 诊断
+    diagnostics.go 系统、LAN 网卡与 TUN/TAP 设备诊断
     platform_unix.go Unix 目录权限与本机套接字
     platform_windows.go DPAPI、ACL、Named Pipe 与 Windows 服务
     protection_windows_test.go Windows 私密数据与状态目录保护测试
@@ -268,7 +282,7 @@ internal/ 产品内部实现
     sync_unix.go Unix 目录落盘同步
     sync_windows.go Windows 目录同步兼容处理
   probe/ 隧道内真实测量
-    probe.go 探测、RTT/丢包、成员授权与来源限速
+    probe.go 经原生或 LAN PacketConn 的探测、RTT/丢包与来源限速
     probe_test.go 探测成员授权与统计过期测试
 README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
@@ -309,7 +323,7 @@ scripts/ 构建、安装与验证工具
     main.go 从发布包生成同源下载资源与清单
   setup.ps1 提权前捕获玩家 SID 并启动安装或显式回滚
   test-deploy.py 部署模板与发布镜像冒烟测试
-  test-docker.py 隔离双客户端回归与可选 Go/race 检查
+  test-docker.py 隔离 TAP/中继/低 MTU 回归与独立数据库 Go/race 检查
   uninstall.ps1 Windows 停止等待、受保护目录卸载与可选状态清理
 THIRD_PARTY_NOTICES.md 第三方许可声明
 ```

@@ -28,6 +28,14 @@ type Config struct {
 }
 
 func Validate(c Config) error {
+	if c.Lease.Node == nil {
+		if c.Snapshot.Game == nil {
+			return errors.New("LAN game policy missing")
+		}
+		if err := model.ValidateLAN(*c.Snapshot.Game); err != nil {
+			return err
+		}
+	}
 	if c.Lease.IP == "" || time.Until(c.Lease.ExpiresAt) <= 0 {
 		return errors.New("lease missing or expired")
 	}
@@ -148,22 +156,10 @@ func Render(c Config) (string, error) {
 		}
 		inbound = append(inbound, rule("icmp", "any", group))
 		outbound = append(outbound, rule("icmp", "any", group))
-		seen := map[string]bool{}
-		for _, e := range c.Snapshot.Endpoints {
-			key := fmt.Sprintf("%s:%d", e.Protocol, e.Port)
-			if !seen[key] {
-				outbound = append(outbound, rule(e.Protocol, e.Port, group))
-				seen[key] = true
-			}
-			if e.DeviceID == c.DeviceID {
-				inbound = append(inbound, rule(e.Protocol, e.Port, group))
-			}
-		}
+		inbound = append(inbound, rule("udp", model.LANPort, group))
+		outbound = append(outbound, rule("udp", model.LANPort, group))
 	}
-	dev := c.Interface
-	if dev == "" {
-		dev = "nodelane0"
-	}
+	dev := interfaceName(c)
 	listenHost := c.ListenHost
 	if listenHost == "" {
 		listenHost = "0.0.0.0"
@@ -178,6 +174,9 @@ func Render(c Config) (string, error) {
 		"tun":             map[string]any{"dev": dev, "disabled": c.DisableTUN, "mtu": 1300, "drop_local_broadcast": true, "drop_multicast": true, "network_category": "private", "windows_bypass_wdf": true},
 		"firewall":        map[string]any{"inbound_action": "drop", "outbound_action": "drop", "inbound": inbound, "outbound": outbound},
 		"logging":         map[string]any{"level": "info", "format": "json"},
+	}
+	if isPlayer(c) {
+		v["nodelane_lan"] = map[string]any{"network": c.Snapshot.Game.Network, "ports": c.Snapshot.Game.Ports, "enabled": c.Snapshot.Game.Enabled}
 	}
 	b, err := yaml.Marshal(v)
 	return string(b), err

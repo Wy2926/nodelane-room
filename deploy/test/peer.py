@@ -8,6 +8,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 
 
 class TCP(socketserver.BaseRequestHandler):
@@ -30,18 +31,70 @@ class TCPServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+class UDP6Server(socketserver.ThreadingUDPServer):
+    address_family = socket.AF_INET6
+    max_packet_size = 65535
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        super().server_bind()
+
+
 class Fixture:
     def __init__(self):
         self.held = None
+        self.discovery = None
 
     def action(self, req):
         action = req["action"]
+        if action == "listen-game-probe-port":
+            server = socketserver.ThreadingUDPServer(("0.0.0.0", 4243), UDP)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            return {"ok": True}
+        if action == "listen-discovery":
+            if self.discovery:
+                self.discovery.close()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("", 27077))
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                            socket.inet_aton("239.10.20.30") + socket.inet_aton(req["ip"]))
+            self.discovery = sock
+
+            def respond():
+                try:
+                    while True:
+                        data, source = sock.recvfrom(65535)
+                        sock.sendto(data, source)
+                except OSError:
+                    pass
+
+            threading.Thread(target=respond, daemon=True).start()
+            return {"ok": True}
+        if action == "discover":
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.bind((req["ip"], 0))
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(req["ip"]))
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
+                sock.settimeout(2)
+                payload = os.urandom(128)
+                sock.sendto(payload, (req["destination"], 27077))
+                deadline = time.monotonic() + 2
+                try:
+                    while time.monotonic() < deadline:
+                        data, source = sock.recvfrom(65535)
+                        if data == payload and source[0] == req["peer"]:
+                            return {"ok": True, "source": source[0]}
+                except OSError:
+                    pass
+                return {"ok": False}
         if action in ("echo", "hold"):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if req.get("protocol") == "udp" else socket.SOCK_STREAM)
+            sock = socket.socket(socket.AF_INET6 if ":" in req["ip"] else socket.AF_INET, socket.SOCK_DGRAM if req.get("protocol") == "udp" else socket.SOCK_STREAM)
             sock.settimeout(req.get("timeout", 2))
             try:
                 sock.connect((req["ip"], req["port"]))
-                payload = b"nodelane-docker-real-payload"
+                payload = os.urandom(min(req.get("size", 32), 60000))
                 sock.sendall(payload)
                 received = b""
                 while len(received) < len(payload):
@@ -82,6 +135,9 @@ def serve():
         threading.Thread(target=server.serve_forever, daemon=True).start()
     for port in (26001, 26002):
         server = socketserver.ThreadingUDPServer(("0.0.0.0", port), UDP)
+        server.max_packet_size = 65535
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        server = UDP6Server(("::", port), UDP)
         threading.Thread(target=server.serve_forever, daemon=True).start()
     fixture = Fixture()
 

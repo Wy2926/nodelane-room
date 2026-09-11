@@ -1,4 +1,4 @@
-// Refresh V2 protocol schemas from Go types while retaining documented player endpoints.
+// Generate current HTTP schemas and operation metadata.
 package main
 
 import (
@@ -99,20 +99,23 @@ func run() error {
 	}
 	components := doc["components"].(map[string]any)
 	schemas = components["schemas"].(map[string]any)
+
 	generated = map[string]bool{}
 	schema(reflect.TypeOf(model.NetworkSample{}))
 	schema(reflect.TypeOf(model.TelemetrySnapshot{}))
-	for _, v := range []any{model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.EndpointRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
+	for _, v := range []any{model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
 		schema(reflect.TypeOf(v))
 	}
 	schema(reflect.TypeOf(model.RoomManagement{}))
+	schema(reflect.TypeOf(model.HeartbeatRequest{}))
 	schema(reflect.TypeOf(model.Status{}))
 	schemes := components["securitySchemes"].(map[string]any)
 	schemes["AdminCookie"] = M{"type": "apiKey", "in": "cookie", "name": "__Host-nlroom-admin", "description": "12 hour random session; 30 minute idle timeout. Secure, HttpOnly, SameSite=Strict. All admin writes also require exact Origin and X-CSRF-Token."}
 	schemes["NodeBearer"] = M{"type": "http", "scheme": "bearer", "description": "One-hour session scoped to the current nonrevoked node identity binding. Cannot authorize player/admin APIs."}
 	paths := doc["paths"].(map[string]any)
+
 	paths["/v2/auth/verify"].(M)["post"].(M)["summary"] = "Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce"
-	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh database schema version 3 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
+	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh database schema version 4 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
 	str := M{"type": "string"}
 	empty := object(M{})
 	ok := object(M{"ok": M{"type": "boolean", "enum": []bool{true}}}, "ok")
@@ -158,29 +161,28 @@ func run() error {
 	}
 	delete(paths, "/v2/admin/bootstrap")
 	add("/v2/rooms", "get", "This player's owned, open, unexpired rooms; newest expiry first, at most 500", "Bearer", nil, M{"type": "array", "items": ref("Room")}, false)
-	add("/v2/rooms/{room}/manage", "get", "Owner-only consistent room, game, member and endpoint view, including after leaving; never grants tunnel authority", "Bearer", nil, ref("RoomManagement"), false)
+	add("/v2/rooms/{room}/manage", "get", "Owner-only consistent room, game, member and game-policy view, including after leaving; never grants tunnel authority", "Bearer", nil, ref("RoomManagement"), false)
 	doc["x-local-api"] = M{
 		"transport":        "HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener",
-		"protocol_version": 1,
+		"protocol_version": 2,
 		"rpc": M{"method": "POST", "path": "/rpc", "max_request_bytes": 65536, "max_response_bytes": 4 << 20,
-			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "port", "remove-port", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
+			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
 			"error":     object(M{"code": str, "error": str}, "code", "error"),
 			"responses": M{"status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": M{"type": "array", "items": ref("Room")}, "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
 		"images": M{"method": "GET", "path": "/game-images/{game}/{kind}", "kind": []string{"cover", "background"}, "max_response_bytes": 5 << 20, "description": "Public JPEG/PNG fetched only from the configured control origin, without session or redirects; at most two concurrent downloads; never part of status."},
 	}
-	add("/v2/games", "get", "Enabled server game catalog; custom permits client-defined ports", "Bearer", nil, M{"type": "array", "items": ref("Game")}, false)
+	add("/v2/games", "get", "Enabled server game catalog; all games use the mandatory Ethernet LAN policy", "Bearer", nil, M{"type": "array", "items": ref("Game")}, false)
 	add("/v2/games/{game}/images/{image}", "get", "Downloaded public game artwork; image is cover or background", "", nil, str, false)
 	paths["/v2/games/{game}/images/{image}"].(M)["get"].(M)["responses"] = M{"200": M{"description": "Validated JPEG/PNG from shared PostgreSQL, at most 5 MiB", "content": M{"image/jpeg": M{"schema": M{"type": "string", "format": "binary"}}, "image/png": M{"schema": M{"type": "string", "format": "binary"}}}}, "404": M{"$ref": "#/components/responses/Error"}}
 	add("/v2/admin/games/import", "post", "Import a Steam app link, download both images and atomically save a disabled draft", "AdminCookie", ref("GameImportRequest"), ref("Game"), true)
 	paths["/v2/admin/games/import"].(M)["post"].(M)["description"] = "Only https://store.steampowered.com/app/<id>/ links; fixed store API and HTTPS steamstatic.com artwork, public resolved addresses, bounded redirects/downloads. No API key. 10 imports/admin/minute, at most 500 games. External failure stores nothing; a completed retry returns its cached response. Steam Store appdetails availability and fields may change. Ports are configured manually after import."
-	add("/v2/admin/games/{game}", "put", "Update name, TCP/UDP ports and enabled state using the original revision", "AdminCookie", ref("GameUpdateRequest"), ref("Game"), true)
-	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "custom is immutable and always enabled. Enabled configured games require at least one port; 1–65535 excluding 4243, ranges expand to at most 32 nonoverlapping protocol/port pairs. Atomically replaces existing room registrations and publishes room/admin events. Disabled games deny new rooms, new joins and endpoint registration; existing game ports are withdrawn."
-	add("/v2/rooms/{room}/endpoints", "delete", "Remove this member's custom game port and publish a room change", "Bearer", ref("EndpointRequest"), ok, true)
-	paths["/v2/rooms/{room}/endpoints"].(M)["post"].(M)["description"] = "Only active room members; TCP/UDP 1–65535 excluding 4243, at most 32 registrations/member, 45 second expiry. Configured games allow only server-defined ports; their fixed ports register automatically on join and heartbeat. custom supports explicit client registration and removal."
+	add("/v2/admin/games/{game}", "put", "Update name, TCP/UDP port intervals, Ethernet LAN policy and enabled state using the original revision", "AdminCookie", ref("GameUpdateRequest"), ref("Game"), true)
+	add("/v2/rooms/{room}/heartbeat", "post", "Renew membership; LAN rooms require lan_version=1 and register the local unicast MAC", "Bearer", ref("HeartbeatRequest"), ok, true)
+	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 4; no schema migration. Disabling withdraws game authorization."
 	schemas["RoomRequest"].(M)["properties"].(M)["game"].(M)["description"] = "Enabled game ID from GET /v2/games, or custom; no game-specific discovery."
 	add("/v2/admin/setup", "get", "Check local database configuration and loaded control plane readiness", "", nil, object(M{"initialized": M{"type": "boolean"}, "configured": M{"type": "boolean"}}, "initialized", "configured"), false)
 	add("/v2/admin/setup", "post", "Use a 10 minute local console code to create a control plane or connect an independent instance", "", setup, object(M{"ok": M{"type": "boolean"}, "public_url": str}, "ok", "public_url"), false)
-	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 3), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
+	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 4), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
 	add("/v2/admin/login", "post", "Login; rate limited to 8/IP and 30 total per minute", "", credentials, session, false)
 	add("/v2/admin/session", "get", "Restore current session and stable CSRF token", "AdminCookie", nil, session, false)
 	add("/v2/admin/logout", "post", "Revoke current session", "AdminCookie", empty, ok, false)
@@ -201,7 +203,7 @@ func run() error {
 	add("/v2/admin/nodes/{node}/actions", "post", "Create generation-bound node lifecycle operation", "AdminCookie", object(M{"action": M{"type": "string", "enum": []string{"drain", "disable", "resume", "restart", "replace", "revoke", "revoke-key"}}}, "action"), ref("NodeOperation"), true)
 	add("/v2/admin/nodes/{node}/compose", "get", "Download versioned node Compose without enrollment secrets", "AdminCookie", nil, str, false)
 	paths["/v2/admin/nodes/{node}/compose"].(M)["get"].(M)["responses"].(M)["200"] = M{"description": "Compose YAML attachment", "content": M{"application/yaml": M{"schema": str}}}
-	add("/v2/admin/rooms/{room}", "get", "Inspect room members and registered endpoints in one consistent snapshot", "AdminCookie", nil, ref("AdminRoomSnapshot"), false)
+	add("/v2/admin/rooms/{room}", "get", "Inspect room members and game policy in one consistent snapshot", "AdminCookie", nil, ref("AdminRoomSnapshot"), false)
 	add("/v2/admin/rooms/{room}/actions", "post", "Close room or kick a member and revoke authorization", "AdminCookie", object(M{"action": M{"type": "string", "enum": []string{"close", "kick"}}, "device_id": str}, "action"), ref("Room"), true)
 	add("/v2/node/enrollment/challenge", "post", "Validate temporary key before creating a challenge; no public requests", "", ref("EnrollmentChallengeRequest"), ref("Challenge"), false)
 	add("/v2/node/enrollment/complete", "post", "Prove persisted identity and atomically consume key and bind address", "", ref("VerifyRequest"), ref("Session"), false)

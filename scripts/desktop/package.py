@@ -71,7 +71,6 @@ def windows_payload(stage, release, gui, required, target):
         shutil.copy2(ROOT / 'scripts' / name, engine / name)
     shutil.copytree(release / 'licenses', payload / 'licenses')
     collect(ROOT, payload / 'licenses/desktop', target)
-    shutil.copytree(release / 'dist/windows/wintun', payload / 'dist/windows/wintun')
     shutil.copy2(gui, payload / 'nlroom.exe')
     payload_hashes(payload)
     return payload, engine

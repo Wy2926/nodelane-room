@@ -65,7 +65,7 @@ func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.lease = model.Lease{IP: "10.203.0.2", Network: model.DefaultPool, RoomID: i.RoomID, CA: ca.PEM, Certificate: string(pem), ExpiresAt: until}
-	s := model.Snapshot{Room: &model.Room{ID: i.RoomID}, Members: []model.Member{{DeviceID: i.ID(), IP: r.lease.IP}}}
+	s := model.Snapshot{Game: &model.Game{Network: model.GameNetwork{Version: 1}}, Room: &model.Room{ID: i.RoomID}, Members: []model.Member{{DeviceID: i.ID(), IP: r.lease.IP}}}
 	if err = r.engine.Apply(engine.Config{Lease: r.lease, Snapshot: s, PrivateKey: key, DeviceID: i.ID(), DisableTUN: true}); err != nil {
 		t.Fatal(err)
 	}

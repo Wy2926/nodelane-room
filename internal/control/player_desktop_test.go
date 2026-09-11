@@ -35,7 +35,7 @@ func TestOwnerManagementAfterLeaving(t *testing.T) {
 	statusError(t, owner.Call(ctx, "POST", path+"/lease", model.LeaseRequest{PublicKey: pub}, nil), 403)
 	var snap model.Snapshot
 	must(t, owner.Call(ctx, "GET", path, nil, &snap))
-	if len(snap.Members) != 0 || len(snap.Endpoints) != 0 {
+	if len(snap.Members) != 0 {
 		t.Fatal("management granted network authority")
 	}
 	must(t, owner.Call(ctx, "POST", path+"/transfer", model.MemberRequest{DeviceID: guest.Identity.ID()}, nil))

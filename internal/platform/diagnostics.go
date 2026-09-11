@@ -3,24 +3,14 @@ package platform
 import (
 	"net"
 	"os"
-	"path/filepath"
 	"runtime"
 )
 
 func Diagnostics() map[string]any {
 	out := map[string]any{"os": runtime.GOOS, "arch": runtime.GOARCH}
 	if runtime.GOOS == "windows" {
-		exe, err := os.Executable()
-		if err == nil {
-			arch := runtime.GOARCH
-			if arch == "386" {
-				arch = "x86"
-			}
-			path := filepath.Join(filepath.Dir(exe), "dist", "windows", "wintun", "bin", arch, "wintun.dll")
-			_, err = os.Stat(path)
-			out["wintun_present"] = err == nil
-			out["wintun_path"] = path
-		}
+		_, err := net.InterfaceByName("nodelane0-lan")
+		out["tap_interface_present"] = err == nil
 	} else {
 		_, err := os.Stat("/dev/net/tun")
 		out["tun_device_present"] = err == nil

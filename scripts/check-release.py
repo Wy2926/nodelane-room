@@ -59,9 +59,8 @@ def main():
         if name.endswith(".zip"):
             with zipfile.ZipFile(archive) as bundle:
                 files = {item.filename: bundle.read(item) for item in bundle.infolist() if not item.is_dir()}
-            required = ["nlroom-cli.exe", "nlroom-service.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLaneRoom.cmd",
-                        f"dist/windows/wintun/bin/{arch}/wintun.dll", "dist/windows/wintun/LICENSE.txt"]
-            for binary in ("nlroom-cli.exe", "nlroom-service.exe", required[-2]):
+            required = ["nlroom-cli.exe", "nlroom-service.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLaneRoom.cmd"]
+            for binary in ("nlroom-cli.exe", "nlroom-service.exe"):
                 data = files[binary]
                 offset = struct.unpack_from("<I", data, 0x3C)[0]
                 require(data[offset:offset + 4] == b"PE\0\0", f"invalid PE: {binary}")

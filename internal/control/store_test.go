@@ -11,14 +11,14 @@ import (
 func TestSchemaRefusesOlderVersionsAndNonemptyDatabase(t *testing.T) {
 	s, _ := database(t)
 	ctx := context.Background()
-	_, err := s.Pool.Exec(ctx, "UPDATE schema_version SET version=2")
+	_, err := s.Pool.Exec(ctx, "UPDATE schema_version SET version=3")
 	must(t, err)
 	if err = s.InitializeSchema(ctx); err == nil {
 		t.Fatal("older schema accepted")
 	}
 	var version int
 	must(t, s.Pool.QueryRow(ctx, "SELECT version FROM schema_version").Scan(&version))
-	if version != 2 {
+	if version != 3 {
 		t.Fatal("changed rejected schema")
 	}
 	_, err = s.Pool.Exec(ctx, "DROP TABLE schema_version")
@@ -37,7 +37,7 @@ func TestOpeningCurrentSchemaPreservesConfiguration(t *testing.T) {
 	s, _ := database(t)
 	ctx := context.Background()
 	must(t, s.Write(ctx, func(tx pgx.Tx) error {
-		_, err := s.updateGame(ctx, tx, "admin", "minecraft-java", model.GameUpdateRequest{Name: "Configured game", Enabled: false, Revision: 1, Ports: []model.GamePort{}})
+		_, err := s.updateGame(ctx, tx, "admin", "minecraft-java", model.GameUpdateRequest{Name: "Configured game", Network: model.GameNetwork{Version: 1}, Enabled: false, Revision: 1, Ports: []model.GamePort{}})
 		return err
 	}))
 	var deploymentID string

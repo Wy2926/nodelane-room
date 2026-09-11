@@ -73,7 +73,7 @@ function Wait-Ready([string]$Version) {
       $json = & (Join-Path $target 'nlroom-cli.exe') status --json 2>$null
       if ($LASTEXITCODE -eq 0) {
         $status = $json | ConvertFrom-Json
-        if ($status.version -eq $Version -and $status.protocol_version -eq 1) { return }
+        if ($status.version -eq $Version -and $status.protocol_version -eq 2) { return }
       }
     } catch { Write-Verbose 'Waiting for the local service.' }
     Start-Sleep -Milliseconds 300
@@ -121,8 +121,7 @@ if ($build -notmatch '(?m)^Version: (\d+\.\d+\.\d+)\s*$') { throw 'Invalid packa
 $version = $Matches[1]
 $nativeArch = $env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()
 if ($nativeArch -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
-$driver = "dist/windows/wintun/bin/$arch/wintun.dll"
-$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt', $driver, 'dist/windows/wintun/LICENSE.txt')
+$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt')
 $hasGUI = Test-Path -LiteralPath (Join-Path $source 'nlroom.exe') -PathType Leaf
 $managedGUI = $hasGUI -and (Test-Path -LiteralPath (Join-Path $source 'Uninstall.exe') -PathType Leaf)
 if (-not $hasGUI -and (Test-Path -LiteralPath (Join-Path $target 'nlroom.exe'))) { throw 'Use the complete desktop installer to update this GUI installation' }
@@ -136,8 +135,6 @@ foreach ($file in $files) {
   if (-not (Test-Path -LiteralPath (Join-Path $source $file) -PathType Leaf)) { throw "Incomplete package: $file" }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $source 'licenses') -PathType Container)) { throw 'Incomplete package: licenses' }
-$signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $source $driver)
-if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=WireGuard LLC(?:,|$)') { throw 'Wintun signature verification failed' }
 if ($hasGUI) {
   # Hashes detect incomplete or mixed payloads; test packages are not publisher-signed.
   $hashes = @{}

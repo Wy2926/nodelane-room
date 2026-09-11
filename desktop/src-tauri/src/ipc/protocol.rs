@@ -32,8 +32,6 @@ pub enum Action {
     Transfer,
     Leave,
     Close,
-    Port,
-    RemovePort,
     Ping,
     Doctor,
 }

@@ -11,7 +11,7 @@ async fn installed_service_roundtrip() {
         .expect("production local transport");
     let status: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(status["version"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(status["protocol_version"], 1);
+    assert_eq!(status["protocol_version"], 2);
     for field in ["private_key", "token", "certificate"] {
         assert!(status.get(field).is_none());
     }
@@ -33,7 +33,9 @@ async fn installed_service_roundtrip() {
 
 #[test]
 fn refuses_admin_and_path_injection() {
-    assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"service-install"}"#).is_err());
+    assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"port"}"#).is_err());
+    assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"remove-port"}"#).is_err());
+	assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"service-install"}"#).is_err());
     assert!(
         serde_json::from_str::<PlayerRequest>(r#"{"action":"status","path":"/admin"}"#).is_err()
     );

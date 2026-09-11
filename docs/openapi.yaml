@@ -34,10 +34,8 @@ components:
             type: object
         AdminRoomSnapshot:
             properties:
-                endpoints:
-                    items:
-                        $ref: '#/components/schemas/Endpoint'
-                    type: array
+                game:
+                    $ref: '#/components/schemas/Game'
                 members:
                     items:
                         $ref: '#/components/schemas/Member'
@@ -49,8 +47,8 @@ components:
                     type: string
             required:
                 - room
+                - game
                 - members
-                - endpoints
                 - server_time
             type: object
         AdminSnapshot:
@@ -145,38 +143,6 @@ components:
             properties: {}
             required: []
             type: object
-        Endpoint:
-            properties:
-                device_id:
-                    type: string
-                expires_at:
-                    format: date-time
-                    type: string
-                id:
-                    type: string
-                port:
-                    format: int64
-                    type: integer
-                protocol:
-                    type: string
-            required:
-                - id
-                - device_id
-                - protocol
-                - port
-                - expires_at
-            type: object
-        EndpointRequest:
-            properties:
-                port:
-                    format: int64
-                    type: integer
-                protocol:
-                    type: string
-            required:
-                - protocol
-                - port
-            type: object
         EnrollmentChallengeRequest:
             additionalProperties: false
             properties:
@@ -218,6 +184,8 @@ components:
                     type: string
                 name:
                     type: string
+                network:
+                    $ref: '#/components/schemas/GameNetwork'
                 ports:
                     items:
                         $ref: '#/components/schemas/GamePort'
@@ -237,6 +205,7 @@ components:
                 - cover_url
                 - background_url
                 - ports
+                - network
                 - enabled
                 - revision
             type: object
@@ -246,6 +215,26 @@ components:
                     type: string
             required:
                 - url
+            type: object
+        GameNetwork:
+            properties:
+                broadcast:
+                    type: boolean
+                ethernet_types:
+                    items:
+                        format: int64
+                        type: integer
+                    type: array
+                multicast:
+                    type: boolean
+                version:
+                    format: int64
+                    type: integer
+            required:
+                - version
+                - broadcast
+                - multicast
+                - ethernet_types
             type: object
         GamePort:
             properties:
@@ -269,6 +258,8 @@ components:
                     type: boolean
                 name:
                     type: string
+                network:
+                    $ref: '#/components/schemas/GameNetwork'
                 ports:
                     items:
                         $ref: '#/components/schemas/GamePort'
@@ -279,8 +270,19 @@ components:
             required:
                 - name
                 - ports
+                - network
                 - enabled
                 - revision
+            type: object
+        HeartbeatRequest:
+            properties:
+                lan_version:
+                    format: int64
+                    type: integer
+                mac:
+                    type: string
+            required:
+                - lan_version
             type: object
         Invitation:
             additionalProperties: false
@@ -301,6 +303,30 @@ components:
                     type: string
             required:
                 - code
+            type: object
+        LANStatus:
+            properties:
+                interface:
+                    type: string
+                ipv6:
+                    type: string
+                mac:
+                    type: string
+                mtu:
+                    format: int64
+                    type: integer
+                ready:
+                    type: boolean
+                version:
+                    format: int64
+                    type: integer
+            required:
+                - version
+                - interface
+                - mac
+                - ipv6
+                - mtu
+                - ready
             type: object
         Lease:
             properties:
@@ -382,6 +408,8 @@ components:
                     type: string
                 last_seen:
                     format: date-time
+                    type: string
+                mac:
                     type: string
                 name:
                     type: string
@@ -702,10 +730,6 @@ components:
             type: object
         RoomManagement:
             properties:
-                endpoints:
-                    items:
-                        $ref: '#/components/schemas/Endpoint'
-                    type: array
                 game:
                     $ref: '#/components/schemas/Game'
                 members:
@@ -721,7 +745,6 @@ components:
                 - room
                 - game
                 - members
-                - endpoints
                 - server_time
             type: object
         RoomRequest:
@@ -766,10 +789,6 @@ components:
                     items:
                         type: string
                     type: array
-                endpoints:
-                    items:
-                        $ref: '#/components/schemas/Endpoint'
-                    type: array
                 game:
                     $ref: '#/components/schemas/Game'
                 members:
@@ -787,7 +806,6 @@ components:
                     type: string
             required:
                 - members
-                - endpoints
                 - nodes
                 - blocklist
                 - server_time
@@ -798,10 +816,6 @@ components:
                     type: string
                 device_id:
                     type: string
-                endpoints:
-                    items:
-                        $ref: '#/components/schemas/Endpoint'
-                    type: array
                 engine:
                     type: string
                 error:
@@ -810,6 +824,11 @@ components:
                     $ref: '#/components/schemas/Game'
                 ip:
                     type: string
+                lan:
+                    $ref: '#/components/schemas/LANStatus'
+                lan_version:
+                    format: int64
+                    type: integer
                 lease_expires_at:
                     format: date-time
                     type: string
@@ -822,10 +841,6 @@ components:
                 peers:
                     items:
                         $ref: '#/components/schemas/Peer'
-                    type: array
-                ports:
-                    items:
-                        $ref: '#/components/schemas/EndpointRequest'
                     type: array
                 protocol_version:
                     format: int64
@@ -842,14 +857,13 @@ components:
                 version:
                     type: string
             required:
+                - lan_version
                 - version
                 - protocol_version
                 - server
                 - name
                 - selected_room
-                - ports
                 - members
-                - endpoints
                 - snapshot_at
                 - device_id
                 - control
@@ -941,7 +955,7 @@ components:
             scheme: bearer
             type: http
 info:
-    description: 'Fresh database schema version 3 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
+    description: 'Fresh database schema version 4 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
     title: NodeLane Room V2
     version: 0.2.0
 openapi: 3.0.3
@@ -1085,7 +1099,7 @@ paths:
                 - Admin
     /v2/admin/games/{game}:
         put:
-            description: custom is immutable and always enabled. Enabled configured games require at least one port; 1–65535 excluding 4243, ranges expand to at most 32 nonoverlapping protocol/port pairs. Atomically replaces existing room registrations and publishes room/admin events. Disabled games deny new rooms, new joins and endpoint registration; existing game ports are withdrawn.
+            description: TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 4; no schema migration. Disabling withdraws game authorization.
             parameters:
                 - in: path
                   name: game
@@ -1136,7 +1150,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - AdminCookie: []
-            summary: Update name, TCP/UDP ports and enabled state using the original revision
+            summary: Update name, TCP/UDP port intervals, Ethernet LAN policy and enabled state using the original revision
             tags:
                 - Admin
     /v2/admin/games/import:
@@ -1663,7 +1677,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - AdminCookie: []
-            summary: Inspect room members and registered endpoints in one consistent snapshot
+            summary: Inspect room members and game policy in one consistent snapshot
             tags:
                 - Admin
     /v2/admin/rooms/{room}/actions:
@@ -1798,7 +1812,7 @@ paths:
             tags:
                 - Admin
         post:
-            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 3), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
+            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 4), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
             parameters:
                 - in: header
                   name: Origin
@@ -2037,7 +2051,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - Bearer: []
-            summary: Enabled server game catalog; custom permits client-defined ports
+            summary: Enabled server game catalog; all games use the mandatory Ethernet LAN policy
             tags:
                 - Player
     /v2/games/{game}/images/{image}:
@@ -2406,93 +2420,6 @@ paths:
             summary: Close the room and revoke all members; owner only
             tags:
                 - Player
-    /v2/rooms/{room}/endpoints:
-        delete:
-            parameters:
-                - in: path
-                  name: room
-                  required: true
-                  schema:
-                    type: string
-                - in: header
-                  name: Idempotency-Key
-                  required: true
-                  schema:
-                    maxLength: 128
-                    minLength: 16
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/EndpointRequest'
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                additionalProperties: false
-                                properties:
-                                    ok:
-                                        enum:
-                                            - true
-                                        type: boolean
-                                required:
-                                    - ok
-                                type: object
-                    description: Success
-                "400":
-                    $ref: '#/components/responses/Error'
-                "401":
-                    $ref: '#/components/responses/Error'
-                "403":
-                    $ref: '#/components/responses/Error'
-                "409":
-                    $ref: '#/components/responses/Error'
-                "429":
-                    $ref: '#/components/responses/Error'
-            security:
-                - Bearer: []
-            summary: Remove this member's custom game port and publish a room change
-            tags:
-                - Player
-        post:
-            description: Only active room members; TCP/UDP 1–65535 excluding 4243, at most 32 registrations/member, 45 second expiry. Configured games allow only server-defined ports; their fixed ports register automatically on join and heartbeat. custom supports explicit client registration and removal.
-            operationId: endpointsRoom
-            parameters:
-                - description: Room ID
-                  in: path
-                  name: room
-                  required: true
-                  schema:
-                    type: string
-                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
-                  in: header
-                  name: Idempotency-Key
-                  required: true
-                  schema:
-                    maxLength: 128
-                    minLength: 16
-                    type: string
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/EndpointRequest'
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Endpoint'
-                    description: Success
-                default:
-                    $ref: '#/components/responses/Error'
-            summary: Register or refresh a 45-second game endpoint
-            tags:
-                - Player
     /v2/rooms/{room}/events:
         get:
             description: text/event-stream. Replays up to 256 durable change notifications after the cursor, then sends an authoritative snapshot (also for pruned/future cursors). Full snapshots every five seconds. Connections end after five minutes; reconnect with the last snapshot revision. Changes invalidate cached state; do not apply them as authorization deltas.
@@ -2524,16 +2451,13 @@ paths:
                 - Player
     /v2/rooms/{room}/heartbeat:
         post:
-            operationId: heartbeatRoom
             parameters:
-                - description: Room ID
-                  in: path
+                - in: path
                   name: room
                   required: true
                   schema:
                     type: string
-                - description: Same device/key and exact request bytes replay the response for one hour; changed request returns 409
-                  in: header
+                - in: header
                   name: Idempotency-Key
                   required: true
                   schema:
@@ -2544,18 +2468,36 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/Empty'
+                            $ref: '#/components/schemas/HeartbeatRequest'
                 required: true
             responses:
                 "200":
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/OK'
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
                     description: Success
-                default:
+                "400":
                     $ref: '#/components/responses/Error'
-            summary: Refresh current membership heartbeat
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Renew membership; LAN rooms require lan_version=1 and register the local unicast MAC
             tags:
                 - Player
     /v2/rooms/{room}/invite:
@@ -2729,7 +2671,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - Bearer: []
-            summary: Owner-only consistent room, game, member and endpoint view, including after leaving; never grants tunnel authority
+            summary: Owner-only consistent room, game, member and game-policy view, including after leaving; never grants tunnel authority
             tags:
                 - Player
     /v2/rooms/{room}/telemetry:
@@ -2860,7 +2802,7 @@ x-local-api:
         max_response_bytes: 5242880
         method: GET
         path: /game-images/{game}/{kind}
-    protocol_version: 1
+    protocol_version: 2
     rpc:
         error:
             additionalProperties: false
@@ -2895,8 +2837,6 @@ x-local-api:
                         - transfer
                         - leave
                         - close
-                        - port
-                        - remove-port
                         - ping
                         - doctor
                     type: string

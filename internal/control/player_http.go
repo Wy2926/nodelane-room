@@ -23,8 +23,6 @@ func (s *Server) registerPlayer(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v2/rooms", s.playerMutation(s.playerCreateRoom))
 	mux.HandleFunc("POST /v2/rooms/join", s.playerMutation(s.playerJoinRoom))
 	mux.HandleFunc("POST /v2/rooms/{room}/lease", s.playerMutation(s.playerLease))
-	mux.HandleFunc("POST /v2/rooms/{room}/endpoints", s.playerMutation(s.playerEndpoint))
-	mux.HandleFunc("DELETE /v2/rooms/{room}/endpoints", s.playerMutation(s.playerDeleteEndpoint))
 	mux.HandleFunc("POST /v2/rooms/{room}/heartbeat", s.playerMutation(s.playerHeartbeat))
 	mux.HandleFunc("POST /v2/rooms/{room}/invite", s.playerMutation(s.playerInvite))
 	mux.HandleFunc("POST /v2/rooms/{room}/kick", s.playerMutation(s.playerKick))

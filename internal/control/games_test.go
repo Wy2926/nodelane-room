@@ -22,27 +22,16 @@ import (
 
 func TestGamePortValidation(t *testing.T) {
 	for _, ports := range [][]model.GamePort{
-		{{Protocol: "tcp", Port: 0}}, {{Protocol: "icmp", Port: 80}}, {{Protocol: "udp", Port: 4242, PortEnd: 4244}},
-		{{Protocol: "tcp", Port: 80, PortEnd: 79}}, {{Protocol: "tcp", Port: 1, PortEnd: 33}},
+		{{Protocol: "tcp", Port: 0}}, {{Protocol: "icmp", Port: 80}},
+		{{Protocol: "tcp", Port: 80, PortEnd: 79}},
 		{{Protocol: "tcp", Port: 80, PortEnd: 82}, {Protocol: "tcp", Port: 82}},
 	} {
-		if _, err := expandGamePorts(ports); !errors.Is(err, ErrInvalid) {
+		if err := model.ValidateGamePorts(ports); err == nil {
 			t.Fatalf("accepted invalid ports: %+v", ports)
 		}
 	}
-	ports, err := expandGamePorts([]model.GamePort{{Protocol: "tcp", Port: 65534, PortEnd: 65535}, {Protocol: "udp", Port: 65535}})
-	must(t, err)
-	if len(ports) != 3 || ports[1].Port != 65535 {
-		t.Fatal(ports)
-	}
-	g := model.Game{ID: "game", Enabled: true, Ports: []model.GamePort{{Protocol: "tcp", Port: 80}}}
-	if gameAllowsEndpoint(g, model.EndpointRequest{Protocol: "udp", Port: 80}) {
-		t.Fatal("protocol bypass")
-	}
-	g.Enabled = false
-	if gameAllowsEndpoint(g, model.EndpointRequest{Protocol: "tcp", Port: 80}) {
-		t.Fatal("disabled game permits endpoint")
-	}
+	must(t, model.ValidateGamePorts([]model.GamePort{{Protocol: "tcp", Port: 1, PortEnd: 65535}, {Protocol: "udp", Port: 1, PortEnd: 65535}}))
+
 }
 
 type steamTransport func(*http.Request) (*http.Response, error)
@@ -138,12 +127,10 @@ func TestGameCatalogPolicyAcrossReplicas(t *testing.T) {
 	path := "/v2/rooms/" + room.Room.ID
 	var snap model.Snapshot
 	must(t, host.Call(ctx, "GET", path, nil, &snap))
-	if len(snap.Endpoints) != 2 || snap.Room.GameName != "Minecraft Java" {
+	if snap.Game.Network.Version != 1 || snap.Room.GameName != "Minecraft Java" {
 		t.Fatal(snap)
 	}
-	statusError(t, host.Call(ctx, "POST", path+"/endpoints", model.EndpointRequest{Protocol: "udp", Port: 25565}, nil), 403)
-	statusError(t, host.Call(ctx, "DELETE", path+"/endpoints", model.EndpointRequest{Protocol: "tcp", Port: 25565}, nil), 403)
-	in := model.GameUpdateRequest{Name: "Server game", Ports: []model.GamePort{{Protocol: "udp", Port: 27015, PortEnd: 27016}}, Enabled: true, Revision: 1}
+	in := model.GameUpdateRequest{Network: model.GameNetwork{Version: 1}, Name: "Server game", Ports: []model.GamePort{{Protocol: "udp", Port: 27015, PortEnd: 27016}}, Enabled: true, Revision: 1}
 	status, b := a.request("PUT", "/games/minecraft-java", in, true, false)
 	if status != 403 {
 		t.Fatalf("CSRF: %d %s", status, b)
@@ -154,13 +141,8 @@ func TestGameCatalogPolicyAcrossReplicas(t *testing.T) {
 		t.Fatalf("update: %d %s", status, b)
 	}
 	must(t, host.Call(ctx, "GET", path, nil, &snap))
-	if len(snap.Endpoints) != 4 {
-		t.Fatalf("endpoints: %+v", snap.Endpoints)
-	}
-	for _, e := range snap.Endpoints {
-		if e.Protocol != "udp" || e.Port < 27015 || e.Port > 27016 {
-			t.Fatal("obsolete permission retained")
-		}
+	if len(snap.Game.Ports) != 1 || snap.Game.Ports[0].Port != 27015 || snap.Game.Ports[0].PortEnd != 27016 {
+		t.Fatal("obsolete game policy retained")
 	}
 	status, replayed := a.requestKey("PUT", "/games/minecraft-java", in, true, true, key)
 	var firstGame, replayedGame model.Game
@@ -179,10 +161,10 @@ func TestGameCatalogPolicyAcrossReplicas(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("disable: %d %s", status, b)
 	}
-	must(t, host.Call(ctx, "POST", path+"/heartbeat", struct{}{}, nil))
+	must(t, host.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1}, nil))
 	must(t, host.Call(ctx, "GET", path, nil, &snap))
-	if len(snap.Endpoints) != 0 {
-		t.Fatal("disabled ports retained")
+	if snap.Game.Enabled {
+		t.Fatal("disabled policy retained")
 	}
 	stranger := user(t, second, "stranger")
 	statusError(t, stranger.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "disabled", Game: "minecraft-java"}, nil), 403)
@@ -191,20 +173,12 @@ func TestGameCatalogPolicyAcrossReplicas(t *testing.T) {
 	if len(catalog) != 1 || catalog[0].ID != "custom" {
 		t.Fatal(catalog)
 	}
+	in.Revision = 1
 	status, _ = a.request("PUT", "/games/custom", in, true, true)
-	if status != 403 {
-		t.Fatal("custom can be disabled")
+	if status != 200 {
+		t.Fatal("generic game must use the same administrator policy")
 	}
-	custom := create(t, stranger)
-	customPath := "/v2/rooms/" + custom.Room.ID + "/endpoints"
-	e := model.EndpointRequest{Protocol: "tcp", Port: 12345}
-	must(t, stranger.Call(ctx, "POST", customPath, e, nil))
-	statusError(t, host.Call(ctx, "DELETE", customPath, e, nil), 403)
-	must(t, stranger.Call(ctx, "DELETE", customPath, e, nil))
-	must(t, stranger.Call(ctx, "GET", "/v2/rooms/"+custom.Room.ID, nil, &snap))
-	if len(snap.Endpoints) != 0 {
-		t.Fatal("removed custom port retained")
-	}
+
 }
 
 func TestGameConfigConcurrentUpdatesAndOfflineExpiry(t *testing.T) {
@@ -223,7 +197,7 @@ func TestGameConfigConcurrentUpdatesAndOfflineExpiry(t *testing.T) {
 		go func(port uint16) {
 			defer wg.Done()
 			results <- s.Write(ctx, func(tx pgx.Tx) error {
-				_, err := s.updateGame(ctx, tx, "admin", "minecraft-java", model.GameUpdateRequest{Name: "Test", Enabled: true, Revision: 1, Ports: []model.GamePort{{Protocol: "tcp", Port: port}}})
+				_, err := s.updateGame(ctx, tx, "admin", "minecraft-java", model.GameUpdateRequest{Network: model.GameNetwork{Version: 1}, Name: "Test", Enabled: true, Revision: 1, Ports: []model.GamePort{{Protocol: "tcp", Port: port}}})
 				return err
 			})
 		}(port)
@@ -243,17 +217,15 @@ func TestGameConfigConcurrentUpdatesAndOfflineExpiry(t *testing.T) {
 	}
 	var snap model.Snapshot
 	must(t, a.Call(ctx, "GET", "/v2/rooms/"+room.Room.ID, nil, &snap))
-	if len(snap.Endpoints) != 0 {
-		t.Fatal("offline grant extended")
+	if time.Since(snap.Members[0].LastSeen) < 45*time.Second {
+		t.Fatal("offline member authorization extended by game update")
 	}
-	must(t, a.Call(ctx, "POST", "/v2/rooms/"+room.Room.ID+"/heartbeat", struct{}{}, nil))
+	must(t, a.Call(ctx, "POST", "/v2/rooms/"+room.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: 1}, nil))
 	must(t, a.Call(ctx, "GET", "/v2/rooms/"+room.Room.ID, nil, &snap))
-	if len(snap.Endpoints) != 1 {
-		t.Fatal("heartbeat did not register new configuration")
+	if time.Since(snap.Members[0].LastSeen) > 5*time.Second || snap.Game.Revision != 2 {
+		t.Fatal("heartbeat or concurrent configuration missing")
 	}
-	if time.Until(snap.Endpoints[0].ExpiresAt) > 45*time.Second {
-		t.Fatal("unbounded endpoint expiry")
-	}
+
 }
 
 func TestImportedArtworkAndOfflineIdempotentReplay(t *testing.T) {
@@ -307,4 +279,51 @@ func TestSteamLiveImport(t *testing.T) {
 		t.Fatal("incomplete live import")
 	}
 	t.Logf("Steam app 105600: %s; cover=%d bytes, background=%d bytes", g.Game.Name, len(g.Images["cover"].Data), len(g.Images["background"].Data))
+}
+
+func TestLANPolicyCapabilitiesAndMACAcrossReplicas(t *testing.T) {
+	s, admin := newAdmin(t)
+	ctx := context.Background()
+	server := apiServer(t, &Store{Pool: s.Pool, Network: s.Network}, nil)
+	a, b := user(t, server, "alice"), user(t, server, "bob")
+	in := model.GameUpdateRequest{Name: "LAN", Revision: 1, Enabled: true, Ports: []model.GamePort{{Protocol: "tcp", Port: 1, PortEnd: 65535}, {Protocol: "udp", Port: 1, PortEnd: 65535}}, Network: model.GameNetwork{Version: 1, Broadcast: true, Multicast: true, EthernetTypes: []uint16{0x8137}}}
+	status, body := admin.request("PUT", "/games/minecraft-java", in, true, true)
+	if status != 200 {
+		t.Fatalf("LAN policy: %d %s", status, body)
+	}
+	var room model.RoomResult
+	must(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "LAN", Game: "minecraft-java"}, &room))
+	join(t, b, room)
+	path := "/v2/rooms/" + room.Room.ID
+	statusError(t, a.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{}, nil), 409)
+	must(t, a.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "02:00:00:00:00:01"}, nil))
+	statusError(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "02:00:00:00:00:01"}, nil), 409)
+	statusError(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "ff:ff:ff:ff:ff:ff"}, nil), 400)
+	must(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "02:00:00:00:00:02"}, nil))
+	var snap model.Snapshot
+	must(t, a.Call(ctx, "GET", path, nil, &snap))
+	if snap.Game.Network.Version != 1 || len(snap.Game.Ports) != 2 {
+		t.Fatal("LAN policy not shared or ranges expanded")
+	}
+	for _, m := range snap.Members {
+		if m.MAC == "" {
+			t.Fatal("MAC binding absent from snapshot")
+		}
+	}
+	// Null/absent policy cannot reactivate the removed native L3 game path.
+	in.Network = model.GameNetwork{}
+	in.Revision = 2
+	status, _ = admin.request("PUT", "/games/minecraft-java", in, true, true)
+	if status != 400 {
+		t.Fatal("missing LAN policy accepted")
+	}
+	for _, method := range []string{"POST", "DELETE"} {
+		statusError(t, a.Call(ctx, method, path+"/endpoints", map[string]any{"protocol": "tcp", "port": 60000}, nil), 404)
+	}
+	var exists bool
+	must(t, s.Pool.QueryRow(ctx, "SELECT to_regclass('endpoints') IS NOT NULL").Scan(&exists))
+	if exists {
+		t.Fatal("obsolete endpoint table retained")
+	}
+
 }

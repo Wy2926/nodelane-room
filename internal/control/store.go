@@ -19,7 +19,7 @@ import (
 //go:embed schema.sql
 var schema string
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 var (
 	ErrUnauthorized = errors.New("authentication required")
@@ -191,8 +191,7 @@ func revoke(ctx context.Context, tx pgx.Tx, room, device string) error {
 	if _, err := tx.Exec(ctx, "UPDATE members SET active=false WHERE room_id=$1 AND ($2='' OR device_id=$2)", room, device); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, "DELETE FROM endpoints WHERE room_id=$1 AND ($2='' OR device_id=$2)", room, device)
-	return err
+	return nil
 }
 func (s *Store) Sweep(ctx context.Context) error {
 	return s.Write(ctx, func(tx pgx.Tx) error {
@@ -222,29 +221,6 @@ func (s *Store) Sweep(ctx context.Context) error {
 				return err
 			}
 			if err = bump(ctx, tx, id, "expired"); err != nil {
-				return err
-			}
-		}
-		rows, err = tx.Query(ctx, "DELETE FROM endpoints WHERE expires_at<=now() RETURNING room_id")
-		if err != nil {
-			return err
-		}
-		rooms := map[string]bool{}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			rooms[id] = true
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return err
-		}
-		for id := range rooms {
-			if err = bump(ctx, tx, id, "endpoints"); err != nil {
 				return err
 			}
 		}

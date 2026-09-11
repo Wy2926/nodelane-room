@@ -22,6 +22,7 @@ afterEach(() => {
   else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
 });
 const game: Game = {
+  network: { version: 1, broadcast: true, multicast: true, ethernet_types: [] },
   id: "steam-105600",
   name: "Terraria",
   summary: "Build and play",
@@ -74,7 +75,7 @@ it("shows import failures without discarding the pasted link", async () => {
   ).toBe(game.source_url);
 });
 
-it("leaves custom configuration with players", () => {
+it("manages generic games with the same server policy", () => {
   render(
     <Games
       games={[
@@ -84,8 +85,33 @@ it("leaves custom configuration with players", () => {
       refresh={vi.fn()}
     />,
   );
-  expect(screen.queryByRole("button", { name: "配置" })).toBeNull();
-  expect(screen.getByText("由客户端自定义")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "配置" })).toBeTruthy();
+  expect(screen.queryByText("由客户端自定义")).toBeNull();
+});
+
+it("saves complete port ranges and explicit LAN permissions", async () => {
+  const api = vi.fn().mockResolvedValue(game);
+  render(<GameEditor game={game} api={api as API} saved={vi.fn()} />);
+  const user = userEvent.setup();
+  await user.clear(screen.getByLabelText("起始端口 1"));
+  await user.type(screen.getByLabelText("起始端口 1"), "1");
+  await user.type(screen.getByLabelText("结束端口 1"), "65535");
+  await user.type(screen.getByLabelText("额外以太网协议"), "0x8137, 0");
+  await user.click(screen.getByLabelText("允许游戏广播"));
+  await user.click(screen.getByRole("button", { name: "保存游戏配置" }));
+  expect(api).toHaveBeenCalledWith(
+    "/games/steam-105600",
+    expect.objectContaining({
+      ports: [{ protocol: "tcp", port: 1, port_end: 65535 }],
+      network: {
+        version: 1,
+        broadcast: false,
+        multicast: true,
+        ethernet_types: [0x8137, 0],
+      },
+    }),
+    "PUT",
+  );
 });
 
 it("opens the downloaded draft for manual port configuration before enabling", async () => {

@@ -14,6 +14,12 @@ export interface GamePort {
   description?: string;
 }
 export interface Game {
+  network: {
+    version: number;
+    broadcast: boolean;
+    multicast: boolean;
+    ethernet_types: number[];
+  };
   id: string;
   name: string;
   summary: string;
@@ -82,13 +88,7 @@ export interface Snapshot {
 export interface RoomSnapshot {
   room: Room;
   members: { device_id: string; name: string; ip: string; last_seen: string }[];
-  endpoints: {
-    id: string;
-    device_id: string;
-    protocol: string;
-    port: number;
-    expires_at: string;
-  }[];
+  game: Game;
 }
 export interface Link {
   device_id: string;

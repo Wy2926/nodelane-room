@@ -17,7 +17,7 @@ CREATE TABLE sessions (
 );
 CREATE TABLE games (
  id text PRIMARY KEY, name text NOT NULL, summary text NOT NULL DEFAULT '', source_url text NOT NULL DEFAULT '',
- ports jsonb NOT NULL DEFAULT '[]', enabled boolean NOT NULL DEFAULT false,
+ ports jsonb NOT NULL DEFAULT '[]', network jsonb NOT NULL DEFAULT '{"version":1,"broadcast":true,"multicast":true,"ethernet_types":[]}', enabled boolean NOT NULL DEFAULT false,
  revision bigint NOT NULL DEFAULT 1
 );
 CREATE TABLE game_images (
@@ -26,7 +26,7 @@ CREATE TABLE game_images (
  content_type text NOT NULL CHECK(content_type IN ('image/jpeg','image/png')), PRIMARY KEY(game_id,kind)
 );
 INSERT INTO games(id,name,summary,ports,enabled) VALUES
- ('custom','通用游戏','自行登记需要开放的 TCP/UDP 端口。','[]',true),
+ ('custom','通用游戏','游戏端口及发现规则由管理员配置。','[{"protocol":"tcp","port":1,"port_end":65535},{"protocol":"udp","port":1,"port_end":65535}]',true),
  ('minecraft-java','Minecraft Java','通过虚拟 IP 和服务端配置端口直接连接。','[{"protocol":"tcp","port":25565}]',true);
 CREATE TABLE rooms (
  id text PRIMARY KEY, name text NOT NULL, owner_id text NOT NULL REFERENCES devices(id), game text NOT NULL REFERENCES games(id),
@@ -35,11 +35,12 @@ CREATE TABLE rooms (
 );
 CREATE TABLE members (
  room_id text NOT NULL REFERENCES rooms(id), device_id text NOT NULL REFERENCES devices(id),
- ip text NOT NULL, active boolean NOT NULL DEFAULT true, banned boolean NOT NULL DEFAULT false,
+ ip text NOT NULL, mac text NOT NULL DEFAULT '', active boolean NOT NULL DEFAULT true, banned boolean NOT NULL DEFAULT false,
  last_seen timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(room_id,device_id)
 );
 CREATE UNIQUE INDEX one_active_room ON members(device_id) WHERE active;
 CREATE UNIQUE INDEX unique_active_ip ON members(ip) WHERE active;
+CREATE UNIQUE INDEX unique_room_mac ON members(room_id,mac) WHERE active AND mac<>'';
 CREATE TABLE addresses (ip text PRIMARY KEY, holder text NOT NULL UNIQUE, release_after timestamptz);
 CREATE TABLE invitations (
  code_hash text PRIMARY KEY, room_id text NOT NULL REFERENCES rooms(id), expires_at timestamptz NOT NULL
@@ -83,12 +84,6 @@ CREATE TABLE certificates (
  ip text NOT NULL, public_key bytea NOT NULL, expires_at timestamptz NOT NULL, revoked boolean NOT NULL DEFAULT false
 );
 CREATE INDEX certificates_device ON certificates(device_id,expires_at);
-CREATE TABLE endpoints (
- id text PRIMARY KEY, room_id text NOT NULL REFERENCES rooms(id), device_id text NOT NULL REFERENCES devices(id),
- protocol text NOT NULL CHECK (protocol IN ('tcp','udp')), port integer NOT NULL CHECK (port BETWEEN 1 AND 65535),
- expires_at timestamptz NOT NULL,
- UNIQUE(room_id,device_id,protocol,port)
-);
 CREATE TABLE events (
  room_id text NOT NULL REFERENCES rooms(id), revision bigint NOT NULL, kind text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(room_id,revision)
@@ -98,4 +93,4 @@ CREATE TABLE idempotency (
  expires_at timestamptz NOT NULL, PRIMARY KEY(device_id,key)
 );
 CREATE TABLE rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL);
-INSERT INTO schema_version(version) VALUES (3);
+INSERT INTO schema_version(version) VALUES (4);

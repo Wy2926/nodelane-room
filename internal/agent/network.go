@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math/rand/v2"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -76,7 +75,7 @@ func (r *Runtime) step(ctx context.Context) error {
 			return nil
 		}
 	} else {
-		if err := r.api.Call(ctx, "POST", prefix+"/heartbeat", struct{}{}, nil); err != nil {
+		if err := r.api.Call(ctx, "POST", prefix+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion, MAC: r.engine.LANMAC()}, nil); err != nil {
 			if client.IsDenied(err) {
 				r.netMu.Lock()
 				r.stopNetworkLocked()
@@ -84,7 +83,7 @@ func (r *Runtime) step(ctx context.Context) error {
 				r.netMu.Unlock()
 				// A denied heartbeat is authoritative: the device no longer has
 				// room membership. Clear the local selection so it can join again.
-				i.RoomID, i.Ports = "", nil
+				i.RoomID = ""
 				if saveErr := r.persist(i); saveErr != nil {
 					return saveErr
 				}
@@ -190,8 +189,22 @@ func (r *Runtime) step(ctx context.Context) error {
 	r.key = key
 	r.public = pub
 	r.snapshot = snapshot
+	if mac := r.engine.LANMAC(); mac != "" {
+		for _, m := range snapshot.Members {
+			if m.DeviceID == i.ID() && m.MAC != mac {
+				r.Wake()
+				break
+			}
+		}
+	}
 	if r.probe == nil {
-		r.probe, err = probe.Start(lease.IP, lease.Network, i.Node)
+		if i.Node {
+			r.probe, err = probe.Start(lease.IP, lease.Network, true)
+		} else if conn := r.engine.ProbeConn(); conn != nil {
+			r.probe, err = probe.StartWithConn(conn, lease.Network, false)
+		} else {
+			err = errors.New("LAN diagnostic channel unavailable")
+		}
 		if err != nil {
 			r.stopNetworkLocked()
 			r.netMu.Unlock()
@@ -242,22 +255,7 @@ func (r *Runtime) step(ctx context.Context) error {
 			wg.Wait()
 		}()
 	}
-	if !i.Node {
-		ports := []model.EndpointRequest{}
-		if snapshot.Room != nil && snapshot.Room.Game == "custom" {
-			ports = append(ports, i.Ports...)
-		}
-		for _, e := range ports {
-			k := e.Protocol + ":" + strconv.Itoa(int(e.Port))
-			if time.Since(r.registered[k]) < 10*time.Second {
-				continue
-			}
-			if err = r.api.Call(ctx, "POST", prefix+"/endpoints", e, nil); err != nil {
-				return err
-			}
-			r.registered[k] = time.Now()
-		}
-	}
+
 	return nil
 }
 

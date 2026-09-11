@@ -15,15 +15,16 @@ func (r *Runtime) Status() model.Status {
 	s := r.status
 	r.stateMu.Unlock()
 	s.Version, s.ProtocolVersion = model.Version, localapi.ProtocolVersion
+	s.LANVersion = model.LANVersion
 	r.netMu.Lock()
 	defer r.netMu.Unlock()
 	s.Room = r.snapshot.Room
 	s.Game = r.snapshot.Game
 	s.SnapshotAt = r.snapshot.ServerTime
 	s.Members = append([]model.Member{}, r.snapshot.Members...)
-	s.Endpoints = append([]model.Endpoint{}, r.snapshot.Endpoints...)
 	s.IP = r.lease.IP
 	s.LeaseExpiresAt = r.lease.ExpiresAt
+	s.LAN = r.engine.LANStatus()
 	s.Engine = "stopped"
 	if r.engine.Running() {
 		s.Engine = "running"
@@ -66,6 +67,10 @@ func (r *Runtime) Ping(ctx context.Context, target string) (map[string]any, erro
 func (r *Runtime) Doctor() map[string]any {
 	s := r.Status()
 	result := map[string]any{"nebula_version": model.NebulaVersion, "device_id": s.DeviceID, "control": s.Control, "engine": s.Engine, "error": s.Error, "platform": platform.Diagnostics(), "peers": s.Peers}
+	result["lan_version"] = s.LANVersion
+	if s.LAN != nil {
+		result["lan"] = s.LAN
+	}
 	if s.IP != "" {
 		result["lease_expires_at"] = s.LeaseExpiresAt
 		result["virtual_ip"] = s.IP

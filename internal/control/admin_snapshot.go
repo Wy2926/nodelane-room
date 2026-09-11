@@ -34,10 +34,10 @@ type AdminSnapshot struct {
 }
 
 type AdminRoomSnapshot struct {
-	Room       model.Room       `json:"room"`
-	Members    []model.Member   `json:"members"`
-	Endpoints  []model.Endpoint `json:"endpoints"`
-	ServerTime time.Time        `json:"server_time"`
+	Room       model.Room     `json:"room"`
+	Game       model.Game     `json:"game"`
+	Members    []model.Member `json:"members"`
+	ServerTime time.Time      `json:"server_time"`
 }
 
 func (s *Store) adminRoomSnapshot(ctx context.Context, room string) (AdminRoomSnapshot, error) {
@@ -53,10 +53,12 @@ func (s *Store) adminRoomSnapshot(ctx context.Context, room string) (AdminRoomSn
 	if out.Room, err = readRoom(ctx, tx, room); err != nil {
 		return out, err
 	}
+	if out.Game, err = readGame(ctx, tx, out.Room.Game); err != nil {
+		return out, err
+	}
 	if out.Members, err = readRoomMembers(ctx, tx, room); err != nil {
 		return out, err
 	}
-	out.Endpoints, err = readRoomEndpoints(ctx, tx, room)
 	return out, err
 }
 

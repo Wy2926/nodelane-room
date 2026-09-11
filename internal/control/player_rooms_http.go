@@ -1,6 +1,7 @@
 package control
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
@@ -46,20 +47,8 @@ func (s *Server) playerLease(r *http.Request, tx pgx.Tx, id string, b []byte) (a
 	return s.Store.issueLease(r.Context(), tx, s.CA, r.PathValue("room"), id, in)
 }
 
-func (s *Server) playerEndpoint(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
-	var in model.EndpointRequest
-	if err := decodeBytes(b, &in); err != nil {
-		return nil, err
-	}
-	return s.Store.endpoint(r.Context(), tx, r.PathValue("room"), id, in)
-}
-
-func (s *Server) playerHeartbeat(r *http.Request, tx pgx.Tx, id string, _ []byte) (any, error) {
-	return s.Store.heartbeat(r.Context(), tx, r.PathValue("room"), id)
-}
-
-func (s *Server) playerDeleteEndpoint(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
-	var in model.EndpointRequest
+func (s *Server) playerHeartbeat(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
+	var in model.HeartbeatRequest
 	if err := decodeBytes(b, &in); err != nil {
 		return nil, err
 	}
@@ -67,21 +56,32 @@ func (s *Server) playerDeleteEndpoint(r *http.Request, tx pgx.Tx, id string, b [
 	if err := activeMember(ctx, tx, room, id); err != nil {
 		return nil, err
 	}
-	rm, err := readRoom(ctx, tx, room)
-	if err != nil {
-		return nil, err
+	if in.LANVersion != model.LANVersion {
+		return nil, fmt.Errorf("%w: 此房间需要支持 Ethernet LAN v1 的客户端", ErrConflict)
 	}
-	if rm.Game != "custom" {
-		return nil, ErrForbidden
+	if in.MAC != "" {
+		mac, err := model.ParseLANMAC(in.MAC)
+		if err != nil || in.LANVersion != model.LANVersion {
+			return nil, ErrInvalid
+		}
+		var duplicate bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM members WHERE room_id=$1 AND active AND device_id<>$2 AND mac=$3)`, room, id, mac.String()).Scan(&duplicate); err != nil {
+			return nil, err
+		}
+		if duplicate {
+			return nil, fmt.Errorf("%w: 房间内虚拟网卡 MAC 重复", ErrConflict)
+		}
+		result, err := tx.Exec(ctx, `UPDATE members SET mac=$3 WHERE room_id=$1 AND device_id=$2 AND mac<>$3`, room, id, mac.String())
+		if err != nil {
+			return nil, err
+		}
+		if result.RowsAffected() != 0 {
+			if err = bump(ctx, tx, room, "lan_mac"); err != nil {
+				return nil, err
+			}
+		}
 	}
-	if _, err = expandGamePorts([]model.GamePort{{Protocol: in.Protocol, Port: in.Port}}); err != nil {
-		return nil, err
-	}
-	result, err := tx.Exec(ctx, "DELETE FROM endpoints WHERE room_id=$1 AND device_id=$2 AND protocol=$3 AND port=$4", room, id, in.Protocol, in.Port)
-	if err == nil && result.RowsAffected() > 0 {
-		err = bump(ctx, tx, room, "endpoint_removed")
-	}
-	return map[string]bool{"ok": err == nil}, err
+	return s.Store.heartbeat(r.Context(), tx, r.PathValue("room"), id)
 }
 
 func (s *Server) playerInvite(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {

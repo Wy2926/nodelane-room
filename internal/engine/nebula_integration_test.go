@@ -156,7 +156,7 @@ func TestNebulaIsolationReloadAndRevocation(t *testing.T) {
 	must(t, err)
 	n := model.Node{ID: "lh", IP: "10.203.0.1", Address: publicAddress(t, "127.0.0.1"), Lighthouse: true, Relay: true}
 	room := &model.Room{ID: "room-one", ExpiresAt: time.Now().Add(time.Hour)}
-	s := model.Snapshot{Room: room, Nodes: []model.Node{n}, Members: []model.Member{{DeviceID: "alice", IP: "10.203.0.2"}, {DeviceID: "bob", IP: "10.203.0.3"}}, Endpoints: []model.Endpoint{{DeviceID: "bob", Protocol: "udp", Port: 7000}}}
+	s := model.Snapshot{Room: room, Nodes: []model.Node{n}, Members: []model.Member{{DeviceID: "alice", IP: "10.203.0.2"}, {DeviceID: "bob", IP: "10.203.0.3"}}, Game: &model.Game{Enabled: true, Network: model.GameNetwork{Version: 1}}}
 	lc := testLease(t, ca, n.ID, n.IP, "", &n)
 	lc.Snapshot = s
 	startTestPeer(t, lc, n.Address, nil)
@@ -167,7 +167,7 @@ func TestNebulaIsolationReloadAndRevocation(t *testing.T) {
 	alice := startTestPeer(t, a, publicAddress(t, "127.0.0.1"), nil)
 	bob := startTestPeer(t, b, publicAddress(t, "127.0.0.1"), nil)
 	a, b = alice.c, bob.c
-	delivered(t, alice, bob, 7000, "authorized", true)
+	delivered(t, alice, bob, model.LANPort, "authorized", true)
 	if got := alice.e.Peers(s.Members)[0].Mode; got != "direct" {
 		t.Fatalf("path=%s, want direct", got)
 	}
@@ -183,19 +183,12 @@ func TestNebulaIsolationReloadAndRevocation(t *testing.T) {
 	}
 	// A third device uses a valid CA certificate but belongs to another room.
 	c := testLease(t, ca, "mallory", "10.203.0.4", "room-two", nil)
-	c.Snapshot = model.Snapshot{Room: &model.Room{ID: "room-two"}, Nodes: s.Nodes, Members: []model.Member{{DeviceID: "mallory", IP: c.Lease.IP}}}
+	c.Snapshot = model.Snapshot{Game: s.Game, Room: &model.Room{ID: "room-two"}, Nodes: s.Nodes, Members: []model.Member{{DeviceID: "mallory", IP: c.Lease.IP}}}
 	mal := startTestPeer(t, c, publicAddress(t, "127.0.0.1"), func(v map[string]any) {
 		v["firewall"].(map[string]any)["outbound"] = []map[string]any{{"proto": "any", "port": "any", "host": "any"}}
 	})
-	delivered(t, mal, bob, 7000, "cross-room", false)
+	delivered(t, mal, bob, model.LANPort, "cross-room", false)
 	delivered(t, alice, bob, 7001, "closed-port", false)
-	// Removing the rule must also invalidate an existing conntrack entry.
-	b.Snapshot.Endpoints = nil
-	must(t, bob.e.Apply(b))
-	delivered(t, alice, bob, 7000, "revoked-endpoint", false)
-	b.Snapshot = s
-	must(t, bob.e.Apply(b))
-	delivered(t, alice, bob, 7000, "restored-endpoint", true)
 	// Renewal changes the certificate without replacing the virtual device.
 	fresh := testLease(t, ca, "bob", b.Lease.IP, room.ID, nil)
 	fresh.Snapshot = b.Snapshot
@@ -207,14 +200,14 @@ func TestNebulaIsolationReloadAndRevocation(t *testing.T) {
 		t.Fatal("certificate renewal restarted device")
 	}
 	b = fresh
-	delivered(t, alice, bob, 7000, "renewed-cert", true)
+	delivered(t, alice, bob, model.LANPort, "renewed-cert", true)
 	b.Snapshot.Blocklist = []string{a.Lease.Fingerprint}
 	b.Snapshot.Members = []model.Member{s.Members[1]}
 	must(t, bob.e.Apply(b))
 	if bob.e.control.GetHostInfoByVpnAddr(netip.MustParseAddr(a.Lease.IP), false) != nil {
 		t.Fatal("revoked tunnel retained")
 	}
-	delivered(t, alice, bob, 7000, "old-cert-reconnect", false)
+	delivered(t, alice, bob, model.LANPort, "old-cert-reconnect", false)
 	bob.e.Expire(b.Lease.ExpiresAt.Add(time.Second))
 	if bob.e.Running() {
 		t.Fatal("expired local credential still runs")
@@ -226,7 +219,7 @@ func TestNebulaNativeRelay(t *testing.T) {
 	must(t, err)
 	n := model.Node{ID: "relay", IP: "10.203.0.1", Address: publicAddress(t, "127.0.0.10"), Lighthouse: true, Relay: true}
 	n2 := model.Node{ID: "relay-two", IP: "10.203.0.4", Address: publicAddress(t, "127.0.0.11"), Lighthouse: true, Relay: true}
-	s := model.Snapshot{Room: &model.Room{ID: "room"}, Nodes: []model.Node{n, n2}, Members: []model.Member{{DeviceID: "a", IP: "10.203.0.2"}, {DeviceID: "b", IP: "10.203.0.3"}}, Endpoints: []model.Endpoint{{DeviceID: "b", Protocol: "udp", Port: 7000}}}
+	s := model.Snapshot{Room: &model.Room{ID: "room"}, Nodes: []model.Node{n, n2}, Members: []model.Member{{DeviceID: "a", IP: "10.203.0.2"}, {DeviceID: "b", IP: "10.203.0.3"}}, Game: &model.Game{Enabled: true, Network: model.GameNetwork{Version: 1}}}
 	lc := testLease(t, ca, n.ID, n.IP, "", &n)
 	lc.Snapshot = s
 	first := startTestPeer(t, lc, n.Address, nil)
@@ -244,7 +237,7 @@ func TestNebulaNativeRelay(t *testing.T) {
 		c.Snapshot = s
 		peers = append(peers, startTestPeer(t, c, publicAddress(t, fmt.Sprintf("127.0.0.%d", i+2)), blockDirect))
 	}
-	delivered(t, peers[0], peers[1], 7000, "native-relay", true)
+	delivered(t, peers[0], peers[1], model.LANPort, "native-relay", true)
 	if got := peers[0].e.Peers(s.Members)[0].Mode; got != "relay" {
 		t.Fatalf("path=%s, want relay", got)
 	}
@@ -281,7 +274,7 @@ func TestNebulaNativeRelay(t *testing.T) {
 		must(t, err)
 		must(t, p.e.config.ReloadConfigString(string(encoded)))
 	}
-	delivered(t, peers[0], peers[1], 7000, "replacement-relay", true)
+	delivered(t, peers[0], peers[1], model.LANPort, "replacement-relay", true)
 	if got := peers[0].e.Peers(s.Members)[0].Mode; got != "relay" {
 		t.Fatalf("failover path=%s, want relay", got)
 	}
@@ -291,7 +284,7 @@ func TestNebulaP2PWithoutRelay(t *testing.T) {
 	ca, err := pki.Generate(netip.MustParsePrefix(model.DefaultPool))
 	must(t, err)
 	n := model.Node{ID: "lighthouse", IP: "10.203.0.1", Address: publicAddress(t, "127.0.0.1"), Lighthouse: true}
-	s := model.Snapshot{Room: &model.Room{ID: "p2p-room"}, Nodes: []model.Node{n}, Members: []model.Member{{DeviceID: "a", IP: "10.203.0.2"}, {DeviceID: "b", IP: "10.203.0.3"}}, Endpoints: []model.Endpoint{{DeviceID: "a", Protocol: "udp", Port: 7000}, {DeviceID: "b", Protocol: "udp", Port: 7000}}}
+	s := model.Snapshot{Room: &model.Room{ID: "p2p-room"}, Nodes: []model.Node{n}, Members: []model.Member{{DeviceID: "a", IP: "10.203.0.2"}, {DeviceID: "b", IP: "10.203.0.3"}}, Game: &model.Game{Enabled: true, Network: model.GameNetwork{Version: 1}}}
 	lc := testLease(t, ca, n.ID, n.IP, "", &n)
 	lc.Snapshot = s
 	startTestPeer(t, lc, n.Address, nil)
@@ -305,7 +298,7 @@ func TestNebulaP2PWithoutRelay(t *testing.T) {
 	}
 	for i, from := range peers {
 		to := peers[1-i]
-		delivered(t, from, to, 7000, "p2p-without-relay", true)
+		delivered(t, from, to, model.LANPort, "p2p-without-relay", true)
 		h := from.e.control.GetHostInfoByVpnAddr(netip.MustParseAddr(to.c.Lease.IP), false)
 		if h == nil || h.CurrentRemote.String() != to.address || len(h.CurrentRelaysToMe) != 0 || from.e.Peers(s.Members)[0].Mode != "direct" {
 			t.Fatal("P2P did not establish the actual direct peer endpoint")

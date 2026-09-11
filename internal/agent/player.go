@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/nodelane/nodelane-room/internal/localapi"
-	"time"
 
 	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/device"
@@ -66,8 +65,6 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 			return nil, err
 		}
 		i.RoomID = result.Room.ID
-		i.Ports = nil
-		r.registered = map[string]time.Time{}
 		if err := r.persist(i); err != nil {
 			return nil, err
 		}
@@ -80,7 +77,6 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 		r.stopNetworkLocked()
 		r.netMu.Unlock()
 		i.RoomID = ""
-		i.Ports = nil
 		if err := r.persist(i); err != nil {
 			return nil, err
 		}
@@ -142,56 +138,4 @@ func (r *Runtime) ManageRoom(ctx context.Context, room string) (model.RoomManage
 	}
 	err := api.Call(ctx, "GET", "/v2/rooms/"+room+"/manage", nil, &out)
 	return out, err
-}
-
-func (r *Runtime) SetPort(ctx context.Context, in model.EndpointRequest, remove bool) error {
-	r.op.Lock()
-	defer r.op.Unlock()
-	if r.identity.RoomID == "" {
-		return localapi.Failure("no_room", "join a room first")
-	}
-	if (in.Protocol != "tcp" && in.Protocol != "udp") || in.Port == 0 || in.Port == model.ProbePort {
-		return localapi.Failure("invalid_request", "invalid game port")
-	}
-	var snap model.Snapshot
-	if r.api == nil {
-		return localapi.Failure("unconfigured", "run init first")
-	}
-	if err := r.api.Call(ctx, "GET", "/v2/rooms/"+r.identity.RoomID, nil, &snap); err != nil {
-		return err
-	}
-	if snap.Room == nil || snap.Room.Game != "custom" {
-		return localapi.Failure("configured_ports", "自定义端口仅适用于通用游戏；当前游戏端口由服务端配置")
-	}
-	i := r.identity
-	i.Ports = append([]model.EndpointRequest(nil), i.Ports...)
-	for index, p := range i.Ports {
-		if p.Protocol == in.Protocol && p.Port == in.Port {
-			if !remove {
-				return nil
-			}
-			i.Ports = append(i.Ports[:index], i.Ports[index+1:]...)
-			break
-		}
-	}
-	if !remove && len(i.Ports) >= 32 {
-		return localapi.Failure("port_limit", "at most 32 explicit ports are supported")
-	}
-	if !remove {
-		i.Ports = append(i.Ports, in)
-	}
-	// Persist removal first so the run loop cannot renew a removed permission,
-	// including after a restart or an interrupted DELETE. Failed deletes expire.
-	if err := r.persist(i); err != nil {
-		return err
-	}
-	if remove {
-		r.registered = map[string]time.Time{}
-		if err := r.api.Call(ctx, "DELETE", "/v2/rooms/"+i.RoomID+"/endpoints", in, nil); err != nil {
-			r.Wake()
-			return err
-		}
-	}
-	r.Wake()
-	return nil
 }

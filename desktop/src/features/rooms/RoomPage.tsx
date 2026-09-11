@@ -8,7 +8,12 @@ import { RoomHero } from "./RoomHero";
 import { Members } from "./Members";
 import { Connection } from "./Connection";
 import { Art } from "../catalog/Artwork";
-import { ArrowRight, Check, GameController, Ticket } from "@phosphor-icons/react";
+import {
+  ArrowRight,
+  Check,
+  GameController,
+  Ticket,
+} from "@phosphor-icons/react";
 export function RoomPage({
   view,
   status,
@@ -43,27 +48,31 @@ export function RoomPage({
       : rooms;
   return (
     <>
-      {(!!room || !!status.selected_room) && <div className="section-toolbar room-toolbar">
-        <span className="eyebrow">YOUR ROOMS</span>
-        {!status.selected_room && <div className="actions">
-          <button
-            onClick={() => {
-              setError(undefined);
-              setDialog({ type: "join" });
-            }}
-            disabled={!usable || !!status.selected_room}
-          >
-            邀请码入房
-          </button>
-          <button
-            className="primary"
-            onClick={() => setPage("games")}
-            disabled={!usable || !!status.selected_room}
-          >
-            创建房间 <span aria-hidden="true">＋</span>
-          </button>
-        </div>}
-      </div>}
+      {(!!room || !!status.selected_room) && (
+        <div className="section-toolbar room-toolbar">
+          <span className="eyebrow">YOUR ROOMS</span>
+          {!status.selected_room && (
+            <div className="actions">
+              <button
+                onClick={() => {
+                  setError(undefined);
+                  setDialog({ type: "join" });
+                }}
+                disabled={!usable || !!status.selected_room}
+              >
+                邀请码入房
+              </button>
+              <button
+                className="primary"
+                onClick={() => setPage("games")}
+                disabled={!usable || !!status.selected_room}
+              >
+                创建房间 <span aria-hidden="true">＋</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {roomsError && (
         <div className="banner warning" role="alert">
           房间列表暂未更新：{roomsError.error}
@@ -75,22 +84,36 @@ export function RoomPage({
           {currentCard.map((r) => {
             const roomGame = catalog.games.find((g) => g.id === r.game);
             return (
-            <button
-              key={r.id}
-              aria-pressed={room?.id === r.id}
-              onClick={() => {
-                setSelected(r.id);
-                setError(undefined);
-              }}
-            >
-              <span className="room-tab-cover">{roomGame ? <Art game={roomGame} /> : <GameController size={24} weight="light" aria-hidden="true" />}</span>
-              <span className="room-tab-copy"><strong>{r.name}</strong><small>{r.game_name || r.game}</small></span>
-              <span className="room-tab-state">
-                {room?.id === r.id && <Check size={14} aria-hidden="true" />}
-                {r.id === activeRoom?.id ? "已加入" : "仅管理"}
-              </span>
-            </button>
-          );})}
+              <button
+                key={r.id}
+                aria-pressed={room?.id === r.id}
+                onClick={() => {
+                  setSelected(r.id);
+                  setError(undefined);
+                }}
+              >
+                <span className="room-tab-cover">
+                  {roomGame ? (
+                    <Art game={roomGame} />
+                  ) : (
+                    <GameController
+                      size={24}
+                      weight="light"
+                      aria-hidden="true"
+                    />
+                  )}
+                </span>
+                <span className="room-tab-copy">
+                  <strong>{r.name}</strong>
+                  <small>{r.game_name || r.game}</small>
+                </span>
+                <span className="room-tab-state">
+                  {room?.id === r.id && <Check size={14} aria-hidden="true" />}
+                  {r.id === activeRoom?.id ? "已加入" : "仅管理"}
+                </span>
+              </button>
+            );
+          })}
         </div>
       )}
       {managementError && (
@@ -125,24 +148,65 @@ export function RoomPage({
               actions={actions}
               usable={usable}
             />
-            <Connection
-              view={view}
-              status={status}
-              actions={actions}
-              usable={usable}
-            />
+            <Connection view={view} status={status} />
           </div>
         </>
       ) : (
-        !selected && (
-          status.selected_room ? <Empty title="正在同步房间"><p>正在获取房间授权与连接状态。</p></Empty> : <section className="room-welcome">
-            <div className="welcome-copy"><span className="eyebrow">一起，开启下一局</span><h2>距离再远，<br />也在同一个房间<span>。</span></h2><p>创建你们的世界，或加入朋友的冒险。<br />今晚的主场，由你们决定。</p></div>
+        !selected &&
+        (status.selected_room ? (
+          <Empty title="正在同步房间">
+            <p>正在获取房间授权与连接状态。</p>
+          </Empty>
+        ) : (
+          <section className="room-welcome">
+            <div className="welcome-copy">
+              <span className="eyebrow">一起，开启下一局</span>
+              <h2>
+                距离再远，
+                <br />
+                也在同一个房间<span>。</span>
+              </h2>
+              <p>
+                创建你们的世界，或加入朋友的冒险。
+                <br />
+                今晚的主场，由你们决定。
+              </p>
+            </div>
             <div className="welcome-cards">
-              <button className="launch-card launch-create" disabled={!usable} onClick={() => setPage("games")}><span className="launch-icon"><GameController size={32} weight="light" aria-hidden="true" /></span><span className="launch-copy"><strong>创建房间</strong><small>选择一款游戏，邀请朋友一起玩</small></span><ArrowRight size={23} aria-hidden="true" /></button>
-              <button className="launch-card" disabled={!usable} onClick={() => { setError(undefined); setDialog({ type: "join" }); }}><span className="launch-icon"><Ticket size={32} weight="light" aria-hidden="true" /></span><span className="launch-copy"><strong>邀请码入房</strong><small>朋友已经开好房间？输入邀请码加入</small></span><ArrowRight size={23} aria-hidden="true" /></button>
+              <button
+                className="launch-card launch-create"
+                disabled={!usable}
+                onClick={() => setPage("games")}
+              >
+                <span className="launch-icon">
+                  <GameController size={32} weight="light" aria-hidden="true" />
+                </span>
+                <span className="launch-copy">
+                  <strong>创建房间</strong>
+                  <small>选择一款游戏，邀请朋友一起玩</small>
+                </span>
+                <ArrowRight size={23} aria-hidden="true" />
+              </button>
+              <button
+                className="launch-card"
+                disabled={!usable}
+                onClick={() => {
+                  setError(undefined);
+                  setDialog({ type: "join" });
+                }}
+              >
+                <span className="launch-icon">
+                  <Ticket size={32} weight="light" aria-hidden="true" />
+                </span>
+                <span className="launch-copy">
+                  <strong>邀请码入房</strong>
+                  <small>朋友已经开好房间？输入邀请码加入</small>
+                </span>
+                <ArrowRight size={23} aria-hidden="true" />
+              </button>
             </div>
           </section>
-        )
+        ))
       )}
     </>
   );
