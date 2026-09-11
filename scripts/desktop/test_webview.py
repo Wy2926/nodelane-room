@@ -70,6 +70,8 @@ def main():
 
     try:
         session = wait(lambda: call('POST', '/session', {'capabilities': {'alwaysMatch': {'tauri:options': {'application': '/usr/bin/nlroom'}}}}), 'native WebView startup')['sessionId']
+        click('input[name=language][value="zh-CN"]')
+        button('继续')
         fill('input[name=name]', '桌面验收玩家')
         click('.server-choice summary')
         fill('input[name=server]', 'https://control:8443')

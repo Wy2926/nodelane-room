@@ -81,9 +81,16 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
       App.test.tsx 房间流程、诊断实测与脱敏、离线设置和更新占位测试
       Shell.tsx 统一顶部导航、玩家入口与无边框窗口控制
-      navigation.ts 页面标识与中文标题
+      navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
       use-actions.ts 操作互斥、复制与确认管理
+    i18n/ 客户端语言选择与翻译
+      index.ts 语言偏好持久化、订阅与字典插值
+      LanguageSelection.tsx 进入客户端前的语言选择界面
+      i18n.test.ts 字典键、插值、日期与源码文案边界检查
+      locales/ 按语言独立维护的界面及原生文案
+        zh-CN.json 简体中文客户端字典
+        en-US.json 英文客户端字典
     styles/ 午夜主题共享样式
       tokens.css 色彩、字阶、间距、尺寸、材质、焦点与动效令牌
       index.css 全客户端样式入口
@@ -142,7 +149,8 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     permissions/ 本机命令权限与生成配置（不展开）
     icons/ 原生窗口及安装图标（不展开）
     src/ 原生程序实现
-      main.rs 窗口、托盘、通知与生命周期
+      main.rs 窗口、托盘、通知、语言同步与生命周期
+      language.rs 复用前端语言字典的原生文案与语言白名单测试
       ipc/ 有界玩家服务桥接
         mod.rs 桥接命令入口
         protocol.rs 玩家请求校验与类型
@@ -322,7 +330,10 @@ scripts/ 构建、安装与验证工具
     Dockerfile Ubuntu 22.04 桌面构建、Windows 交叉编译与 WebView 测试工具
     licenses.py 收集精确解析的桌面依赖声明与许可证
     package.py 校验版本和架构、分离运行文件与临时工具、生成 EXE/deb 与校验和
-    windows.nsi 保留玩家账户的品牌安装、更新恢复与独立卸载向导
+    windows.nsi 保留玩家账户的双语安装、更新恢复与独立卸载向导
+    locales/ 按语言独立维护的安装向导文案
+      zh-CN.nsh 简体中文安装、恢复及卸载字典
+      en-US.nsh 英文安装、恢复及卸载字典
     linux-setup.sh 绑定 Linux 玩家 UID、启动后台与检查本机就绪
     linux-postinst.sh deb 安装或更新后重载并检查已绑定后台
     linux-prerm.sh deb 更新或移除前停止并等待旧后台退出

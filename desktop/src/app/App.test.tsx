@@ -5,6 +5,7 @@ import { App } from "./App";
 import { rpc, exitApp, copyText } from "../native/api";
 import { useService } from "../native/use-service";
 import type { Game, Status } from "../shared/model";
+import { languageStorageKey, setLanguage } from "../i18n";
 
 vi.mock("../native/use-service", () => ({ useService: vi.fn() }));
 vi.mock("../native/api", async (importOriginal) => ({
@@ -32,6 +33,7 @@ const game: Game = {
 let status: Status;
 beforeEach(() => {
   vi.clearAllMocks();
+  setLanguage("zh-CN");
   status = {
     version: "0.2.0",
     protocol_version: 2,
@@ -57,6 +59,54 @@ beforeEach(() => {
   vi.mocked(rpc).mockImplementation(
     async (request) => (request.action === "games" ? [game] : []) as never,
   );
+});
+
+test.each([null, "fr-FR", "invalid"])("language must be chosen before the client starts: %s", async (saved) => {
+  localStorage.removeItem(languageStorageKey);
+  if (saved) localStorage.setItem(languageStorageKey, saved);
+  const app = render(<App />);
+  expect(screen.getByRole("heading", { name: /Choose your language/ })).toBeTruthy();
+  expect(useService).not.toHaveBeenCalled();
+  expect(rpc).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("radio", { name: "English" }));
+  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
+  expect(document.documentElement.lang).toBe("en-US");
+  expect(localStorage.getItem(languageStorageKey)).toBe("en-US");
+  app.unmount();
+  render(<App />);
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(screen.getByRole("button", { name: "Game library" })).toBeTruthy();
+});
+
+test("Chinese choice enters initialization and settings can switch to English", async () => {
+  localStorage.removeItem(languageStorageKey);
+  status.device_id = "";
+  render(<App />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "继续" }));
+  expect(screen.getByLabelText("设备昵称")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "设置" }));
+  await user.selectOptions(screen.getByRole("combobox"), "en-US");
+  expect(screen.getByRole("button", { name: "Desktop preferences" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Device information" }));
+  expect(screen.getByText("Device nickname")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "My rooms" }));
+  await user.type(screen.getByLabelText("Device nickname"), "Traveler");
+  await user.click(screen.getByRole("button", { name: "Start your journey" }));
+  expect(rpc).toHaveBeenCalledWith({ action: "init", server: "https://room.nodelane.net", name: "Traveler" });
+});
+
+test("an existing offline error follows the selected language", async () => {
+  vi.mocked(useService).mockReturnValue({ status: undefined, error: { code: "service_unavailable", error: "服务离线" }, refresh: vi.fn(), updatedAt: 0 });
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "设置" }));
+  await userEvent.selectOptions(screen.getByRole("combobox"), "en-US");
+  expect(screen.getByRole("alert").textContent).toContain("The network service is unavailable");
+  expect(screen.getByRole("alert").textContent).not.toMatch(/\p{Script=Han}/u);
+  await userEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+  expect(screen.getByText("Waiting for the local service")).toBeTruthy();
+  expect(rpc).not.toHaveBeenCalled();
 });
 
 test("catalog failure remains a failure and cannot create from stale data", async () => {
@@ -251,7 +301,8 @@ test("creating a room submits the selected server game once and retains invitati
   await waitFor(() =>
     expect(screen.getByText("fixture-invitation")).toBeTruthy(),
   );
-  expect(localStorage.length).toBe(0);
+  expect(Object.keys(localStorage)).toEqual([languageStorageKey]);
+  expect(localStorage.getItem(languageStorageKey)).toBe("zh-CN");
   await user.click(screen.getByRole("button", { name: "关闭对话框" }));
   expect(screen.queryByText("fixture-invitation")).toBeNull();
 });
@@ -287,6 +338,28 @@ function joinedParty() {
     },
   ];
 }
+
+test("English room actions and copied diagnostics use complete translated messages", async () => {
+  setLanguage("en-US");
+  joinedParty();
+  vi.mocked(rpc).mockImplementation(async (request) => {
+    if (request.action === "doctor") return { control: "connected", engine: "running", platform: { os: "windows", tap_interface_present: true, interfaces: [] } } as never;
+    return (request.action === "games" ? [game] : []) as never;
+  });
+  render(<App />);
+  const user = userEvent.setup();
+  expect(screen.getByText("2 / 8 members")).toBeTruthy();
+  expect(screen.getByText(/^Expires /)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Leave room" }));
+  expect(screen.getByRole("button", { name: "Confirm: Leave room" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Diagnostics" }));
+  await user.click(screen.getByRole("button", { name: "Run diagnostics" }));
+  await user.click(await screen.findByRole("button", { name: "Copy redacted diagnostics" }));
+  const copied = vi.mocked(copyText).mock.calls[0][0];
+  expect(copied).toContain("Control service: Connected");
+  expect(copied).not.toMatch(/\p{Script=Han}|\{\w+\}/u);
+});
 
 test("party management disclosure supports Escape and retains confirmation before transfer", async () => {
   joinedParty();

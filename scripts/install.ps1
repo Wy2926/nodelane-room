@@ -2,6 +2,7 @@
 param([string]$OwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value), [switch]$Rollback, [switch]$CheckOnly, [string]$SourceDir = $PSScriptRoot, [switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 trap {
+  Write-Output $_.Exception.Message
   if (-not $CheckOnly -and -not $Quiet) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'NodeLane Room installation failed') | Out-Null

@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import type { Actions } from "../../../app/use-actions";
 import type { Dialog } from "./types";
 import type { Status, Failure } from "../../../shared/model";
@@ -22,7 +23,7 @@ export function JoinRoom({
         e.preventDefault();
         const f = new FormData(e.currentTarget);
         void perform(
-          "加入房间",
+          t("joinRoom.joiningRoom"),
           {
             action: "join",
             body: { code: String(f.get("code")).trim() },
@@ -34,22 +35,20 @@ export function JoinRoom({
         );
       }}
     >
-      <p className="muted">使用朋友发来的邀请码，加入同一个游戏房间。</p>
+      <p className="muted">{t("joinRoom.useYourFriendSInviteCodeToJoin")}</p>
       <label>
-        邀请码
-        <input
+        {t("joinRoom.inviteCode")}<input
           autoFocus
           autoComplete="off"
           spellCheck={false}
           name="code"
           required
           maxLength={128}
-          placeholder="粘贴邀请码"
+          placeholder={t("joinRoom.pasteInviteCode")}
         />
       </label>
       <button className="primary" disabled={!!busy || !!serviceError || !!status?.selected_room}>
-        加入并连接
-      </button>
+        {t("joinRoom.joinAndConnect")}</button>
     </form>
   );
 }

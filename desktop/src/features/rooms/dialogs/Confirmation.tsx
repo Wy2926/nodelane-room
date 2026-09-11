@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import type { Actions } from "../../../app/use-actions";
 import type { Dialog } from "./types";
 import type { Status, Failure } from "../../../shared/model";
@@ -22,8 +23,7 @@ export function Confirmation({
       <p className="confirm-description">{dialog.description}</p>
       <div className="actions end">
         <button disabled={!!busy} onClick={() => setDialog(undefined)}>
-          取消
-        </button>
+          {t("confirmation.cancel")}</button>
         <button
           className="danger solid"
           disabled={!!busy || !!serviceError}
@@ -44,7 +44,7 @@ export function Confirmation({
             if (ok && current.exit) await quit();
           }}
         >
-          确认{dialog.title}
+          {t("confirmation.action", { action: dialog.title })}
         </button>
       </div>
     </>

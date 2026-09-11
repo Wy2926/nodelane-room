@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { X } from "@phosphor-icons/react";
 export function Modal({
@@ -36,7 +37,7 @@ export function Modal({
         <h2 id={id}>{title}</h2>
         <button
           className="icon-button"
-          aria-label="关闭对话框"
+          aria-label={t("modal.closeDialog")}
           disabled={busy}
           onClick={onClose}
         >

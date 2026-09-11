@@ -1,7 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod ipc;
-use std::sync::atomic::{AtomicBool, Ordering};
+mod language;
+use language::Language;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -10,6 +15,32 @@ use tauri::{
 use tauri_plugin_notification::NotificationExt;
 
 static HAS_TRAY: AtomicBool = AtomicBool::new(false);
+
+#[derive(Default)]
+struct DesktopLanguage(Mutex<Language>);
+
+struct DesktopMenus {
+    open: MenuItem<tauri::Wry>,
+    leave: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+#[tauri::command]
+fn set_language(app: tauri::AppHandle, language: Language) -> Result<(), ipc::Failure> {
+    let state = app.state::<DesktopLanguage>();
+    *state.0.lock().unwrap_or_else(|error| error.into_inner()) = language;
+    if let Some(menu) = app.try_state::<DesktopMenus>() {
+        for (item, key) in [
+            (&menu.open, "native.open"),
+            (&menu.leave, "native.leave"),
+            (&menu.quit, "native.quit"),
+        ] {
+            item.set_text(language.text(key))
+                .map_err(|_| ipc::Failure::new("operation_failed", "Tray menu update failed"))?;
+        }
+    }
+    Ok(())
+}
 
 fn show(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -26,18 +57,33 @@ fn exit_app(app: tauri::AppHandle) {
 
 #[tauri::command]
 fn notify_state(app: tauri::AppHandle, kind: String) -> Result<(), ipc::Failure> {
-    let body = match kind.as_str() {
-        "disconnected" => "游戏连接已停止，请打开客户端查看状态。",
-        "disabled" => "当前游戏已被停用，游戏端口正在撤回。",
-        "control_unavailable" => "控制服务暂时不可达，已有连接受当前授权有效期限制。",
-        _ => return Err(ipc::Failure::new("invalid_request", "通知类型无效")),
+    let key = match kind.as_str() {
+        "disconnected" => "native.disconnected",
+        "disabled" => "native.disabled",
+        "control_unavailable" => "native.controlUnavailable",
+        _ => {
+            return Err(ipc::Failure::new(
+                "invalid_request",
+                "Invalid notification kind",
+            ))
+        }
     };
+    let language = *app
+        .state::<DesktopLanguage>()
+        .0
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
     app.notification()
         .builder()
         .title("NodeLane Room")
-        .body(body)
+        .body(language.text(key))
         .show()
-        .map_err(|_| ipc::Failure::new("notification_unavailable", "系统通知不可用"))
+        .map_err(|_| {
+            ipc::Failure::new(
+                "notification_unavailable",
+                "System notifications unavailable",
+            )
+        })
 }
 
 fn main() {
@@ -57,17 +103,39 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .manage(ipc::Bridge::default())
+        .manage(DesktopLanguage::default())
         .invoke_handler(tauri::generate_handler![
             ipc::player_request,
             ipc::game_image,
             exit_app,
-            notify_state
+            notify_state,
+            set_language
         ])
         .setup(|app| {
-            let open = MenuItem::with_id(app, "open", "打开 NodeLane Room", true, None::<&str>)?;
-            let leave = MenuItem::with_id(app, "leave", "离房并退出…", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出界面（继续联机）", true, None::<&str>)?;
+            let language = Language::default();
+            let open = MenuItem::with_id(
+                app,
+                "open",
+                language.text("native.open"),
+                true,
+                None::<&str>,
+            )?;
+            let leave = MenuItem::with_id(
+                app,
+                "leave",
+                language.text("native.leave"),
+                true,
+                None::<&str>,
+            )?;
+            let quit = MenuItem::with_id(
+                app,
+                "quit",
+                language.text("native.quit"),
+                true,
+                None::<&str>,
+            )?;
             let menu = Menu::with_items(app, &[&open, &leave, &quit])?;
+            app.manage(DesktopMenus { open, leave, quit });
             let icon = app.default_window_icon().cloned();
             let mut tray = TrayIconBuilder::with_id("room")
                 .tooltip("NodeLane Room")

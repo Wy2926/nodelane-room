@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { useEffect, useState } from "react";
 import {
   Copy,
@@ -35,13 +36,13 @@ export function Members({
       <div className="system-heading">
         <Users size={22} weight="light" aria-hidden="true" />
         <h2 id="party-title">
-          房间成员{" "}
+          {t("members.roomMembers")}{" "}
           <span className="party-count">
             {members.length}
             <span> / {room.capacity}</span>
           </span>
         </h2>
-        <span className="eyebrow">YOUR PARTY</span>
+        <span className="eyebrow">{t("members.yourParty")}</span>
       </div>
       <div className="members">
         {members.map((m, index) => {
@@ -66,7 +67,7 @@ export function Members({
                   ) : (
                     <Users size={15} weight="light" aria-hidden="true" />
                   )}
-                  {host ? "房主" : "同行伙伴"}
+                  {host ? t("members.owner") : t("members.partyMember")}
                 </span>
                 <span className="member-number" aria-hidden="true">
                   {String(index + 1).padStart(2, "0")}
@@ -82,7 +83,7 @@ export function Members({
                       }
                     }}
                   >
-                    <summary aria-label={`管理 ${m.name}`} title="成员操作">
+                    <summary aria-label={t("members.manage", { 0: m.name })} title={t("members.memberActions")}>
                       <DotsThree size={24} aria-hidden="true" />
                     </summary>
                     <div className="member-menu-actions">
@@ -91,8 +92,8 @@ export function Members({
                         disabled={!usable || !canManage}
                         onClick={() =>
                           confirm(
-                            "转让房主",
-                            `将房间管理权交给 ${m.name}。游戏进程与存档仍留在原主机。`,
+                            t("members.transferOwnership"),
+                            t("members.transferHelp", { 0: m.name }),
                             {
                               action: "transfer",
                               room: room.id,
@@ -106,15 +107,14 @@ export function Members({
                           weight="light"
                           aria-hidden="true"
                         />
-                        转让房主
-                      </button>
+                        {t("members.transferOwnership")}</button>
                       <button
                         className="danger"
                         disabled={!usable || !canManage}
                         onClick={() =>
                           confirm(
-                            "踢出成员",
-                            `${m.name} 将断开连接，并不能再使用邀请码进入本房。`,
+                            t("members.removeMember"),
+                            t("members.kickHelp", { 0: m.name }),
                             {
                               action: "kick",
                               room: room.id,
@@ -128,8 +128,7 @@ export function Members({
                           weight="light"
                           aria-hidden="true"
                         />
-                        踢出成员
-                      </button>
+                        {t("members.removeMember")}</button>
                     </div>
                   </details>
                 )}
@@ -138,17 +137,17 @@ export function Members({
                 <PlayerAvatar name={m.name} identity={m.device_id} />
                 <div className="member-info">
                   <h3>{m.name}</h3>
-                  <span>{self ? "你的设备" : "房间成员"}</span>
+                  <span>{self ? t("members.yourDevice") : t("members.roomMembers")}</span>
                 </div>
-                {self && <span className="member-self">你</span>}
+                {self && <span className="member-self">{t("members.you")}</span>}
               </div>
               <button
                 className="member-address"
                 onClick={() => void copy(m.ip)}
-                aria-label={`复制 ${m.name} 的虚拟 IP`}
+                aria-label={t("members.copyVirtualIpFor", { 0: m.name })}
               >
                 <span>
-                  <small>虚拟 IP</small>
+                  <small>{t("members.virtualIp")}</small>
                   <span className="mono">{m.ip}</span>
                 </span>
                 <Copy size={17} weight="light" aria-hidden="true" />
@@ -164,11 +163,11 @@ export function Members({
                     <Pulse size={16} weight="light" aria-hidden="true" />
                   )}
                   {self
-                    ? "本机"
+                    ? t("members.thisDevice")
                     : measured
-                      ? { direct: "直连", relay: "中继" }[peer.mode] ||
-                        "尚未建链"
-                      : "链路未知"}
+                      ? { direct: t("diagnostics.direct"), relay: t("diagnostics.relay") }[peer.mode] ||
+                        t("diagnostics.notConnected")
+                      : t("diagnostics.connectionUnknown")}
                 </span>
                 {!self && isCurrent && (
                   <button
@@ -176,20 +175,19 @@ export function Members({
                     disabled={!usable || !roomFresh}
                     onClick={() =>
                       void perform<{ rtt_ms: number }>(
-                        "测量延迟",
+                        t("diagnostics.measureLatency"),
                         { action: "ping", target: m.device_id },
-                        (p) => setPing(`${m.name}：${p.rtt_ms.toFixed(1)} ms`),
+                        (p) => setPing(t("members.ms", { 0: m.name, 1: p.rtt_ms.toFixed(1) })),
                       )
                     }
                   >
-                    测延迟
-                  </button>
+                    {t("members.testLatency")}</button>
                 )}
                 {!self && (
                   <small>
                     {measured
-                      ? `${peer.rtt_ms == null ? "延迟未测量" : peer.rtt_ms.toFixed(1) + " ms"} · ${peer.loss_percent == null ? "丢包未测量" : peer.loss_percent.toFixed(0) + "% 丢包"}`
-                      : "暂无实测数据"}
+                      ? `${peer.rtt_ms == null ? t("members.latencyNotMeasured") : peer.rtt_ms.toFixed(1) + " ms"} · ${peer.loss_percent == null ? t("members.lossNotMeasured") : peer.loss_percent.toFixed(0) + t("members.loss")}`
+                      : t("members.noMeasurementsYet")}
                   </small>
                 )}
               </div>
@@ -199,15 +197,15 @@ export function Members({
         {!members.length && (
           <div className="party-empty console-surface">
             <Users size={32} weight="light" aria-hidden="true" />
-            <p>当前没有成员</p>
-            <span>成员加入后会显示在这里。</span>
+            <p>{t("members.noMembersRightNow")}</p>
+            <span>{t("members.membersWillAppearHereWhenTheyJoin")}</span>
           </div>
         )}
       </div>
-      <p className="party-note">连接类型与延迟以实际链路测量为准。</p>
+      <p className="party-note">{t("members.measurementsHelp")}</p>
       {ping && (
         <p role="status" className="ping-result">
-          最近探测 · {ping}
+          {t("members.latestProbe")}{ping}
         </p>
       )}
     </section>

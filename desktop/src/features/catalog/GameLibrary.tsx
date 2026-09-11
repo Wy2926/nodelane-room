@@ -1,3 +1,5 @@
+import { failure } from "../../native/api";
+import { t } from "../../i18n";
 import { useState } from "react";
 import { CaretLeft, CaretRight, MagnifyingGlass, Plus } from "@phosphor-icons/react";
 import type { Status } from "../../shared/model";
@@ -27,14 +29,14 @@ export function GameLibrary({ catalog, status, actions, usable, refreshAll }: {
     <div className="library">
       {game && <div className="scene-art" aria-hidden="true"><Art key={game.id} game={game} kind="background" /></div>}
       <div className="section-toolbar library-toolbar">
-        <div><span className="eyebrow">发现下一段冒险</span><h2>游戏库 <span className="catalog-count">{filtered.length} 款游戏</span></h2></div>
-        <label className="search"><MagnifyingGlass size={18} aria-hidden="true" /><span className="sr-only">搜索游戏</span><input type="search" placeholder="搜索游戏" value={query} onChange={(e) => setQuery(e.target.value)} /></label>
+        <div><span className="eyebrow">{t("gameLibrary.discoverYourNextAdventure")}</span><h2>{t("navigation.gameLibrary")}<span className="catalog-count">{t("gameLibrary.gameCount", { count: filtered.length })}</span></h2></div>
+        <label className="search"><MagnifyingGlass size={18} aria-hidden="true" /><span className="sr-only">{t("gameLibrary.searchGames")}</span><input type="search" placeholder={t("gameLibrary.searchGames")} value={query} onChange={(e) => setQuery(e.target.value)} /></label>
       </div>
-      {gamesError && <div className="banner warning" role="alert">游戏库暂未更新，旧资料仅供查看。{gamesError.error}<button onClick={refreshAll}>重试</button></div>}
-      {status.selected_room && <div className="banner">每台设备同时连接一个房间。创建其他房间前，请先离开当前房间。</div>}
+      {gamesError && <div className="banner warning" role="alert">{t("gameLibrary.stale")}{failure(gamesError).error}<button onClick={refreshAll}>{t("gameLibrary.retry")}</button></div>}
+      {status.selected_room && <div className="banner">{t("gameLibrary.oneRoomPerDevice")}</div>}
       {game ? <>
         <div className="shelf-row">
-          <div className="game-shelf" aria-label="选择游戏">
+          <div className="game-shelf" aria-label={t("gameLibrary.chooseAGame")}>
             {filtered.map((g, index) => <button className="game-tile" id={`game-${g.id}`} key={g.id} aria-label={g.name} aria-pressed={g.id === game.id} tabIndex={g.id === game.id ? 0 : -1}
               onClick={() => setSelected(g.id)} onKeyDown={(e) => {
                 const next = e.key === "ArrowRight" ? index + 1 : e.key === "ArrowLeft" ? index - 1 : e.key === "Home" ? 0 : e.key === "End" ? filtered.length - 1 : undefined;
@@ -43,19 +45,19 @@ export function GameLibrary({ catalog, status, actions, usable, refreshAll }: {
               <Art game={g} /><strong>{g.name}</strong>
             </button>)}
           </div>
-          {filtered.length > 1 && <div className="shelf-controls"><button className="icon-button" aria-label="上一款游戏" onClick={() => selectAt(filtered.indexOf(game) - 1)}><CaretLeft size={18} /></button><button className="icon-button" aria-label="下一款游戏" onClick={() => selectAt(filtered.indexOf(game) + 1)}><CaretRight size={18} /></button></div>}
+          {filtered.length > 1 && <div className="shelf-controls"><button className="icon-button" aria-label={t("gameLibrary.previousGame")} onClick={() => selectAt(filtered.indexOf(game) - 1)}><CaretLeft size={18} /></button><button className="icon-button" aria-label={t("gameLibrary.nextGame")} onClick={() => selectAt(filtered.indexOf(game) + 1)}><CaretRight size={18} /></button></div>}
         </div>
-        <section className="library-hero" aria-label="所选游戏">
+        <section className="library-hero" aria-label={t("gameLibrary.selectedGame")}>
           <div className="library-hero-content" key={game.id}>
-            <div className="game-category"><span className="tag">{game.id === "custom" ? "自由联机" : "多人联机"}</span><span>已选择的游戏</span></div>
+            <div className="game-category"><span className="tag">{game.id === "custom" ? t("gameLibrary.playYourWay") : t("gameLibrary.multiplayer")}</span><span>{t("gameLibrary.yourSelectedGame")}</span></div>
             <h2>{game.name}</h2>
-            <p>为这款游戏创建房间，与朋友一起出发。</p>
+            <p>{t("gameLibrary.createRoomHelp")}</p>
             <div className="actions">
-              <button className="primary" disabled={disabled} onClick={() => { actions.setError(undefined); actions.setDialog({ type: "create", game }); }}><Plus size={19} aria-hidden="true" />创建房间</button>
+              <button className="primary" disabled={disabled} onClick={() => { actions.setError(undefined); actions.setDialog({ type: "create", game }); }}><Plus size={19} aria-hidden="true" />{t("gameLibrary.createRoom")}</button>
             </div>
           </div>
         </section>
-      </> : <Empty title={loading ? "正在读取游戏库" : gamesError ? "游戏库暂不可用" : "没有匹配的游戏"}><p>{gamesError ? "连接恢复后重试。" : "试试其他名称，或清空搜索。"}</p></Empty>}
+      </> : <Empty title={loading ? t("gameLibrary.loadingGameLibrary") : gamesError ? t("gameLibrary.gameLibraryUnavailable") : t("gameLibrary.noMatchingGames")}><p>{gamesError ? t("gameLibrary.retryWhenConnected") : t("gameLibrary.tryAnotherNameOrClearTheSearch")}</p></Empty>}
     </div>
   );
 }

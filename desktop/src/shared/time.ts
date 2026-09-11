@@ -1,6 +1,8 @@
+import { getLanguage } from "../i18n";
+
 export const formatTime = (value?: string) =>
   value
-    ? new Date(value).toLocaleString("zh-CN", {
+    ? new Date(value).toLocaleString(getLanguage(), {
         month: "short",
         day: "numeric",
         hour: "2-digit",

@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -9,15 +10,15 @@ export function useActions(refreshAll: () => void) {
   const [busy, setBusy] = useState("");
   const busyRef = useRef(false);
   const [error, setError] = useState<Failure>();
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(false);
   useEffect(() => {
     if (!isTauri()) return;
     const subscription = listen("leave-and-exit", () => {
       if (busyRef.current) return;
       setDialog({
         type: "confirm",
-        title: "离房并退出",
-        description: "停止本机联机后退出界面。房主离房会保留房间管理权。",
+        title: t("useActions.leaveRoomAndExit"),
+        description: t("useActions.leaveAndExitHelp"),
         request: { action: "leave" },
         exit: true,
       });
@@ -29,8 +30,8 @@ export function useActions(refreshAll: () => void) {
 
   useEffect(() => {
     if (notice) {
-      const t = setTimeout(() => setNotice(""), 4000);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setNotice(false), 4000);
+      return () => clearTimeout(timer);
     }
   }, [notice]);
   async function perform<T>(
@@ -42,7 +43,7 @@ export function useActions(refreshAll: () => void) {
     busyRef.current = true;
     setBusy(label);
     setError(undefined);
-    setNotice("");
+    setNotice(false);
     try {
       const result = await rpc<T>(request);
       success?.(result);
@@ -61,11 +62,11 @@ export function useActions(refreshAll: () => void) {
   async function copy(value: string) {
     try {
       await copyText(value);
-      setNotice("已复制");
+      setNotice(true);
     } catch {
       setError({
         code: "clipboard",
-        error: "无法写入剪贴板，请手动选择并复制。",
+        error: t("useActions.clipboardError"),
       });
     }
   }

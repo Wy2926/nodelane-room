@@ -4,6 +4,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { App } from "./app/App";
 import type { Game, Request, Room, Status } from "./shared/model";
 import "./styles/index.css";
+import { t, useLanguage } from "./i18n";
 
 if (!import.meta.env.DEV)
   throw new Error("UI preview is only available in development");
@@ -127,7 +128,7 @@ mockIPC(
       await navigator.clipboard.writeText(String(payload?.text || ""));
       return;
     }
-    if (command === "notify_state") return;
+    if (command === "notify_state" || command === "set_language") return;
     if (command === "exit_app")
       throw { code: "preview", error: "界面预览中不会退出桌面应用。" };
     const request = payload?.requestData as Request;
@@ -210,9 +211,16 @@ mockIPC(
   { shouldMockEvents: true },
 );
 
-createRoot(document.getElementById("root")!).render(
+function PreviewBadge() {
+  useLanguage();
+  return <div className="preview-badge">{t("preview.badge")}</div>;
+}
+
+const root = createRoot(document.getElementById("root")!);
+if (import.meta.hot) import.meta.hot.dispose(() => root.unmount());
+root.render(
   <>
     <App />
-    <div className="preview-badge">界面预览 · 示例数据 · 未连接游戏网络</div>
+    <PreviewBadge />
   </>,
 );

@@ -1,3 +1,5 @@
+import { failure } from "../../../native/api";
+import { t } from "../../../i18n";
 import { Modal } from "../../../shared/ui/Modal";
 import type { Actions } from "../../../app/use-actions";
 import type { Status, Failure } from "../../../shared/model";
@@ -18,11 +20,11 @@ export function RoomDialogs(props: {
   if (!dialog) return null;
   const title =
     dialog.type === "create"
-      ? "创建房间"
+      ? t("gameLibrary.createRoom")
       : dialog.type === "join"
-        ? "通过邀请码加入"
+        ? t("roomDialogs.joinWithAnInviteCode")
         : dialog.type === "invite"
-          ? "邀请朋友一起玩"
+          ? t("roomDialogs.inviteFriendsToPlay")
           : dialog.title;
   return (
     <Modal
@@ -35,7 +37,7 @@ export function RoomDialogs(props: {
     >
       {error && (
         <div className="banner error" role="alert">
-          {error.error}
+          {failure(error).error}
         </div>
       )}
       {dialog.type === "create" && <CreateRoom {...props} dialog={dialog} />}

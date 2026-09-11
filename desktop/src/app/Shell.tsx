@@ -1,3 +1,4 @@
+import { t, getLanguage, translate, type Language, type MessageKey } from "../i18n";
 import { useEffect, useState, type ReactNode } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -20,36 +21,37 @@ export function Shell({ page, setPage, service, children }: {
   useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, [page]);
   return (
     <div className="shell" data-page={page}>
-      <a className="skip-link" href="#main-content">跳到主要内容</a>
+      <a className="skip-link" href="#main-content">{t("shell.skipToMainContent")}</a>
       <header className="console-bar" data-tauri-drag-region>
         <div className="brand" aria-label="NodeLane Room" data-tauri-drag-region>
           <img src={logo} alt="" /><span>NodeLane<small>ROOM</small></span>
         </div>
-        <nav aria-label="主导航">
+        <nav aria-label={t("shell.mainNavigation")}>
           {navigation.map(({ id, icon: Icon }) => (
             <button key={id} aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
-              <Icon size={21} aria-hidden="true" /><span>{titles[id]}</span>
+              <Icon size={21} aria-hidden="true" /><span>{t(titles[id])}</span>
             </button>
           ))}
         </nav>
         <div className="titlebar-space" data-tauri-drag-region />
-        <button className="identity" aria-label="个人资料" title="个人资料与桌面偏好" onClick={() => setPage("settings")}>
+        <button className="identity" aria-label={t("shell.profile")} title={t("shell.profileAndDesktopPreferences")} onClick={() => setPage("settings")}>
           <PlayerAvatar name={status?.name || "N"} identity={status?.device_id} size="small" />
-          <span className="identity-copy"><strong>{status?.name || "本机玩家"}</strong><small>{error ? "服务不可用" : status?.selected_room ? "已加入房间" : "尚未加入房间"}</small></span>
+          <span className="identity-copy"><strong>{status?.name || t("shell.localPlayer")}</strong><small>{error ? t("shell.serviceUnavailable") : status?.selected_room ? t("shell.joinedARoom") : t("shell.noRoomJoined")}</small></span>
         </button>
         <WindowControls />
       </header>
       <main id="main-content" tabIndex={-1}>
-        <h1 className="sr-only">{titles[page]}</h1>
+        <h1 className="sr-only">{t(titles[page])}</h1>
         {children}
       </main>
     </div>
   );
 }
 
-function WindowControls() {
+export function WindowControls({ language = getLanguage() }: { language?: Language }) {
+  const text = (key: MessageKey) => translate(language, key);
   const [maximized, setMaximized] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(false);
   const native = isTauri();
   useEffect(() => {
     if (!native) return;
@@ -63,14 +65,14 @@ function WindowControls() {
     return () => { active = false; void listener.then((unlisten) => unlisten()); };
   }, [native]);
   const run = async (action: "minimize" | "toggleMaximize" | "close") => {
-    setError("");
+    setError(false);
     try { await getCurrentWindow()[action](); }
-    catch { setError("窗口操作未完成，请重试。"); }
+    catch { setError(true); }
   };
-  return <div className="window-controls" aria-label="窗口控制">
-    <button aria-label="最小化" title="最小化" disabled={!native} onClick={() => void run("minimize")}><Minus size={17} /></button>
-    <button aria-label={maximized ? "还原窗口" : "最大化"} title={maximized ? "还原窗口" : "最大化"} disabled={!native} onClick={() => void run("toggleMaximize")}>{maximized ? <CopySimple size={17} /> : <Square size={16} />}</button>
-    <button className="window-close" aria-label="关闭窗口" title="关闭窗口（继续联机）" disabled={!native} onClick={() => void run("close")}><X size={19} /></button>
-    {error && <span className="window-error" role="alert">{error}</span>}
+  return <div className="window-controls" aria-label={text("shell.windowControls")}>
+    <button aria-label={text("shell.minimize")} title={text("shell.minimize")} disabled={!native} onClick={() => void run("minimize")}><Minus size={17} /></button>
+    <button aria-label={maximized ? text("shell.restoreWindow") : text("shell.maximize")} title={maximized ? text("shell.restoreWindow") : text("shell.maximize")} disabled={!native} onClick={() => void run("toggleMaximize")}>{maximized ? <CopySimple size={17} /> : <Square size={16} />}</button>
+    <button className="window-close" aria-label={text("shell.closeWindow")} title={text("shell.closeWindowStayConnected")} disabled={!native} onClick={() => void run("close")}><X size={19} /></button>
+    {error && <span className="window-error" role="alert">{text("shell.windowActionFailedPleaseTryAgain")}</span>}
   </div>;
 }

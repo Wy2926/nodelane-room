@@ -5,6 +5,7 @@ fn main() {
             "game_image",
             "exit_app",
             "notify_state",
+            "set_language",
         ]),
     ))
     .expect("desktop build configuration is invalid");

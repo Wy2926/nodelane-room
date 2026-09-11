@@ -14,7 +14,7 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 ## Windows 客户端
 
-桌面玩家使用 `dist/desktop/nlroom-0.2.0-windows-amd64-setup.exe`（本地构建的未签名测试包）。在玩家账户下双击，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。默认连接 `https://room.nodelane.net`，填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
+桌面玩家使用 `dist/desktop/nlroom-0.2.0-windows-amd64-setup.exe`（本地构建的未签名测试包）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。默认连接 `https://room.nodelane.net`，填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
 
 安装包使用 NSIS 3 Modern UI 2，提供 NodeLane 品牌欢迎页、安装与维护页、进度及完成页。安装入口在提权前取得玩家 SID；检查版本、架构和完整包摘要。缺少 WebView2 时校验微软签名并运行随包的官方 Evergreen 引导程序，需要联网。GUI 保持普通用户运行，后台独立运行。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，只保留程序、原生 `Uninstall.exe`、构建信息和许可；PowerShell 安装工具与 WebView2 引导程序仅在临时目录执行。
 

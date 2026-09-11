@@ -1,6 +1,7 @@
 """Packaging and Debian lifecycle checks; no host service is installed."""
 import hashlib
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -35,6 +36,23 @@ class PackagingTests(unittest.TestCase):
 
     def test_versions_are_aligned(self):
         self.assertRegex(source_version(), r'^\d+\.\d+\.\d+$')
+
+    def test_installer_languages_have_complete_matching_resources(self):
+        dictionaries = []
+        for locale in ('zh-CN', 'en-US'):
+            source = (ROOT / f'scripts/desktop/locales/{locale}.nsh').read_text('utf-8-sig')
+            entries = re.findall(r'^LangString (\w+) \$\{LANG_\w+\} "(.*)"$', source, re.M)
+            self.assertEqual(len(entries), len(dict(entries)), 'Duplicate installer message')
+            dictionaries.append(dict(entries))
+        self.assertEqual(dictionaries[0].keys(), dictionaries[1].keys())
+        for key in dictionaries[0]:
+            self.assertTrue(dictionaries[1][key].strip())
+            self.assertNotRegex(dictionaries[1][key], r'[\u4e00-\u9fff]')
+            variables = r'\$\{\w+\}|\$[A-Za-z]\w*'
+            self.assertEqual(sorted(re.findall(variables, dictionaries[0][key])), sorted(re.findall(variables, dictionaries[1][key])))
+        wizard = (ROOT / 'scripts/desktop/windows.nsi').read_text('utf-8')
+        self.assertNotRegex(wizard, r'[\u4e00-\u9fff]')
+        self.assertEqual(set(re.findall(r'\$\((\w+)\)', wizard)), dictionaries[0].keys())
 
     def test_all_binaries_and_release_metadata_are_checked(self):
         with tempfile.TemporaryDirectory() as tmp:

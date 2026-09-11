@@ -1,3 +1,4 @@
+import { t, getLanguage, type MessageKey } from "../../i18n";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowClockwise,
@@ -18,16 +19,16 @@ import { formatTime, fresh } from "../../shared/time";
 import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
 
 type Tone = "ok" | "warning" | "neutral";
-const controlLabels: Record<string, string> = {
-  connected: "已连接",
-  unreachable: "无法连接",
-  unconfigured: "尚未配置",
-  idle: "待连接",
-  connecting: "连接中",
+const controlLabels: Record<string, MessageKey> = {
+  connected: "diagnostics.connected",
+  unreachable: "diagnostics.cannotConnect",
+  unconfigured: "settings.notConfigured",
+  idle: "diagnostics.idle",
+  connecting: "diagnostics.connecting",
 };
-const controlLabel = (value?: string) => controlLabels[value || ""] || "未知";
+const controlLabel = (value?: string) => t(controlLabels[value || ""] || "diagnostics.unknown");
 const engineLabel = (value?: string) =>
-  value === "running" ? "运行中" : value === "stopped" ? "已停止" : "未知";
+  value === "running" ? t("diagnostics.running") : value === "stopped" ? t("diagnostics.stopped") : t("diagnostics.unknown");
 const measurement = (value?: number) =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 
@@ -89,25 +90,25 @@ export function Diagnostics({
         !!status.error ||
         (!!status.selected_room && (!running || !leaseValid))));
   const summary = !available
-    ? "等待本机服务"
+    ? t("diagnostics.waitingForTheLocalService")
     : needsAttention
-      ? "连接需要检查"
+      ? t("diagnostics.connectionNeedsChecking")
       : running
-        ? "游戏网络运行中"
-        : "准备好，开始联机";
+        ? t("diagnostics.gameNetworkIsRunning")
+        : t("diagnostics.readyToPlay");
   const guidance = serviceError
-    ? "请确认 NodeLane 网络后台正在运行，然后重试连接。"
+    ? t("diagnostics.serviceHelp")
     : !status
-      ? "正在读取本机连接状态。"
+      ? t("diagnostics.readingLocalConnectionStatus")
       : status.control === "unreachable"
-        ? "控制端暂时不可达，请检查互联网连接与联机服务。"
+        ? t("diagnostics.controlHelp")
         : status.selected_room && (!running || !leaseValid)
-          ? "房间网络尚未就绪，运行诊断查看系统与授权状态。"
+          ? t("diagnostics.roomNotReadyHelp")
           : running
-            ? "在下方查看当前授权和成员之间的实际链路。"
-            : "加入房间后，这里会显示虚拟网络与成员链路。";
+            ? t("diagnostics.runningHelp")
+            : t("diagnostics.joinRoomHelp");
   const run = () =>
-    void perform<Diagnostic>("运行诊断", { action: "doctor" }, (value) =>
+    void perform<Diagnostic>(t("diagnostics.runDiagnostics"), { action: "doctor" }, (value) =>
       setReport({ data: value, at: Date.now() }),
     );
   const copyReport = () => {
@@ -115,14 +116,14 @@ export function Diagnostics({
     // Explicit summary fields only; never copy raw errors, identifiers or interface data.
     void copy(
       [
-        "NodeLane Room · 脱敏诊断",
-        `检查时间：${formatTime(new Date(report.at).toISOString())}`,
-        `控制端：${controlLabel(data.control)}`,
-        `游戏网络：${engineLabel(data.engine)}`,
-        `隧道组件：${driver === undefined ? "未知" : driver ? "已找到" : "未找到"}`,
-        `网卡读取：${platform?.interface_error ? "失败" : platform?.interfaces ? "完成" : "未知"}`,
-        `后台错误：${data.error ? "存在错误，请在应用内查看" : "未报告"}`,
-        "已省略设备标识、IP、网卡、成员和原始错误信息。",
+        t("diagnostics.reportTitle"),
+        t("diagnostics.checkedAt", { time: formatTime(new Date(report.at).toISOString()) }),
+        t("diagnostics.controlService", { 0: controlLabel(data.control) }),
+        t("diagnostics.gameNetwork", { 0: engineLabel(data.engine) }),
+        t("diagnostics.tunnelComponent", { 0: driver === undefined ? t("diagnostics.unknown") : driver ? t("diagnostics.found") : t("diagnostics.notFound") }),
+        t("diagnostics.networkInterfaces", { 0: platform?.interface_error ? t("diagnostics.failed") : platform?.interfaces ? t("diagnostics.complete") : t("diagnostics.unknown") }),
+        t("diagnostics.serviceErrors", { 0: data.error ? t("diagnostics.anErrorWasReportedViewItInThe") : t("diagnostics.noneReported") }),
+        t("diagnostics.reportOmissions"),
       ].join("\n"),
     );
   };
@@ -130,22 +131,22 @@ export function Diagnostics({
     <div className="diagnostics-page">
       <div className="page-intro section-head">
         <div>
-          <span className="eyebrow">看清每一段连接</span>
-          <h2>网络诊断</h2>
-          <p>连接状态、系统环境与实际链路，一目了然。</p>
+          <span className="eyebrow">{t("diagnostics.understandEveryConnection")}</span>
+          <h2>{t("navigation.diagnostics")}</h2>
+          <p>{t("diagnostics.intro")}</p>
         </div>
         <button className="primary" disabled={!usable} onClick={run}>
           <ArrowClockwise
             size={21}
-            className={busy === "运行诊断" ? "spinning" : undefined}
+            className={busy === t("diagnostics.runDiagnostics") ? "spinning" : undefined}
             aria-hidden="true"
           />
-          {busy === "运行诊断" ? "正在检查…" : "运行诊断"}
+          {busy === t("diagnostics.runDiagnostics") ? t("diagnostics.checking") : t("diagnostics.runDiagnostics")}
         </button>
       </div>
       <section
         className="network-overview console-surface"
-        aria-label="连接概览"
+        aria-label={t("diagnostics.connectionOverview")}
         data-tone={needsAttention ? "warning" : running ? "ok" : "neutral"}
       >
         <div className="network-summary">
@@ -157,20 +158,20 @@ export function Diagnostics({
             <p>{guidance}</p>
           </div>
         </div>
-        <div className="network-path" aria-label="连接状态">
+        <div className="network-path" aria-label={t("diagnostics.connectionStatus")}>
           <div>
             <Desktop size={25} aria-hidden="true" />
-            <span>本机服务</span>
+            <span>{t("diagnostics.localService")}</span>
             <CheckState
               tone={available ? "ok" : serviceError ? "warning" : "neutral"}
             >
-              {available ? "已连接" : serviceError ? "不可用" : "读取中"}
+              {available ? t("diagnostics.connected") : serviceError ? t("diagnostics.unavailable") : t("diagnostics.loading")}
             </CheckState>
           </div>
           <ArrowRight className="path-arrow" size={22} aria-hidden="true" />
           <div>
             <Globe size={25} aria-hidden="true" />
-            <span>控制端</span>
+            <span>{t("diagnostics.controlServiceLabel")}</span>
             <CheckState
               tone={
                 !available
@@ -182,13 +183,13 @@ export function Diagnostics({
                       : "neutral"
               }
             >
-              {available ? controlLabel(status.control) : "未知"}
+              {available ? controlLabel(status.control) : t("diagnostics.unknown")}
             </CheckState>
           </div>
           <ArrowRight className="path-arrow" size={22} aria-hidden="true" />
           <div>
             <Network size={25} aria-hidden="true" />
-            <span>游戏网络</span>
+            <span>{t("diagnostics.gameNetworkLabel")}</span>
             <CheckState
               tone={
                 running
@@ -198,7 +199,7 @@ export function Diagnostics({
                     : "neutral"
               }
             >
-              {available ? engineLabel(status.engine) : "未知"}
+              {available ? engineLabel(status.engine) : t("diagnostics.unknown")}
             </CheckState>
           </div>
         </div>
@@ -206,36 +207,36 @@ export function Diagnostics({
       <div className="diagnostic-metrics">
         <div className="console-surface">
           <Network size={23} aria-hidden="true" />
-          <span>本机虚拟 IP</span>
+          <span>{t("diagnostics.localVirtualIp")}</span>
           <strong className="mono selectable">
-            {available && status.ip ? status.ip : "尚未分配"}
+            {available && status.ip ? status.ip : t("diagnostics.notAssigned")}
           </strong>
         </div>
         <div className="console-surface">
           <ShieldCheck size={23} aria-hidden="true" />
-          <span>当前网络授权</span>
+          <span>{t("diagnostics.currentNetworkAuthorization")}</span>
           <strong>
             {!available || !Number.isFinite(expiry)
-              ? "暂无授权"
+              ? t("diagnostics.noAuthorization")
               : leaseValid
-                ? `剩余 ${Math.ceil((expiry - now) / 60000)} 分钟`
-                : "授权已到期"}
+                ? t("diagnostics.minRemaining", { 0: Math.ceil((expiry - now) / 60000) })
+                : t("diagnostics.authorizationExpired")}
           </strong>
           <small>
             {available && Number.isFinite(expiry)
-              ? `截止 ${formatTime(status.lease_expires_at)}`
-              : "加入房间后获取"}
+              ? t("diagnostics.expires", { 0: formatTime(status.lease_expires_at) })
+              : t("diagnostics.availableAfterJoiningARoom")}
           </small>
         </div>
         <div className="console-surface">
           <Pulse size={23} aria-hidden="true" />
-          <span>成员链路</span>
+          <span>{t("diagnostics.memberConnections")}</span>
           <strong>
             {measured
-              ? `${peers.filter((p) => p.mode === "direct" || p.mode === "relay").length} 条已建立`
-              : "等待连接"}
+              ? t("diagnostics.established", { 0: peers.filter((p) => p.mode === "direct" || p.mode === "relay").length })
+              : t("diagnostics.waitingForConnection")}
           </strong>
-          <small>以实际隧道状态为准</small>
+          <small>{t("diagnostics.basedOnActualTunnelState")}</small>
         </div>
       </div>
       <div className="diagnostic-columns">
@@ -244,27 +245,23 @@ export function Diagnostics({
           aria-labelledby="system-check-title"
         >
           <div className="diagnostic-section-head">
-            <h3 id="system-check-title">系统检查</h3>
+            <h3 id="system-check-title">{t("diagnostics.systemChecks")}</h3>
             {report && (
               <span className="hint">
-                {new Date(report.at).toLocaleTimeString("zh-CN", {
-                  hour12: false,
-                })}{" "}
-                的检查结果
-              </span>
+                {t("diagnostics.checkedAt", { time: new Date(report.at).toLocaleTimeString(getLanguage(), { hour12: false }) })}</span>
             )}
           </div>
           {!report ? (
             <div className="diagnostic-empty">
               <ShieldCheck size={34} weight="light" aria-hidden="true" />
-              <h4>给连接做一次体检</h4>
-              <p>点击“运行诊断”，检查系统、隧道组件和网络接口。</p>
+              <h4>{t("diagnostics.giveYourConnectionACheckup")}</h4>
+              <p>{t("diagnostics.systemCheckHelp")}</p>
             </div>
           ) : (
             <>
               <dl className="system-checks">
                 <div>
-                  <dt>操作系统</dt>
+                  <dt>{t("diagnostics.operatingSystem")}</dt>
                   <dd>
                     {(
                       {
@@ -274,13 +271,13 @@ export function Diagnostics({
                       } as Record<string, string>
                     )[platform?.os || ""] ||
                       platform?.os ||
-                      "未知"}
+                      t("diagnostics.unknown")}
                     <span className="muted"> {platform?.arch || ""}</span>
                   </dd>
                 </div>
                 <div>
                   <dt>
-                    {platform?.os === "windows" ? "LAN 网卡" : "TUN/TAP 设备"}
+                    {platform?.os === "windows" ? t("diagnostics.lanAdapter") : t("diagnostics.tunTapDevice")}
                   </dt>
                   <dd>
                     <CheckState
@@ -293,19 +290,19 @@ export function Diagnostics({
                       }
                     >
                       {driver === undefined
-                        ? "未获取"
+                        ? t("diagnostics.notAvailable")
                         : driver
-                          ? "已找到"
-                          : "未找到"}
+                          ? t("diagnostics.found")
+                          : t("diagnostics.notFound")}
                     </CheckState>
                   </dd>
                 </div>
                 <div>
-                  <dt>Nebula 版本</dt>
-                  <dd className="mono">{data?.nebula_version || "未知"}</dd>
+                  <dt>{t("diagnostics.nebulaVersion")}</dt>
+                  <dd className="mono">{data?.nebula_version || t("diagnostics.unknown")}</dd>
                 </div>
                 <div>
-                  <dt>网络接口</dt>
+                  <dt>{t("diagnostics.networkInterfacesLabel")}</dt>
                   <dd>
                     <CheckState
                       tone={
@@ -317,25 +314,24 @@ export function Diagnostics({
                       }
                     >
                       {platform?.interface_error
-                        ? "读取失败"
+                        ? t("diagnostics.readFailed")
                         : platform?.interfaces
-                          ? `${platform.interfaces.filter((i) => i.up).length} / ${platform.interfaces.length} 个已启用`
-                          : "未获取"}
+                          ? t("diagnostics.enabled", { 0: platform.interfaces.filter((i) => i.up).length, 1: platform.interfaces.length })
+                          : t("diagnostics.notAvailable")}
                     </CheckState>
                   </dd>
                 </div>
               </dl>
               {driver === false && (
                 <p className="diagnostic-warning">
-                  未找到隧道组件，请检查完整客户端是否安装成功。
-                </p>
+                  {t("diagnostics.tunnelMissingHelp")}</p>
               )}
               {data?.error && (
-                <p className="diagnostic-warning">后台报告：{data.error}</p>
+                <p className="diagnostic-warning">{t("diagnostics.serviceReport")}{data.error}</p>
               )}
               {!!platform?.interfaces?.length && (
                 <details className="interface-details">
-                  <summary>查看网络接口</summary>
+                  <summary>{t("diagnostics.viewNetworkInterfaces")}</summary>
                   {platform.interfaces.map((item, index) => (
                     <div
                       className="interface-row"
@@ -344,11 +340,11 @@ export function Diagnostics({
                       <div>
                         <strong>{item.name}</strong>
                         <CheckState tone={item.up ? "ok" : "neutral"}>
-                          {item.up ? "已启用" : "已停用"}
+                          {item.up ? t("diagnostics.enabledLabel") : t("diagnostics.disabled")}
                         </CheckState>
                       </div>
                       <p className="mono selectable">
-                        {item.addresses?.join(" · ") || "暂无地址"}
+                        {item.addresses?.join(" · ") || t("diagnostics.noAddresses")}
                       </p>
                       <small>MTU {item.mtu}</small>
                     </div>
@@ -358,9 +354,8 @@ export function Diagnostics({
               <div className="diagnostic-copy">
                 <button disabled={!!busy} onClick={copyReport}>
                   <Copy size={18} aria-hidden="true" />
-                  复制脱敏诊断
-                </button>
-                <p className="hint">省略设备标识、IP、网卡和成员信息。</p>
+                  {t("diagnostics.copyRedactedDiagnostics")}</button>
+                <p className="hint">{t("diagnostics.copyHelp")}</p>
               </div>
             </>
           )}
@@ -370,21 +365,20 @@ export function Diagnostics({
           aria-labelledby="peer-check-title"
         >
           <div className="diagnostic-section-head">
-            <h3 id="peer-check-title">成员链路</h3>
-            <span className="hint">延迟 / 丢包</span>
+            <h3 id="peer-check-title">{t("diagnostics.memberConnections")}</h3>
+            <span className="hint">{t("diagnostics.latencyPacketLoss")}</span>
           </div>
           {!measured && peers.length > 0 && (
             <p className="diagnostic-warning">
-              当前状态不可用于判断链路，等待连接和授权同步。
-            </p>
+              {t("diagnostics.staleHelp")}</p>
           )}
           {!peers.length ? (
             <div className="diagnostic-empty">
               <Network size={34} weight="light" aria-hidden="true" />
               <h4>
-                {status?.selected_room ? "等待伙伴加入" : "还没有成员链路"}
+                {status?.selected_room ? t("diagnostics.waitingForFriends") : t("diagnostics.noMemberConnectionsYet")}
               </h4>
-              <p>与朋友加入同一房间后，查看直连、中继及实测延迟。</p>
+              <p>{t("diagnostics.peersHelp")}</p>
             </div>
           ) : (
             peers.map((peer) => {
@@ -409,34 +403,34 @@ export function Diagnostics({
                     <strong>{peer.name}</strong>
                     <CheckState tone={linked ? "ok" : "neutral"}>
                       {!measured
-                        ? "链路未知"
+                        ? t("diagnostics.connectionUnknown")
                         : peer.mode === "direct"
-                          ? "直连"
+                          ? t("diagnostics.direct")
                           : peer.mode === "relay"
-                            ? "中继"
-                            : "尚未建链"}
+                            ? t("diagnostics.relay")
+                            : t("diagnostics.notConnected")}
                     </CheckState>
                   </div>
                   <div className="peer-measurements">
                     <div>
-                      <small>往返延迟</small>
+                      <small>{t("diagnostics.roundTripLatency")}</small>
                       <strong>
-                        {rtt === undefined ? "未测量" : `${rtt.toFixed(1)} ms`}
+                        {rtt === undefined ? t("diagnostics.notMeasured") : `${rtt.toFixed(1)} ms`}
                       </strong>
                     </div>
                     <div>
-                      <small>丢包率</small>
+                      <small>{t("diagnostics.packetLoss")}</small>
                       <strong>
-                        {loss === undefined ? "未测量" : `${loss.toFixed(0)}%`}
+                        {loss === undefined ? t("diagnostics.notMeasured") : `${loss.toFixed(0)}%`}
                       </strong>
                     </div>
                     <button
                       className="icon-button"
-                      aria-label={`测量 ${peer.name} 的延迟`}
-                      title="测量延迟"
+                      aria-label={t("diagnostics.measureLatencyTo", { 0: peer.name })}
+                      title={t("diagnostics.measureLatency")}
                       disabled={!usable || !measured}
                       onClick={() =>
-                        void perform("测量延迟", {
+                        void perform(t("diagnostics.measureLatency"), {
                           action: "ping",
                           target: peer.device_id,
                         })
@@ -450,7 +444,7 @@ export function Diagnostics({
                       min={0}
                       max={100}
                       value={loss}
-                      aria-label={`${peer.name} 的丢包率`}
+                      aria-label={t("diagnostics.packetLossFor", { 0: peer.name })}
                     />
                   )}
                 </article>
@@ -458,8 +452,7 @@ export function Diagnostics({
             })
           )}
           <p className="hint peer-note">
-            连接类型来自实际隧道；无测量结果时显示“未测量”。
-          </p>
+            {t("diagnostics.measurementsHelp")}</p>
         </section>
       </div>
     </div>

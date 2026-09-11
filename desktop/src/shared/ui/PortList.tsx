@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type { Port } from "../model";
 export function PortList({ ports }: { ports: Port[] }) {
   return (
@@ -15,7 +16,7 @@ export function PortList({ ports }: { ports: Port[] }) {
           </span>
         ))
       ) : (
-        <span className="muted">尚未登记游戏端口</span>
+        <span className="muted">{t("portList.noGamePortsConfigured")}</span>
       )}
     </div>
   );

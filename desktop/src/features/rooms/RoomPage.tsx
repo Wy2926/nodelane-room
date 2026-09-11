@@ -1,3 +1,5 @@
+import { failure } from "../../native/api";
+import { t } from "../../i18n";
 import type { Status } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
 import type { RoomView } from "./use-room";
@@ -50,7 +52,7 @@ export function RoomPage({
     <>
       {(!!room || !!status.selected_room) && (
         <div className="section-toolbar room-toolbar">
-          <span className="eyebrow">YOUR ROOMS</span>
+          <span className="eyebrow">{t("roomPage.yourRooms")}</span>
           {!status.selected_room && (
             <div className="actions">
               <button
@@ -60,14 +62,13 @@ export function RoomPage({
                 }}
                 disabled={!usable || !!status.selected_room}
               >
-                邀请码入房
-              </button>
+                {t("roomPage.joinWithInviteCode")}</button>
               <button
                 className="primary"
                 onClick={() => setPage("games")}
                 disabled={!usable || !!status.selected_room}
               >
-                创建房间 <span aria-hidden="true">＋</span>
+                {t("gameLibrary.createRoom")}<span aria-hidden="true">＋</span>
               </button>
             </div>
           )}
@@ -75,12 +76,12 @@ export function RoomPage({
       )}
       {roomsError && (
         <div className="banner warning" role="alert">
-          房间列表暂未更新：{roomsError.error}
-          <button onClick={refreshAll}>重试</button>
+          {t("roomPage.roomListCouldNotBeRefreshed")}{failure(roomsError).error}
+          <button onClick={refreshAll}>{t("gameLibrary.retry")}</button>
         </div>
       )}
       {currentCard.length > 0 && (
-        <div className="room-tabs" aria-label="选择房间">
+        <div className="room-tabs" aria-label={t("roomPage.chooseARoom")}>
           {currentCard.map((r) => {
             const roomGame = catalog.games.find((g) => g.id === r.game);
             return (
@@ -109,7 +110,7 @@ export function RoomPage({
                 </span>
                 <span className="room-tab-state">
                   {room?.id === r.id && <Check size={14} aria-hidden="true" />}
-                  {r.id === activeRoom?.id ? "已加入" : "仅管理"}
+                  {r.id === activeRoom?.id ? t("roomPage.joined") : t("roomHero.manageOnly")}
                 </span>
               </button>
             );
@@ -118,8 +119,8 @@ export function RoomPage({
       )}
       {managementError && (
         <div className="banner error" role="alert">
-          {managementError.error}
-          <button onClick={refreshAll}>重新读取</button>
+          {failure(managementError).error}
+          <button onClick={refreshAll}>{t("roomPage.reload")}</button>
         </div>
       )}
       {room ? (
@@ -132,14 +133,12 @@ export function RoomPage({
           />
           {!roomFresh && (
             <div className="banner warning" role="status">
-              房间状态尚未同步或已陈旧，显示的是最近一次数据。
-              <button onClick={refreshAll}>刷新</button>
+              {t("roomPage.staleHelp")}<button onClick={refreshAll}>{t("roomPage.refresh")}</button>
             </div>
           )}
           {game?.enabled === false && (
             <div className="banner warning" role="status">
-              此游戏已被管理员停用，禁止新成员加入；游戏端口按最新授权撤回，房间管理和诊断仍可用。
-            </div>
+              {t("roomPage.disabledGameHelp")}</div>
           )}
           <div className="room-columns">
             <Members
@@ -154,23 +153,20 @@ export function RoomPage({
       ) : (
         !selected &&
         (status.selected_room ? (
-          <Empty title="正在同步房间">
-            <p>正在获取房间授权与连接状态。</p>
+          <Empty title={t("roomPage.syncingRoom")}>
+            <p>{t("roomPage.syncingHelp")}</p>
           </Empty>
         ) : (
           <section className="room-welcome">
             <div className="welcome-copy">
-              <span className="eyebrow">一起，开启下一局</span>
+              <span className="eyebrow">{t("roomPage.yourNextGameStartsTogether")}</span>
               <h2>
-                距离再远，
-                <br />
-                也在同一个房间<span>。</span>
+                {t("roomPage.whereverYouAre")}<br />
+                {t("roomPage.shareTheSameRoom")}<span>{t("roomPage.punctuation")}</span>
               </h2>
               <p>
-                创建你们的世界，或加入朋友的冒险。
-                <br />
-                今晚的主场，由你们决定。
-              </p>
+                {t("roomPage.createYourOwnWorldOrJoinAFriend")}<br />
+                {t("roomPage.tonightTheChoiceIsYours")}</p>
             </div>
             <div className="welcome-cards">
               <button
@@ -182,8 +178,8 @@ export function RoomPage({
                   <GameController size={32} weight="light" aria-hidden="true" />
                 </span>
                 <span className="launch-copy">
-                  <strong>创建房间</strong>
-                  <small>选择一款游戏，邀请朋友一起玩</small>
+                  <strong>{t("gameLibrary.createRoom")}</strong>
+                  <small>{t("roomPage.pickAGameAndInviteYourFriends")}</small>
                 </span>
                 <ArrowRight size={23} aria-hidden="true" />
               </button>
@@ -199,8 +195,8 @@ export function RoomPage({
                   <Ticket size={32} weight="light" aria-hidden="true" />
                 </span>
                 <span className="launch-copy">
-                  <strong>邀请码入房</strong>
-                  <small>朋友已经开好房间？输入邀请码加入</small>
+                  <strong>{t("roomPage.joinWithInviteCode")}</strong>
+                  <small>{t("roomPage.joinHelp")}</small>
                 </span>
                 <ArrowRight size={23} aria-hidden="true" />
               </button>

@@ -1,6 +1,7 @@
 param([switch]$PurgeState, [switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 trap {
+  Write-Output $_.Exception.Message
   if (-not $Quiet) {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, 'NodeLane Room uninstall failed') | Out-Null

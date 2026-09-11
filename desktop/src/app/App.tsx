@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { t, useLanguage } from "../i18n";
+import { useEffect, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { LanguageSelection } from "../i18n/LanguageSelection";
 import { useService } from "../native/use-service";
 import { useActions, type Actions } from "./use-actions";
 import { Shell } from "./Shell";
@@ -16,6 +19,16 @@ import { RoomDialogs } from "../features/rooms/dialogs/RoomDialogs";
 import type { Status, Failure } from "../shared/model";
 
 export function App() {
+  const language = useLanguage();
+  useEffect(() => {
+    if (!language) return;
+    document.documentElement.lang = language;
+    if (isTauri()) void invoke("set_language", { language }).catch(() => undefined);
+  }, [language]);
+  return language ? <Client /> : <LanguageSelection />;
+}
+
+function Client() {
   const service = useService();
   const [page, setPage] = useState<Page>("rooms");
   const [reload, setReload] = useState(0);
@@ -28,8 +41,8 @@ export function App() {
     <Shell page={page} setPage={setPage} service={service}>
       <Feedback service={service} actions={actions} refreshAll={refreshAll} />
       {!service.status && !service.error && page !== "settings" && page !== "doctor" && (
-        <Empty title="正在连接本机服务">
-          <p>读取设备与房间状态…</p>
+        <Empty title={t("app.connectingToTheLocalService")}>
+          <p>{t("app.readingDeviceAndRoomStatus")}</p>
         </Empty>
       )}
       {service.status && !service.status.device_id && !service.error && page !== "settings" && page !== "doctor" && (

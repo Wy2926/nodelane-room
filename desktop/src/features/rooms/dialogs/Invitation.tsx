@@ -1,3 +1,4 @@
+import { t } from "../../../i18n";
 import type { Actions } from "../../../app/use-actions";
 import type { Dialog } from "./types";
 import type { Status, Failure } from "../../../shared/model";
@@ -22,17 +23,14 @@ export function Invitation({
       </p>
       <div className="invitation selectable">{dialog.invitation.code}</div>
       <p className="muted">
-        {formatTime(dialog.invitation.expires_at)}{" "}
-        前有效。新码生成后，旧码立即失效。
-      </p>
+        {t("invitation.validUntil", { time: formatTime(dialog.invitation.expires_at) })}</p>
       <button
         className="primary"
         onClick={() => void copy(dialog.invitation.code)}
         disabled={Date.parse(dialog.invitation.expires_at) <= Date.now()}
       >
-        复制邀请码
-      </button>
-      <p className="hint">邀请码只在当前窗口内保留，不保存到本机历史记录。</p>
+        {t("invitation.copyInviteCode")}</button>
+      <p className="hint">{t("invitation.storageHelp")}</p>
     </>
   );
 }

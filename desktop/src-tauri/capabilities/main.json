@@ -3,7 +3,7 @@
   "description": "Only the bundled player window may use bounded player IPC and desktop controls.",
   "windows": ["main"],
   "permissions": [
-    "allow-player-request", "allow-game-image", "allow-exit-app", "allow-notify-state",
+    "allow-player-request", "allow-game-image", "allow-exit-app", "allow-notify-state", "allow-set-language",
     "core:event:allow-listen", "core:event:allow-unlisten",
     "core:window:allow-start-dragging", "core:window:allow-internal-toggle-maximize",
     "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-is-maximized", "core:window:allow-close",

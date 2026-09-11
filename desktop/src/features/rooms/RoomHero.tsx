@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import type { Status } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
 import type { RoomView } from "./use-room";
@@ -21,7 +22,7 @@ export function RoomHero({
   const count = members.length;
   const invite = () =>
     perform<Invitation>(
-      "生成邀请码",
+      t("roomHero.generatingInviteCode"),
       { action: "invite", room: room.id },
       (invitation) => setDialog({ type: "invite", room, invitation }),
     );
@@ -29,20 +30,19 @@ export function RoomHero({
     <section className="room-hero">
       {game && <div className="scene-art" aria-hidden="true"><Art game={game} kind="background" /></div>}
       <div className="hero-content">
-        <div className="eyebrow">YOUR PARTY <span className="room-game-label">{room.game_name || room.game}</span></div>
+        <div className="eyebrow">{t("members.yourParty")}<span className="room-game-label">{room.game_name || room.game}</span></div>
         <h2>{room.name}</h2>
         <div className="hero-meta">
           <span className="pill">
             {isCurrent
               ? status.engine === "running"
-                ? "网络运行中"
-                : "网络已停止"
-              : "仅管理"}
+                ? t("roomHero.networkRunning")
+                : t("roomHero.networkStopped")
+              : t("roomHero.manageOnly")}
           </span>
           <span>
-            {count} / {room.capacity} 位成员
-          </span>
-          <span>{formatTime(room.expires_at)} 到期</span>
+            {t("roomHero.memberCount", { count, capacity: room.capacity })}</span>
+          <span>{t("roomHero.expires", { time: formatTime(room.expires_at) })}</span>
         </div>
         <div className="actions">
           {owner && (
@@ -51,36 +51,33 @@ export function RoomHero({
               disabled={!usable || !canManage}
               onClick={() => void invite()}
             >
-              生成新邀请码
-            </button>
+              {t("roomHero.generateNewInviteCode")}</button>
           )}
           {isCurrent && (
             <button
               disabled={!usable}
               onClick={() =>
                 confirm(
-                  "离开房间",
-                  "停止本机联机。你是房主时，仍保留该房间的管理权。",
+                  t("roomHero.leaveRoom"),
+                  t("roomHero.leaveHelp"),
                   { action: "leave", room: room.id },
                 )
               }
             >
-              离开房间
-            </button>
+              {t("roomHero.leaveRoom")}</button>
           )}
           {owner && (
             <button
               className="danger subtle"
               disabled={!usable || !canManage}
               onClick={() =>
-                confirm("关闭房间", "所有成员将断开连接，这个房间无法恢复。", {
+                confirm(t("roomHero.closeRoom"), t("roomHero.closeHelp"), {
                   action: "close",
                   room: room.id,
                 })
               }
             >
-              关闭房间
-            </button>
+              {t("roomHero.closeRoom")}</button>
           )}
         </div>
       </div>

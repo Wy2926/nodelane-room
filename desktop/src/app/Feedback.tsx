@@ -1,3 +1,5 @@
+import { failure } from "../native/api";
+import { t } from "../i18n";
 import type { useService } from "../native/use-service";
 import type { Actions } from "./use-actions";
 import { formatTime } from "../shared/time";
@@ -18,10 +20,10 @@ export function Feedback({
       {serviceError && (
         <div className="banner error" role="alert">
           <div>
-            <strong>无法连接网络后台</strong>
-            <p>{serviceError.error}</p>
+            <strong>{t("feedback.cannotConnectToTheNetworkService")}</strong>
+            <p>{failure(serviceError).error}</p>
           </div>
-          <div className="actions"><button onClick={refresh}>重新检查</button><button onClick={() => void actions.quit()}>退出界面</button></div>
+          <div className="actions"><button onClick={refresh}>{t("feedback.checkAgain")}</button><button onClick={() => void actions.quit()}>{t("feedback.exitApp")}</button></div>
         </div>
       )}
       {status?.error && (
@@ -29,25 +31,25 @@ export function Feedback({
           <div>
             <strong>
               {status.control === "unreachable"
-                ? "控制服务暂时不可达"
-                : "网络需要关注"}
+                ? t("feedback.controlUnavailable")
+                : t("feedback.networkNeedsAttention")}
             </strong>
             <p>{status.error}</p>
             {status.lease_expires_at && (
-              <small>当前授权截止：{formatTime(status.lease_expires_at)}</small>
+              <small>{t("feedback.authorizationExpires")}{formatTime(status.lease_expires_at)}</small>
             )}
           </div>
-          <button onClick={refreshAll}>刷新状态</button>
+          <button onClick={refreshAll}>{t("feedback.refreshStatus")}</button>
         </div>
       )}
       {!dialog && error && (
         <div className="banner error" role="alert">
-          {error.error}
+          {failure(error).error}
         </div>
       )}
       {notice && (
         <div className="toast" role="status">
-          {notice}
+          {t("useActions.copied")}
         </div>
       )}
       {busy && (
