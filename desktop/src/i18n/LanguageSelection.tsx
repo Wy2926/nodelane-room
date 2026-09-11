@@ -1,24 +1,23 @@
 import { useState } from "react";
 import { setLanguage, translate, type Language } from ".";
 import { WindowControls } from "../app/Shell";
-import logo from "../../icon.svg";
+import brandMark from "../assets/brand-mark.png";
 
 export function LanguageSelection() {
   const [choice, setChoice] = useState<Language>("zh-CN");
   return (
     <div className="shell language-selection">
-      <header className="console-bar" data-tauri-drag-region>
+      <header className="app-header" data-tauri-drag-region>
         <div className="brand" data-tauri-drag-region>
-          <img src={logo} alt="" />
+          <img src={brandMark} alt="" />
           <span>
-            NodeLane<small>ROOM</small>
+            NodeLane <b>Room</b>
           </span>
         </div>
         <div className="titlebar-space" data-tauri-drag-region />
         <WindowControls language={choice} />
       </header>
       <main className="onboarding" aria-labelledby="language-title">
-        <span className="eyebrow">NodeLane Room</span>
         <h1 id="language-title">
           <span lang="zh-CN">{translate("zh-CN", "language.choose")}</span>
           <br />

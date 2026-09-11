@@ -29,7 +29,7 @@ func (r *Runtime) Status() model.Status {
 	for _, issue := range s.Issues {
 		if issue.ResolvedAt == nil && model.EndsIdentity(issue.Code) {
 			s.Identity = "reauth_required"
-			if issue.Code == "account_disabled" || issue.Code == "account_deleted" {
+			if issue.Code == "account_deleted" {
 				s.Identity = "blocked"
 			}
 		}

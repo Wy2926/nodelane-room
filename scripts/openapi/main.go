@@ -200,7 +200,7 @@ func run() error {
 	add("/v2/admin/users", "get", "List 50 users ordered by ID, optional q nickname/ID and after cursor", "AdminCookie", nil, ref("UserPage"), false)
 	paths["/v2/admin/users"].(M)["get"].(M)["parameters"] = []any{M{"name": "q", "in": "query", "schema": str}, M{"name": "after", "in": "query", "schema": str}}
 	add("/v2/admin/users/{user}", "get", "Consistent account, devices, up to 100 rooms and up to 100 active session metadata; no credentials", "AdminCookie", nil, ref("UserDetail"), false)
-	add("/v2/admin/users/{user}/actions", "post", "Enable, disable, delete, logout or revoke-device; reason required, disable/delete close owned rooms and revoke network authority atomically", "AdminCookie", ref("UserAction"), ok, true)
+	add("/v2/admin/users/{user}/actions", "post", "Enable/disable room creation while retaining sessions and existing rooms; delete closes owned rooms and revokes network authority; logout/revoke-device ends device authorization; reason required", "AdminCookie", ref("UserAction"), ok, true)
 	for _, route := range []struct{ path, method string }{{"browser", "get"}, {"callback", "get"}, {"confirm", "post"}} {
 		path := "/v2/auth/oidc/" + route.path
 		add(path, route.method, "OIDC browser flow; browser-bound state, PKCE S256, nonce, and explicit device confirmation", "", nil, str, false)
@@ -282,7 +282,7 @@ func run() error {
 		schemas[t].(M)["additionalProperties"] = false
 	}
 	add("/v2/capabilities", "get", "Public interaction contract, LAN, login availability and business readiness", "", nil, object(M{"contract": str, "lan_version": M{"type": "integer"}, "local_protocol_version": M{"type": "integer"}, "oidc_enabled": M{"type": "boolean"}, "ready": M{"type": "boolean"}}, "contract", "lan_version", "local_protocol_version", "oidc_enabled", "ready"), false)
-	add("/v2/me", "get", "Current device grant, own membership and same-account occupancy; no credentials", "Bearer", nil, ref("AccountStatus"), false)
+	add("/v2/me", "get", "Current device grant, room creation permission with reason, own membership and same-account occupancy; no credentials", "Bearer", nil, ref("AccountStatus"), false)
 	add("/v2/me/takeover", "post", "Release the explicitly confirmed other device occupancy; never joins another room", "Bearer", ref("TakeoverRequest"), ok, true)
 	add("/v2/me/operations/{operation}", "get", "Read this authorized device's receipt; missing does not establish nonexecution", "Bearer", nil, ref("Operation"), false)
 	add("/v2/me/devices", "get", "List this registered player's own device grants", "Bearer", nil, M{"type": "array", "items": ref("UserDevice")}, false)
@@ -394,7 +394,7 @@ func run() error {
 	localFields["action"].(M)["enum"] = actions
 	localRPC["error"] = ref("Result")
 	localRPC["response"] = ref("Result")
-	localRPC["description"] = "Protocol 3. Mutations require stable command_id; the protected service ledger freezes the raw request and deadline before submission. Recover through get-operation and status.pending_operations. No legacy protocol support."
+	localRPC["description"] = "Protocol 3. Mutations require stable command_id; the protected service ledger freezes the raw request and deadline before submission. Recover through get-operation and status.pending_operations. No legacy protocol support. Peer rtt_ms and loss_percent summarize completed background probes from the last 30 seconds; measured_at is the latest completed probe time. RTT averages successful replies only; all timeouts yield 100 percent loss without RTT, and no recent samples omit both values."
 	localRPC["responses"].(M)["get-operation"] = ref("Operation")
 	for _, path := range []string{"/v2/rooms/{room}/events", "/v2/admin/events"} {
 		paths[path].(M)["get"].(M)["x-events"] = M{"snapshot": "Current authoritative snapshot; former room members receive only self tombstones", "reset": ref("Result"), "terminal": ref("Result")}

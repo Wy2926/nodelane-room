@@ -61,7 +61,6 @@ type Runtime struct {
 	key, public      []byte
 	snapshot         model.Snapshot
 	probe            *probe.Service
-	probeBusy        atomic.Bool
 	engineGeneration uint64
 	imageSlots       chan struct{}
 	wake             chan struct{}
@@ -171,6 +170,9 @@ func (r *Runtime) setPublicIdentity(i device.Identity) {
 }
 
 func (r *Runtime) Run(ctx context.Context) error {
+	probeDone := make(chan struct{})
+	go func() { defer close(probeDone); r.runProbes(ctx) }()
+	defer func() { <-probeDone }()
 	updateDone := make(chan struct{})
 	go func() {
 		defer close(updateDone)

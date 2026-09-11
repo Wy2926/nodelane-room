@@ -297,6 +297,8 @@ func TestAccountDeviceLoginOwnershipBanAndLogout(t *testing.T) {
 	must(t, err)
 	i, err := device.NewIdentity(server.URL, "second computer")
 	must(t, err)
+	_, err = s.Pool.Exec(ctx, `UPDATE users SET state='disabled' WHERE id=$1`, a.Account().ID)
+	must(t, err)
 	second := client.NewAPI(i)
 	proof = randomID() + randomID()
 	attempt, err = second.BeginLogin(ctx, proof, false)
@@ -308,6 +310,11 @@ func TestAccountDeviceLoginOwnershipBanAndLogout(t *testing.T) {
 	must(t, err)
 	if result.Session.User.ID != a.Account().ID {
 		t.Fatal("new device created another account")
+	}
+	var restricted model.AccountStatus
+	must(t, second.Call(ctx, "GET", "/v2/me", nil, &restricted))
+	if restricted.RoomCreation.Allowed || restricted.RoomCreation.Reason != "account_disabled" {
+		t.Fatal("OIDC login lost the creation restriction")
 	}
 	var management model.RoomManagement
 	must(t, second.Call(ctx, "GET", "/v2/rooms/"+room.Room.ID+"/manage", nil, &management))
@@ -355,9 +362,49 @@ func TestAdminUserRevocationAndOIDCSecretBoundary(t *testing.T) {
 	statusError(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "blocked", Game: "custom"}, nil), 403)
 	var closed, revoked bool
 	must(t, s.Pool.QueryRow(context.Background(), `SELECT r.closed,c.revoked FROM rooms r JOIN certificates c ON c.room_id=r.id WHERE c.fingerprint=$1`, cert.Fingerprint).Scan(&closed, &revoked))
-	if !closed || !revoked {
-		t.Fatal("user disable retained authorization")
+	if closed || revoked {
+		t.Fatal("room creation restriction ended existing authorization")
 	}
+	ctx := context.Background()
+	var me model.AccountStatus
+	must(t, a.Call(ctx, "GET", "/v2/me", nil, &me))
+	if me.RoomCreation.Allowed || me.RoomCreation.Reason != "account_disabled" || me.Membership.State != "active" {
+		t.Fatal("restricted account did not retain its membership and creation reason")
+	}
+	var snapshot model.Snapshot
+	must(t, a.Call(ctx, "GET", "/v2/rooms/"+room.Room.ID, nil, &snapshot))
+	if len(snapshot.Members) != 1 || snapshot.Members[0].DeviceID != a.Identity.ID() {
+		t.Fatal("restricted player disappeared from the LAN snapshot")
+	}
+	must(t, a.Call(ctx, "POST", "/v2/rooms/"+room.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, nil))
+	lease(t, a, room.Room.ID)
+	other := client.NewAPI(a.Identity)
+	other.HTTP = admin.server.Client()
+	must(t, other.Authenticate(ctx))
+	must(t, other.Call(ctx, "GET", "/v2/me", nil, &me))
+	if me.RoomCreation.Allowed {
+		t.Fatal("new session lost room creation restriction")
+	}
+	must(t, a.Call(ctx, "POST", "/v2/rooms/"+room.Room.ID+"/leave", model.MemberRequest{}, nil))
+	join(t, a, room)
+	code, _ = admin.request("POST", "/users/"+id+"/actions", model.UserAction{Action: "enable", Reason: "restriction lifted"}, true, true)
+	if code != 200 {
+		t.Fatalf("enable: %d", code)
+	}
+	me = model.AccountStatus{}
+	must(t, a.Call(ctx, "GET", "/v2/me", nil, &me))
+	if !me.RoomCreation.Allowed || me.RoomCreation.Reason != "" {
+		t.Fatal("room creation permission did not recover")
+	}
+	code, _ = admin.request("POST", "/users/"+id+"/actions", model.UserAction{Action: "delete", Reason: "test deletion"}, true, true)
+	if code != 200 {
+		t.Fatalf("delete: %d", code)
+	}
+	must(t, s.Pool.QueryRow(ctx, `SELECT r.closed,c.revoked FROM rooms r JOIN certificates c ON c.room_id=r.id WHERE c.fingerprint=$1`, cert.Fingerprint).Scan(&closed, &revoked))
+	if !closed || !revoked {
+		t.Fatal("account deletion retained room or network authorization")
+	}
+	statusError(t, other.Call(ctx, "GET", "/v2/me", nil, &me), 403)
 	code, _ = admin.request("PUT", "/oidc", model.OIDCSettings{Issuer: "https://identity.example", ClientID: "test", ClientSecret: "never-return-secret", Enabled: true}, true, true)
 	if code != 200 {
 		t.Fatalf("OIDC settings: %d", code)
@@ -368,14 +415,14 @@ func TestAdminUserRevocationAndOIDCSecretBoundary(t *testing.T) {
 	}
 }
 
-func TestIdempotencyChecksRevocationInsideTransaction(t *testing.T) {
+func TestIdempotencyChecksCreationRestrictionInsideTransaction(t *testing.T) {
 	s, ca := database(t)
 	server := apiServer(t, s, ca)
 	a := user(t, server, "guest")
 	ctx := context.Background()
 	key := randomID()
 	id := a.Identity.ID()
-	check := func(tx pgx.Tx) error { _, e := playerUser(ctx, tx, id); return e }
+	check := func(tx pgx.Tx) error { return checkRoomCreation(httptest.NewRequest("POST", "/v2/rooms", nil), tx, id) }
 	_, err := s.mutateChecked(ctx, id, key, "request", check, func(tx pgx.Tx) (any, error) { return map[string]bool{"ok": true}, nil })
 	must(t, err)
 	must(t, s.Write(ctx, func(tx pgx.Tx) error {

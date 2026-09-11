@@ -52,6 +52,8 @@ $nl = "$env:ProgramFiles\NodeLaneRoom\nlroom-cli.exe"
 
 加入后，已配置游戏自动应用服务端指定的端口，用 `room members` 查看成员虚拟 IP 和规则。Minecraft 预置 TCP 25565，与其他游戏共用通用数据面；游戏实际监听端口须与配置一致。所有游戏统一使用 Ethernet LAN，管理员配置房内广播、组播及直接连接权限；客户端准备与使用见下文，技术设计及兼容边界见 [游戏网络](docs/game-network.md)。
 
+账号的“限制创建房间”仅禁止新建，仍可登录、加入和管理已有房间；GUI 显示具体限制与刷新入口。需要撤销连接时使用管理台的设备撤销或账号删除，详见[用户身份](docs/architecture.md#用户身份)。
+
 ## 游戏管理
 
 管理员打开隐藏管理入口中的“游戏管理”，粘贴 `https://store.steampowered.com/app/105600/` 这样的 Steam 商店游戏链接。服务端自动导入名称、纯文本简介并下载封面和背景图，保存为未启用草稿。填写 TCP/UDP 端口、可选结束端口和用途后启用；玩家运行 `games` 查看游戏 ID，使用 `room create --game <id>` 选择。`games --json` 包含图片相对 URL，可基于控制服务 origin 读取。

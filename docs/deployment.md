@@ -188,10 +188,10 @@ CA 到期前 30/7/1 天查看管理台提醒，备份含 CA 的数据库、安�
 
 ## 账号登录配置
 
-管理台“用户管理”提供按昵称或用户 ID 查询、访客/正式身份及账号状态、设备、会话和关联房间。启停用户、逻辑删除、撤销全部设备或单设备都要求操作原因并记录审计；删除保留外部身份关联。访客设备被撤销后无法凭昵称找回。
+管理台“用户管理”提供按昵称或用户 ID 查询、访客/正式身份及账号状态、设备、会话和关联房间。限制/恢复创建房间、逻辑删除、撤销全部设备或单设备都要求操作原因并记录审计；删除保留外部身份关联。访客设备被撤销后无法凭昵称找回。
 
 同一页面配置一个 OIDC issuer、client ID、client secret 并启用。向 IdP 注册服务端客户端，允许 Authorization Code 与 PKCE S256，固定回调为 `<控制服务公网 origin>/v2/auth/oidc/callback`，scope 为 `openid profile`。生产 issuer 和回调使用 HTTPS，仅本机开发允许 loopback HTTP。secret 留空仅在 issuer 和 client ID 都不变时保留现值，不回显；配置变更使待完成登录失效。浏览器首次使用时会显示设备名称及标识，用户须确认自己发起的登录。IdP 不可用不会影响已获有效授权的访客，正式设备授权到期则须重新登录。
 
 接入 `auth.nodelane.net` 的 Logto 时，在 Logto 控制台创建 [传统 Web 应用（Traditional Web）](https://docs.logto.io/quick-starts/traditional-web)。协议客户端是负责回调和令牌交换的控制服务。当前公开 [OpenID 配置](https://auth.nodelane.net/oidc/.well-known/openid-configuration) 的 issuer 为 `https://auth.nodelane.net/oidc`；将该值、Logto 的 App ID、App Secret 分别填写到本站管理台的 Issuer、Client ID、Client secret，勾选启用并保存，参数写入 PostgreSQL。授权、Token、JWKS 地址由 discovery 自动取得，无需逐项填写。Logto 的 Redirect URI 复制本站管理台显示的完整回调地址；例如控制服务位于 `https://room.nodelane.net` 时，填写 `https://room.nodelane.net/v2/auth/oidc/callback`。不需要为此次接入添加 Management API 权限。
 
-当前只提供本站账号管理；IdP 的注册、密码与 MFA 在 IdP 管理。没有支付、跨账号自动合并、Back-Channel Logout 或用户供应同步，IdP 停用账号后需要同时在本站停用以立即撤销连接。数据库结构为 5，只接受空库或当前结构，不迁移、不自动清理旧库；旧设备账号实现已替换，发布时统一交付匹配的客户端与服务端。
+当前只提供本站账号管理；IdP 的注册、密码与 MFA 在 IdP 管理。没有支付、跨账号自动合并、Back-Channel Logout 或用户供应同步，IdP 停用账号后需要在本站撤销全部设备以立即撤销连接，永久拒绝该身份须删除账号；“限制创建房间”保留登录、入房和已有连接。数据库结构为 6，只接受空库或当前结构，不迁移、不自动清理旧库；旧设备账号实现已替换，发布时统一交付匹配的客户端与服务端。

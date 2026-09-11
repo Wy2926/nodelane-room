@@ -21,7 +21,8 @@ export function Modal({
     dialog.querySelector<HTMLInputElement>("input:not([type='hidden'])")?.focus();
     return () => {
       dialog.close();
-      if (opener?.isConnected) opener.focus();
+      if (opener?.isConnected && !opener.matches(":disabled")) opener.focus({ preventScroll: true });
+      else document.getElementById("main-content")?.focus({ preventScroll: true });
     };
   }, []);
   return (

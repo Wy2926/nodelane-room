@@ -11,7 +11,7 @@
 | 房间、成员、游戏配置 | `internal/control/` 的 `rooms`、`games`、`player_*`、`store` | [游戏规则](architecture.md#游戏目录与网络规则)、[事务与快照](architecture.md#事务与快照) |
 | 管理台、初始化、节点 | `internal/control/admin*`、`setup*`、`node*`；`internal/agent/node*` | [控制实例](architecture.md#控制实例与配置)、[节点协议](architecture.md#v2-管理与节点协议) |
 | LAN、授权、凭据到期 | `internal/lan/`、`internal/engine/`、`internal/agent/network.go`、`runtime*_test.go` | [数据面](architecture.md#数据面)、[游戏网络](game-network.md) |
-| 桌面界面、本机 IPC | `desktop/src/`、`desktop/src-tauri/src/ipc/`、`internal/agent/local*`、`images.go` | [界面](client.md#主机界面与设计令牌)、[桌面架构](client.md#桌面架构) |
+| 桌面界面、本机 IPC | `desktop/src/`、`desktop/src-tauri/src/ipc/`、`internal/agent/local*`、`images.go` | [界面](client.md#界面与视觉规范)、[桌面架构](client.md#桌面架构) |
 | 客户端更新、版本规则 | `internal/update/`、`internal/agent/updates.go`、`internal/control/updates*`、`scripts/updates/` | [更新与发布](updates.md) |
 | 安装、权限、系统服务 | `internal/platform/`、`internal/nodehost/`、`scripts/desktop/`、安装脚本 | [本机权限](architecture.md#本机权限)、[客户端安装](../README.md#windows-客户端) |
 | 监控、探测、GeoIP | `internal/probe/`、`internal/engine/telemetry.go`、`internal/agent/telemetry.go`、`traffic*`、`internal/control/telemetry*`、`geoip*` | [统计口径](architecture.md#监控)、[采集配置](deployment.md#监控与-ip-归属地) |
@@ -77,17 +77,17 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
   package-lock.json npm 精确依赖与完整性锁定
   tsconfig.json 客户端严格类型检查
   vite.config.ts 本地开发与 Vitest 配置
-  public/ 随包客户端静态资源
-    assets/ 原创主机氛围素材
-      console-ambient.png 银蓝丝带背景与缺图回退
   src/ 客户端界面、样式与本机调用
+    assets/ 新界面静态素材
+      brand-mark.png 从选定设计提取的珊瑚色品牌图形
     main.tsx 正式客户端挂载
     preview.tsx 独立开发预览夹具，模拟交互并明确无真实网络
     test-setup.ts DOM 测试环境、滚动与对话框模拟
     app/ 应用编排与系统导航
       App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
       App.test.tsx 房间流程、诊断实测与脱敏、离线设置和本机更新错误测试
-      Shell.tsx 统一顶部导航、玩家入口与无边框窗口控制
+      RenderBoundary.tsx 页面渲染故障隔离与恢复入口
+      Shell.tsx 顶部导航、个人资料与退出下拉菜单、关闭窗口
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
       OperationFeedback.tsx 接管确认、未决操作查询与执行进度
@@ -102,11 +102,11 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       locales/ 按语言独立维护的界面及原生文案
         zh-CN.json 简体中文客户端字典
         en-US.json 英文客户端字典
-    styles/ 午夜主题共享样式
-      tokens.css 色彩、字阶、间距、尺寸、材质、焦点与动效令牌
+    styles/ 暖白与珊瑚色共享样式
+      tokens.css 颜色、字体、圆角与焦点变量
       index.css 全客户端样式入口
       base.css 控件、排版、焦点与减少动态效果
-      layout.css 主机舞台、顶部导航、窗口按钮与响应式布局
+      layout.css 房间列表、入房侧栏、设置、诊断与响应式布局
       forms.css 输入、模态弹窗、邀请码与端口样式
       feedback.css 错误、提示、空状态与开发预览标识
     native/ 真实 Tauri 本机桥接
@@ -119,28 +119,23 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       ui/ 跨页面控件
         Empty.tsx 空状态与加载说明
         Modal.tsx 原生对话框、焦点和 Escape 行为
-        PlayerAvatar.tsx 跨页面复用的玩家字母头像与氛围材质
+        PlayerAvatar.tsx 以昵称首字符呈现玩家头像
         PortList.tsx 授权端口列表
     features/ 按玩家流程组织的页面
-      catalog/ 服务端游戏目录与主机游戏选择
-        GameLibrary.tsx 横向封面、键盘选择、搜索与建房入口
-        Artwork.tsx 本机游戏图像展示与原创素材回退
+      catalog/ 服务端游戏目录与本机游戏图片
+        Artwork.tsx 本机游戏图像展示与缺图状态
         artwork-loader.ts 有界图像请求和缓存
         use-catalog.ts 目录、管理房间与陈旧状态加载
-        catalog.css 游戏封面焦点和沉浸式信息舞台
       rooms/ 联机房间与成员
-        RoomPage.tsx 欢迎主屏、房间选择、成员与连接布局
-        RoomHero.tsx 当前游戏背景、房间状态及权限操作
-        Members.tsx 玩家名片、虚拟 IP、实测链路与折叠管理菜单
+        RoomPage.tsx 房间列表、入房侧栏、建房限制与详情导航
+        RoomHero.tsx 房间标题、主要动作与连接状态
+        Members.tsx 对齐成员表、虚拟 IP、最近 30 秒实测与管理菜单
         Connection.tsx LAN 就绪、游戏连接说明与后端只读配置
         use-room.ts 当前房间、管理快照与新鲜度判断
-        rooms.css 欢迎舞台、房间卡片与连接布局
-        members.css 玩家卡片、角色、菜单和实测链路样式
         dialogs/ 房间交互弹窗
           types.ts 弹窗状态类型
           RoomDialogs.tsx 房间弹窗调度与错误反馈
-          CreateRoom.tsx 已选游戏的建房表单
-          JoinRoom.tsx 邀请码入房表单
+          CreateRoom.tsx 游戏选择、房间名称与建房许可表单
           Invitation.tsx 临时邀请码及复制
           Confirmation.tsx 权限操作和离房退出确认
       device/ 初始化与桌面偏好
@@ -148,11 +143,9 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         Updates.test.tsx 强制下载状态与安装确认边界测试
         Setup.tsx 默认线上控制端、访客昵称与首次使用
         Account.tsx 访客绑定、浏览器登录、设备切换与退出账号
-        Settings.tsx 分类偏好、设备信息、本机更新入口与退出
-        device.css 欢迎界面、分类设置与更新面板样式
+        Settings.tsx 分类偏好、设备信息与本机更新入口
       diagnostics/ 真实网络诊断
-        Diagnostics.tsx 连接概览、系统检查、实测成员链路与脱敏摘要
-        diagnostics.css 连接状态、系统检查与成员指标可视化样式
+        Diagnostics.tsx 连接与授权状态、本机系统检查
   src-tauri/ 原生窗口、托盘与受限本机 IPC 桥接
     Cargo.toml 原生依赖与程序信息
     Cargo.lock Rust 精确依赖锁定
@@ -207,12 +200,13 @@ internal/ 产品内部实现
     local.go 本机 RPC 服务、玩家命令分派与后台启停
     local_test.go 玩家本机命令、协议版本与图片通道边界测试
     network.go 授权快照、凭据续签、Nebula 与探测生命周期
+    probe.go 独立于控制请求与界面的后台定时探测
     node.go 节点登记、配置同步、续签与状态
     node_doctor.go 节点诊断检查
     node_local.go 节点本机命令与脱敏日志缓冲
     player.go 玩家初始化、游戏目录与房间操作
     runtime.go 共享运行状态、构造、持久化与后台主循环
-    runtime_test.go 控制请求阻塞时的凭据到期及账号注销恢复测试
+    runtime_test.go 控制阻塞时的到期停网、自动探测及账号注销恢复测试
     status.go 玩家连接状态、实际探测与本机诊断
     telemetry.go 节点与玩家的短期监控采集和独立上报
     traffic_linux.go Linux 隧道网卡上传下载查询
@@ -271,7 +265,7 @@ internal/ 产品内部实现
         style.css 管理台与移动端布局样式
         types.ts 前端 HTTP 与监控类型
         users.tsx 用户分页、设备与会话管理和 OIDC 配置
-        users.test.tsx 用户停用原因与 OIDC secret 清除交互测试
+        users.test.tsx 限制建房原因与 OIDC secret 清除交互测试
     auth.go 显式访客登记、设备挑战、会话与房间权限校验
     users.go 用户查询、事务授权检查、设备与管理操作及连接撤销
     users_http.go 用户与设备路由、请求解码和 HTTP 响应
@@ -373,7 +367,7 @@ internal/ 产品内部实现
     sync_windows.go Windows 目录同步兼容处理
   probe/ 隧道内真实测量
     probe.go 经原生或 LAN PacketConn 的探测、RTT/丢包与来源限速
-    probe_test.go 探测成员授权与统计过期测试
+    probe_test.go 成员授权、30 秒窗口、全丢包与取消测试
 README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
   updates/ 离线更新元数据签署工具

@@ -27,7 +27,7 @@ func (s *Server) registerPlayer(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v2/auth/verify", s.playerVerify)
 	mux.HandleFunc("GET /v2/rooms/{room}", s.playerAuth(s.playerSnapshot))
 	mux.HandleFunc("GET /v2/rooms/{room}/events", s.playerAuth(s.playerEvents))
-	mux.HandleFunc("POST /v2/rooms", s.playerMutation(s.playerCreateRoom, checkUpdatedPlayer))
+	mux.HandleFunc("POST /v2/rooms", s.playerMutation(s.playerCreateRoom, checkRoomCreation))
 	mux.HandleFunc("POST /v2/rooms/join", s.playerMutation(s.playerJoinRoom, checkUpdatedPlayer))
 	mux.HandleFunc("POST /v2/rooms/{room}/lease", s.playerMutation(s.playerLease, checkUpdatedPlayer, checkActivePlayer))
 	mux.HandleFunc("POST /v2/rooms/{room}/heartbeat", s.playerMutation(s.playerHeartbeat, checkUpdatedPlayer))
@@ -92,6 +92,21 @@ func (s *Server) playerAuth(next func(http.ResponseWriter, *http.Request, string
 
 func checkUpdatedPlayer(r *http.Request, tx pgx.Tx, id string) error {
 	return requireUpdated(r.Context(), tx, id)
+}
+
+func checkRoomCreation(r *http.Request, tx pgx.Tx, id string) error {
+	u, err := playerUser(r.Context(), tx, id)
+	if err != nil {
+		return err
+	}
+	permission, err := roomCreationPermission(r.Context(), tx, id, u)
+	if err != nil {
+		return err
+	}
+	if !permission.Allowed {
+		return model.Failure(permission.Reason)
+	}
+	return nil
 }
 
 func checkActivePlayer(r *http.Request, tx pgx.Tx, id string) error {

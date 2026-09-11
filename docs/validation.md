@@ -12,6 +12,33 @@
 | 当前完整安装包 | Windows amd64 0.2.1 已重新构建，内置签名 TAP 9.27.0，修复注册表枚举与两种官方 TAP ID 校验；安装包本身未签名，完整安装与驱动加载仍待真机验收 |
 | 历史 0.2.0 安装包与镜像 | 使用旧数据面，不能与当前客户端混用；发布源码提交和镜像摘要见 [IMAGES.txt](../deploy/IMAGES.txt)，旧包/WebView 结果只列于历史证据 |
 
+## 房间布局与后台测量（2026-09-12）
+
+基于 `d3b32eb` 的后续工作区：房间成员共享列宽，游戏与操作移入右栏；个人菜单承接退出方式。窗口仅保留关闭，诊断精简为连接状态和系统检查。后台探测独立于控制请求，每 5 秒采样并滚动保留最近 30 秒；协议字段不变，统计口径已更新 OpenAPI。
+
+| 检查 | 实际结果 |
+|---|---|
+| 桌面 | Node 24.21.0：49 项测试和生产构建通过。覆盖菜单退出失败不关窗、受限账号入房、真实零值、全丢包、30 秒过期及诊断移除项。[测试](../.local/gui-refine-desktop.log)、[构建](../.local/gui-refine-build.log) |
+| Windows Go | Go 1.27.0：gofmt、vet、全量测试通过；未配置 Windows 测试数据库。[测试](../.local/gui-refine-go.log)、[vet](../.local/gui-refine-vet.log) |
+| Linux 数据库与并发 | Go 1.26.8、独立 PostgreSQL 18.6：vet、全量普通测试和 `go test -race -count=1 ./...` 通过，含真实 Nebula 隔离、Ethernet、P2P 与中继。新增控制请求阻塞时自动探测、取消不计丢包和 30 秒窗口测试通过。[记录](../.local/gui-refine-linux.log) |
+| 原生 GUI | Rust 1.95.0：5 项测试通过，1 项需要已安装 Go 服务的往返测试跳过；`custom-protocol` release 构建通过，正式 React 资源已嵌入。仅 GUI 产物 `dist/desktop/gui-react/nlroom.exe`，SHA256 `4417c9f51e716c655be811d470c2de6ddca2761d2593a4888053004a5555403f`；运行需配套当前后台。[Rust 检查](../.local/gui-git-rust-test.log)、[构建](../.local/gui-git-native-build.log) |
+| 浏览器 | 1120×760、760×560 与 390×844 检查通过；中英文表头与各成员行列坐标相同，窄屏只滚动表格，不撑宽页面。检查个人菜单 Escape/外部点击、成员菜单及诊断结果。[房间](../.local/gui-refine-room.png)、[个人菜单](../.local/gui-refine-profile.png)、[诊断](../.local/gui-refine-diagnostics.png) |
+
+浏览器使用明确标注的示例数据；未运行 Windows 服务/驱动与原生窗口、托盘真机验收，未运行双机 NAT/Minecraft、Docker 双客户端 TAP 拓扑和安装器测试，未构建发布完整安装包。临时测试数据库、网络与缓存卷已清理。
+
+## 客户端重建与建房限制（2026-09-12）
+
+基于 `d3b32eb` 的工作区：按选定的第三版暖白设计重建房间列表、入房侧栏、详情及共享样式，删除旧游戏库、旧主题样式与背景素材。账号 `disabled` 改为只限制建房，数据库结构仍为 6。
+
+| 检查 | 实际结果 |
+|---|---|
+| Windows Go | Go 1.27.0；`gofmt`、`go vet ./...`、`go test ./...` 通过。未配置 Windows 测试数据库，数据库用例在下方 Linux 实际执行。[测试](../.local/gui-rebuild/go-windows.log) |
+| Linux PostgreSQL 与 race | Go 1.26.8、独立临时 PostgreSQL 18.6；vet、全量普通测试和全量 race 通过。覆盖受限账号的 OIDC 登录、会话续取、入房、心跳、证书续签、成员快照、幂等建房拒绝、权限恢复和删除撤销；真实进程内 Nebula 隔离、Ethernet、P2P 与中继测试通过。临时容器、网络与缓存卷已清理。[记录](../.local/gui-rebuild/go-linux.log) |
+| 前端 | 固定 Node 24.21.0：客户端 45 项、管理台 14 项测试与两端构建通过。首次默认 Node 22 的测试结果不作为固定环境验收。[客户端](../.local/gui-rebuild/desktop-node24-tests.log)、[管理台](../.local/gui-rebuild/admin-node24-tests.log) |
+| GUI | 浏览器验证限制建房但可入房、正常建房与临时邀请、离房确认、设置、诊断、离线设置和 760×560 最小窗口；设计对照和截图见 [QA](../.local/gui-rebuild/design-qa.md)。 |
+
+本轮未重新运行 Docker 双客户端 TAP 拓扑，未运行 Rust/安装器测试；原生桥接与安装器源码未变。Windows 服务、SID/Named Pipe、TAP 驱动、托盘与窗口原生行为、双机 NAT/Minecraft 仍需真机验收。未构建发布完整安装包。
+
 ## interaction-1 实施验收（2026-09-12）
 
 基于 `ef1475d` 的当前工作区，按四批次完成业务码与安全错误、事务收据与当前授权、本机操作恢复及桌面流程、管理台与节点异步响应。HTTP 仍为 `/v2`，新增 `interaction-1` 契约；本机 IPC 为 3。数据库结构保持 6，Nebula 固定版本和已授权补丁未变。

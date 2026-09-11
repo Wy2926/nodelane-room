@@ -479,7 +479,7 @@ func (s *Store) Snapshot(ctx context.Context, room, device string) (model.Snapsh
 }
 
 func readRoomMembers(ctx context.Context, tx pgx.Tx, room string) ([]model.Member, error) {
-	rows, err := tx.Query(ctx, "SELECT m.device_id,u.name,m.ip,m.last_seen,m.mac,m.user_id FROM members m JOIN users u ON u.id=m.user_id JOIN user_devices d ON d.device_id=m.device_id WHERE m.room_id=$1 AND m.active AND u.state='active' AND NOT d.revoked AND (d.expires_at IS NULL OR d.expires_at>now()) ORDER BY m.device_id", room)
+	rows, err := tx.Query(ctx, "SELECT m.device_id,u.name,m.ip,m.last_seen,m.mac,m.user_id FROM members m JOIN users u ON u.id=m.user_id JOIN user_devices d ON d.device_id=m.device_id WHERE m.room_id=$1 AND m.active AND u.state IN ('active','disabled') AND NOT d.revoked AND (d.expires_at IS NULL OR d.expires_at>now()) ORDER BY m.device_id", room)
 	if err != nil {
 		return nil, err
 	}

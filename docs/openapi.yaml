@@ -15,9 +15,12 @@ components:
                     $ref: '#/components/schemas/MembershipSelf'
                 occupancy:
                     $ref: '#/components/schemas/MembershipSelf'
+                room_creation:
+                    $ref: '#/components/schemas/RoomCreationPermission'
                 user:
                     $ref: '#/components/schemas/User'
             required:
+                - room_creation
                 - user
                 - device
                 - membership
@@ -1290,6 +1293,15 @@ components:
                 - expires_at
                 - closed
             type: object
+        RoomCreationPermission:
+            properties:
+                allowed:
+                    type: boolean
+                reason:
+                    type: string
+            required:
+                - allowed
+            type: object
         RoomManagement:
             properties:
                 game:
@@ -1462,6 +1474,8 @@ components:
                     type: integer
                 room:
                     $ref: '#/components/schemas/Room'
+                room_creation:
+                    $ref: '#/components/schemas/RoomCreationPermission'
                 selected_room:
                     type: string
                 server:
@@ -1483,6 +1497,7 @@ components:
                 version:
                     type: string
             required:
+                - room_creation
                 - service_instance_id
                 - status_seq
                 - service
@@ -4810,7 +4825,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - AdminCookie: []
-            summary: Enable, disable, delete, logout or revoke-device; reason required, disable/delete close owned rooms and revoke network authority atomically
+            summary: Enable/disable room creation while retaining sessions and existing rooms; delete closes owned rooms and revokes network authority; logout/revoke-device ends device authorization; reason required
             tags:
                 - Admin
     /v2/auth/challenge:
@@ -5664,7 +5679,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - Bearer: []
-            summary: Current device grant, own membership and same-account occupancy; no credentials
+            summary: Current device grant, room creation permission with reason, own membership and same-account occupancy; no credentials
             tags:
                 - Player
     /v2/me/devices:
@@ -7956,7 +7971,7 @@ x-business-codes:
         http_status: 409
         retry: manual
     account_disabled:
-        default_message: 账号已停用，请联系管理员
+        default_message: 当前账号暂不可创建房间，加入和已有房间不受影响
         http_status: 403
         retry: manual
     account_guest_logout_forbidden:
@@ -8678,7 +8693,7 @@ x-local-api:
         path: /game-images/{game}/{kind}
     protocol_version: 3
     rpc:
-        description: Protocol 3. Mutations require stable command_id; the protected service ledger freezes the raw request and deadline before submission. Recover through get-operation and status.pending_operations. No legacy protocol support.
+        description: Protocol 3. Mutations require stable command_id; the protected service ledger freezes the raw request and deadline before submission. Recover through get-operation and status.pending_operations. No legacy protocol support. Peer rtt_ms and loss_percent summarize completed background probes from the last 30 seconds; measured_at is the latest completed probe time. RTT averages successful replies only; all timeouts yield 100 percent loss without RTT, and no recent samples omit both values.
         error:
             $ref: '#/components/schemas/Result'
         max_request_bytes: 65536

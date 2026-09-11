@@ -23,7 +23,8 @@ export function Confirmation({
       <p className="confirm-description">{dialog.description}</p>
       <div className="actions end">
         <button disabled={!!busy} onClick={() => setDialog(undefined)}>
-          {t("confirmation.cancel")}</button>
+          {t("confirmation.cancel")}
+        </button>
         <button
           className="danger solid"
           disabled={!!busy || !!serviceError}

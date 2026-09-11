@@ -8,14 +8,13 @@ import {
   Copy,
   Desktop,
   DownloadSimple,
-  Moon,
+  Sun,
   Power,
   SlidersHorizontal,
 } from "@phosphor-icons/react";
 import { Updates } from "./Updates";
 import type { Status } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
-import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
 import { clientVersion } from "../../native/api";
 
 const categories = [
@@ -26,21 +25,22 @@ const categories = [
   },
   { id: "device", title: "settings.deviceInformation", icon: Desktop },
   { id: "updates", title: "settings.versionAndUpdates", icon: DownloadSimple },
-  { id: "session", title: "settings.exitAndConnection", icon: Power },
 ] as const;
 
 export function Settings({
   status,
   actions,
-  usable,
+  category,
+  setCategory,
+  serviceUnavailable,
 }: {
   status?: Status;
   actions: Actions;
-  usable: boolean;
+  category: (typeof categories)[number]["id"];
+  setCategory: (category: (typeof categories)[number]["id"]) => void;
+  serviceUnavailable: boolean;
 }) {
-  const { busy, setBusy, setError, confirm, quit, copy } = actions;
-  const [category, setCategory] =
-    useState<(typeof categories)[number]["id"]>("preferences");
+  const { busy, setBusy, setError, copy } = actions;
   const [autoStart, setAutoStart] = useState<boolean>();
   useEffect(() => {
     let active = true;
@@ -57,45 +57,26 @@ export function Settings({
   return (
     <div className="settings">
       <div className="page-intro">
-        <span className="eyebrow">{t("settings.makeYourselfAtHome")}</span>
         <h2>{t("navigation.settings")}</h2>
         <p>{t("settings.intro")}</p>
       </div>
       <div className="settings-layout">
-        <aside className="settings-sidebar">
-          <div className="settings-profile">
-            <PlayerAvatar
-              name={status?.name || "N"}
-              identity={status?.device_id}
-              size="large"
-            />
-            <h3>{status?.name || t("shell.localPlayer")}</h3>
-            <p>
-              {status?.device_id
-                ? t("settings.yourGamingIdentityOnThisDevice")
-                : t("settings.deviceIdentityHasNotBeenLoaded")}
-            </p>
-          </div>
-          <nav
-            className="settings-nav"
-            aria-label={t("settings.settingsCategories")}
-          >
-            {categories.map(({ id, title, icon: Icon }) => (
-              <button
-                key={id}
-                aria-current={category === id ? "page" : undefined}
-                onClick={() => setCategory(id)}
-              >
-                <Icon size={21} aria-hidden="true" />
-                {t(title)}
-              </button>
-            ))}
-          </nav>
-          <span className="settings-signature">
-            NodeLane Room <span className="mono">{clientVersion}</span>
-          </span>
-        </aside>
-        <div className="settings-content console-surface">
+        <nav
+          className="settings-nav"
+          aria-label={t("settings.settingsCategories")}
+        >
+          {categories.map(({ id, title, icon: Icon }) => (
+            <button
+              key={id}
+              aria-current={category === id ? "page" : undefined}
+              onClick={() => setCategory(id)}
+            >
+              <Icon size={21} aria-hidden="true" />
+              {t(title)}
+            </button>
+          ))}
+        </nav>
+        <div className="settings-content">
           {category === "preferences" && (
             <section aria-labelledby="preferences-title">
               <div className="settings-section-head">
@@ -126,9 +107,9 @@ export function Settings({
               </label>
               <div className="theme-preview">
                 <div className="theme-preview-copy">
-                  <Moon size={28} weight="light" aria-hidden="true" />
-                  <h4>{t("settings.midnight")}</h4>
-                  <p>{t("settings.themeDescription")}</p>
+                  <Sun size={28} weight="light" aria-hidden="true" />
+                  <h4>{t("desk.themeName")}</h4>
+                  <p>{t("desk.themeDescription")}</p>
                 </div>
                 <span className="theme-current">
                   <Check size={16} aria-hidden="true" />
@@ -160,7 +141,7 @@ export function Settings({
                       setAutoStart(await isEnabled());
                     } catch {
                       setError({
-                        code: "local_autostart_failed",
+                        code: "local_preference_save_failed",
                         error: t("settings.autostartError"),
                       });
                     } finally {
@@ -187,7 +168,11 @@ export function Settings({
                 <h3 id="device-title">{t("settings.deviceInformation")}</h3>
                 <p>{t("settings.deviceHelp")}</p>
               </div>
-              <Account status={status} actions={actions} />
+              <Account
+                status={status}
+                actions={actions}
+                unavailable={serviceUnavailable}
+              />
               <dl className="device-details">
                 <div>
                   <dt>{t("settings.deviceNickname")}</dt>
@@ -250,51 +235,6 @@ export function Settings({
                 </div>
               </div>
               <Updates />
-            </section>
-          )}
-          {category === "session" && (
-            <section aria-labelledby="session-title">
-              <div className="settings-section-head">
-                <h3 id="session-title">{t("settings.exitAndConnection")}</h3>
-                <p>{t("settings.chooseHowYouWantToSayGoodbyeFor")}</p>
-              </div>
-              <div className="session-option">
-                <span className="session-icon">
-                  <Desktop size={28} weight="light" aria-hidden="true" />
-                </span>
-                <div>
-                  <h4>{t("settings.keepTheGameGoing")}</h4>
-                  <p>{t("settings.stayConnectedHelp")}</p>
-                  <button onClick={() => void quit()} disabled={!!busy}>
-                    {t("settings.exitAppStayConnected")}
-                  </button>
-                </div>
-              </div>
-              <div className="session-option">
-                <span className="session-icon">
-                  <Power size={28} weight="light" aria-hidden="true" />
-                </span>
-                <div>
-                  <h4>{t("settings.callItADay")}</h4>
-                  <p>{t("settings.leaveAndExitHelp")}</p>
-                  <button
-                    className="danger subtle"
-                    disabled={!usable}
-                    onClick={() =>
-                      status?.selected_room
-                        ? confirm(
-                            t("useActions.leaveRoomAndExit"),
-                            t("settings.disconnectThisDeviceAndExitTheApp"),
-                            { action: "leave" },
-                            true,
-                          )
-                        : void quit()
-                    }
-                  >
-                    {t("useActions.leaveRoomAndExit")}
-                  </button>
-                </div>
-              </div>
             </section>
           )}
         </div>

@@ -1,12 +1,16 @@
+import { useState } from "react";
 import { t } from "../../../i18n";
+import { failure } from "../../../native/api";
 import type { Actions } from "../../../app/use-actions";
 import type { Dialog } from "./types";
-import type { Status, RoomResult, Failure } from "../../../shared/model";
-import { PortList } from "../../../shared/ui/PortList";
+import type { Status, RoomResult, Failure, Game } from "../../../shared/model";
+import { Art } from "../../catalog/Artwork";
+
 export function CreateRoom({
   dialog,
   actions,
   status,
+  games = [],
   gamesError,
   serviceError,
   onJoined,
@@ -14,66 +18,105 @@ export function CreateRoom({
   dialog: Extract<Dialog, { type: "create" }>;
   actions: Actions;
   status?: Status;
+  games?: Game[];
   gamesError?: Failure;
   serviceError?: Failure;
   onJoined: () => void;
 }) {
-  const { perform, busy, setDialog } = actions;
-
+  const [selected, setSelected] = useState(dialog.game?.id || "");
+  const available = games.filter((game) => game.enabled);
+  const game =
+    available.find((game) => game.id === selected) ||
+    available[0] ||
+    dialog.game;
+  const allowed =
+    status?.room_creation?.allowed === true &&
+    !actions.busy &&
+    !serviceError &&
+    !gamesError &&
+    status.update?.state !== "installing" &&
+    !status.selected_room &&
+    !status.update?.required &&
+    status.control === "online";
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const f = new FormData(e.currentTarget);
-        if (
-          new TextEncoder().encode(String(f.get("name")).trim()).length > 120
-        ) {
+        if (!allowed || !game) return;
+        const name = String(new FormData(e.currentTarget).get("name")).trim();
+        if (new TextEncoder().encode(name).length > 120) {
           actions.setError({
             code: "request_validation_failed",
             error: t("interaction.byteLimit"),
           });
           return;
         }
-        void perform<RoomResult>(
+        void actions.perform<RoomResult>(
           t("gameLibrary.createRoom"),
           {
             action: "create",
             body: {
-              name: String(f.get("name")).trim(),
-              game: dialog.game.id,
-              expected_game_revision: dialog.game.revision,
+              name,
+              game: game.id,
+              expected_game_revision: game.revision,
             },
           },
           (out) => {
             onJoined();
-            if (out.invitation)
-              setDialog({
-                type: "invite",
-                room: out.room,
-                invitation: out.invitation,
-              });
-            else setDialog(undefined);
+            actions.setDialog(
+              out.invitation
+                ? { type: "invite", room: out.room, invitation: out.invitation }
+                : undefined,
+            );
           },
         );
       }}
     >
-      <p className="muted">{dialog.game.name}</p>
+      <label>
+        {t("desk.chooseGame")}
+        <select
+          autoFocus
+          value={game?.id || ""}
+          onChange={(e) => setSelected(e.target.value)}
+          disabled={!allowed || !!actions.busy}
+        >
+          {available.map((game) => (
+            <option value={game.id} key={game.id}>
+              {game.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {game && (
+        <div className="selected-game">
+          <div className="room-art small">
+            <Art game={game} />
+          </div>
+          <div>
+            <strong>{game.name}</strong>
+            <p className="hint">{t("createRoom.limitsHelp")}</p>
+          </div>
+        </div>
+      )}
       <label>
         {t("createRoom.roomName")}
         <input
-          autoFocus
           name="name"
           maxLength={120}
           required
           placeholder={t("createRoom.giveThisSessionAName")}
+          disabled={!allowed || !!actions.busy}
         />
       </label>
-      <PortList ports={dialog.game.ports} />
-      <p className="hint">{t("createRoom.limitsHelp")}</p>
+      {status?.room_creation?.reason && (
+        <p className="hint" role="status">
+          {failure({ code: status.room_creation.reason }).error}
+        </p>
+      )}
       <button
-        className="primary"
+        className="primary full"
         disabled={
-          !!busy || !!serviceError || !!gamesError || !!status?.selected_room
+          !allowed || !game || !!actions.busy || !!serviceError || !!gamesError
         }
       >
         {t("createRoom.createAndConnect")}

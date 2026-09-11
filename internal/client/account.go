@@ -57,14 +57,14 @@ func (a *API) ClaimLogin(ctx context.Context, id, proof string) (model.LoginResu
 	return out, err
 }
 
-func (a *API) RefreshAccount(ctx context.Context) (*model.User, error) {
+func (a *API) RefreshAccount(ctx context.Context) (model.AccountStatus, error) {
 	var me model.AccountStatus
 	if err := a.Call(ctx, "GET", "/v2/me", nil, &me); err != nil {
-		return nil, err
+		return model.AccountStatus{}, err
 	}
 	a.mu.Lock()
 	u := me.User
 	a.session.User = &u
 	a.mu.Unlock()
-	return &u, nil
+	return me, nil
 }

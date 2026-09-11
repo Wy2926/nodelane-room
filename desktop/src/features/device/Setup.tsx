@@ -5,8 +5,7 @@ export function Setup({ actions }: { actions: Actions }) {
   const { perform, busy } = actions;
   return (
     <section className="onboarding">
-      <span className="eyebrow">{t("setup.welcomeToNodelane")}</span>
-      <h2>{t("setup.greatGames")}<br />{t("setup.betterTogether")}</h2>
+      <h2>{t("setup.welcomeToNodelane")}</h2>
       <p className="muted">{t("setup.nicknameHelp")}</p>
       <form
         onSubmit={(e) => {
@@ -20,7 +19,8 @@ export function Setup({ actions }: { actions: Actions }) {
         }}
       >
         <label>
-          {t("settings.deviceNickname")}<input
+          {t("settings.deviceNickname")}
+          <input
             name="name"
             required
             maxLength={40}
@@ -29,10 +29,20 @@ export function Setup({ actions }: { actions: Actions }) {
         </label>
         <details className="server-choice">
           <summary>{t("setup.gamingServiceRoomNodelaneNet")}</summary>
-          <label>{t("setup.controlServiceUrl")}<input name="server" type="url" required defaultValue="https://room.nodelane.net" maxLength={2048} /></label>
+          <label>
+            {t("setup.controlServiceUrl")}
+            <input
+              name="server"
+              type="url"
+              required
+              defaultValue="https://room.nodelane.net"
+              maxLength={2048}
+            />
+          </label>
         </details>
         <button className="primary" disabled={!!busy}>
-          {t("setup.startYourJourney")}</button>
+          {t("setup.startYourJourney")}
+        </button>
         <p className="hint">{t("setup.identityHelp")}</p>
       </form>
       <Account actions={actions} />

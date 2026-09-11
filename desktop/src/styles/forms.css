@@ -1,99 +1,12 @@
-label {
-  display: block;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  margin: 18px 0;
-}
-input,
-select {
-  width: 100%;
-  margin-top: 8px;
-  padding: 12px 14px;
-  background: var(--input);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  min-height: var(--control-height);
-}
-input::placeholder {
-  color: var(--muted);
-  opacity: 0.8;
-}
-input[type="checkbox"] {
-  min-height: auto;
-  width: auto;
-  margin: 0;
-  accent-color: var(--accent);
-}
-dialog {
-  width: min(490px, calc(100vw - 40px));
-  padding: var(--space-8);
-  max-height: 90vh;
-  overflow: auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line-strong);
-  color: var(--text);
-  background: var(--panel-raised);
-  box-shadow: var(--shadow-dialog);
-  backdrop-filter: blur(var(--blur-panel));
-}
-dialog::backdrop {
-  background: #050a14b8;
-  backdrop-filter: blur(16px);
-}
-.dialog-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 24px;
-}
-.dialog-head h2 {
-  margin: 0;
-}
-dialog form > .primary {
-  width: 100%;
-  margin-top: 12px;
-}
-.invitation {
-  font:
-    18px ui-monospace,
-    monospace;
-  letter-spacing: 1px;
-  padding: 20px;
-  overflow-wrap: anywhere;
-  border: 1px dashed var(--accent);
-  border-radius: 12px;
-  background: var(--accent-soft);
-  margin: 22px 0;
-}
-.confirm-description {
-  margin-bottom: 30px;
-}
-.port-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin: 10px 0;
-  font-size: var(--text-xs);
-}
-.port {
-  font-size: var(--text-xs);
-  border: 1px solid var(--line);
-  padding: 5px 9px;
-  border-radius: 6px;
-  background: var(--input);
-  font-variant-numeric: tabular-nums;
-}
-.port small {
-  display: block;
-  margin-top: 3px;
-  color: var(--muted);
-}
-.tag {
-  font-size: var(--text-xs);
-  border-radius: 4px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 3px 6px;
-  white-space: nowrap;
-}
+dialog { width: min(520px, calc(100% - 40px)); max-height: calc(100dvh - 48px); border: 1px solid var(--line); border-radius: 12px; padding: 28px; color: var(--ink); background: var(--paper); box-shadow: 0 20px 80px #34251b28; }
+dialog::backdrop { background: #201c184f; }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 25px; }
+.dialog-head h2 { font-size: 24px; margin: 0; }
+.dialog-head button { background: transparent; border: 0; }
+.selected-game { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-block: 1px solid var(--line); }
+.selected-game .hint { margin-top: 6px; }
+.invitation { padding: 22px; margin: 20px 0; background: var(--paper-side); border: 1px dashed #c4b7a7; border-radius: var(--radius-control); font-family: var(--font-code); font-size: 20px; overflow-wrap: anywhere; }
+.ports, .port-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+.port, .port-list > *, .ports > * { padding: 3px 8px; border-radius: 4px; background: var(--paper-side); color: var(--ink-secondary); font-size: 12px; }
+.server-choice { color: var(--ink-secondary); }
+.server-choice label { margin-top: 12px; }

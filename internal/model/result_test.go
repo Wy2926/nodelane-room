@@ -28,7 +28,7 @@ func TestPublicCodeLocalizationAndSafeDetails(t *testing.T) {
 	if value.RoomID != "" || value.DeviceID != "" || len(value.Fields) != 1 || value.Fields[0].Field != "name" {
 		t.Fatal("details whitelist failed")
 	}
-	if EndsIdentity("room_owner_required") || EndsMembership("resource_not_found") {
+	if EndsIdentity("room_owner_required") || EndsIdentity("account_disabled") || EndsMembership("account_disabled") || EndsMembership("resource_not_found") {
 		t.Fatal("generic failure ended authorization")
 	}
 }

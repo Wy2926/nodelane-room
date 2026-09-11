@@ -94,7 +94,7 @@ func EndsMembership(code string) bool {
 
 func EndsIdentity(code string) bool {
 	switch code {
-	case "auth_device_revoked", "auth_device_expired", "auth_device_unregistered", "account_disabled", "account_deleted", "auth_identity_scope_conflict":
+	case "auth_device_revoked", "auth_device_expired", "auth_device_unregistered", "account_deleted", "auth_identity_scope_conflict":
 		return true
 	}
 	return false

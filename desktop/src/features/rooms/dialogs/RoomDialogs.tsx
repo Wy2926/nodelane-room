@@ -1,10 +1,10 @@
-import { failure } from "../../../native/api";
 import { t } from "../../../i18n";
 import { Modal } from "../../../shared/ui/Modal";
 import type { Actions } from "../../../app/use-actions";
-import type { Status, Failure } from "../../../shared/model";
+import type { Status, Failure, Game } from "../../../shared/model";
+import type { Recovery } from "../../../app/experience";
 import { CreateRoom } from "./CreateRoom";
-import { JoinRoom } from "./JoinRoom";
+import { Problem } from "../../../app/Problem";
 import { Invitation } from "./Invitation";
 import { Confirmation } from "./Confirmation";
 
@@ -12,6 +12,8 @@ export function RoomDialogs(props: {
   actions: Actions;
   status: Status;
   gamesError?: Failure;
+  games?: Game[];
+  onRecover?: (action: Recovery) => void;
   serviceError?: Failure;
   onJoined: () => void;
 }) {
@@ -21,11 +23,9 @@ export function RoomDialogs(props: {
   const title =
     dialog.type === "create"
       ? t("gameLibrary.createRoom")
-      : dialog.type === "join"
-        ? t("roomDialogs.joinWithAnInviteCode")
-        : dialog.type === "invite"
-          ? t("roomDialogs.inviteFriendsToPlay")
-          : dialog.title;
+      : dialog.type === "invite"
+        ? t("roomDialogs.inviteFriendsToPlay")
+        : dialog.title;
   return (
     <Modal
       title={title}
@@ -36,12 +36,11 @@ export function RoomDialogs(props: {
       }}
     >
       {error && (
-        <div className="banner error" role="alert">
-          {failure(error).error}
-          {error.request_id && (
-            <small className="selectable">{error.request_id}</small>
-          )}
-        </div>
+        <Problem
+          error={error}
+          onRecover={props.onRecover}
+          onDismiss={() => setError(undefined)}
+        />
       )}
       {actions.takeover && (
         <div className="banner warning" role="alert">
@@ -76,7 +75,6 @@ export function RoomDialogs(props: {
         </div>
       )}
       {dialog.type === "create" && <CreateRoom {...props} dialog={dialog} />}
-      {dialog.type === "join" && <JoinRoom {...props} dialog={dialog} />}
       {dialog.type === "invite" && <Invitation {...props} dialog={dialog} />}
       {dialog.type === "confirm" && <Confirmation {...props} dialog={dialog} />}
     </Modal>

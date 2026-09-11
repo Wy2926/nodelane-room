@@ -7,7 +7,7 @@ import type { API } from "./types";
 
 afterEach(cleanup);
 
-it("requires a reason before disabling the selected user", async () => {
+it("requires a reason before restricting room creation for the selected user", async () => {
   const account = {
     id: "user-a",
     name: "访客甲",
@@ -23,7 +23,7 @@ it("requires a reason before disabling the selected user", async () => {
   render(<Users api={api as API} />);
   await userEvent.click(await screen.findByRole("button", { name: "查看" }));
   await userEvent.click(
-    await screen.findByRole("button", { name: "停用并关闭其房间" }),
+    await screen.findByRole("button", { name: "限制创建房间" }),
   );
   expect(await screen.findByText("请先填写操作原因")).toBeTruthy();
   expect(api.mock.calls.some(([path]) => path.endsWith("/actions"))).toBe(
@@ -31,7 +31,7 @@ it("requires a reason before disabling the selected user", async () => {
   );
   await userEvent.type(screen.getByLabelText("操作原因"), "滥用联机");
   await userEvent.click(
-    screen.getByRole("button", { name: "停用并关闭其房间" }),
+    screen.getByRole("button", { name: "限制创建房间" }),
   );
   await waitFor(() =>
     expect(api).toHaveBeenCalledWith("/users/user-a/actions", {

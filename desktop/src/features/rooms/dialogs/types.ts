@@ -1,7 +1,6 @@
 import type { Game, Room, Invitation, Request } from "../../../shared/model";
 export type Dialog =
-  | { type: "join" }
-  | { type: "create"; game: Game }
+  | { type: "create"; game?: Game }
   | { type: "invite"; room: Room; invitation: Invitation }
   | {
       type: "confirm";

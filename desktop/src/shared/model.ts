@@ -57,6 +57,7 @@ export type User = {
   created_at: string;
 };
 export type Status = {
+  room_creation: { allowed: boolean; reason?: string };
   service_instance_id: string;
   status_seq: number;
   service: string;

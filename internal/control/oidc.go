@@ -273,9 +273,6 @@ func completeIdentity(ctx context.Context, tx pgx.Tx, id string) (string, error)
 	if state == "deleted" {
 		return "", model.Failure("account_deleted")
 	}
-	if state != "active" {
-		return "", model.Failure("account_disabled")
-	}
 	if _, err = tx.Exec(ctx, `INSERT INTO user_identities(issuer,subject,user_id) VALUES($1,$2,$3) ON CONFLICT(issuer,subject) DO NOTHING`, issuer, subject, user); err != nil {
 		return "", err
 	}

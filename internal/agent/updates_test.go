@@ -41,7 +41,7 @@ func TestVersionReportWithoutRoomAndOnGUIChange(t *testing.T) {
 			reports <- report
 			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", map[string]bool{"ok": true}))
 		case "/v2/me":
-			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", model.AccountStatus{User: model.User{ID: "test-user", Name: "player"}, Device: model.UserDevice{DeviceID: i.ID()}, Membership: model.MembershipSelf{State: "none"}}))
+			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", model.AccountStatus{RoomCreation: model.RoomCreationPermission{Reason: "account_disabled"}, User: model.User{ID: "test-user", Name: "player", State: "disabled"}, Device: model.UserDevice{DeviceID: i.ID()}, Membership: model.MembershipSelf{State: "none"}}))
 		default:
 			t.Error("unexpected request", r.URL.Path)
 			w.WriteHeader(404)
@@ -62,6 +62,9 @@ func TestVersionReportWithoutRoomAndOnGUIChange(t *testing.T) {
 	}
 	if len(reports) != 1 {
 		t.Fatal("unchanged report was not throttled", len(reports))
+	}
+	if status := r.Status(); status.Identity != "active" || status.RoomCreation.Allowed || status.RoomCreation.Reason != "account_disabled" {
+		t.Fatal("creation restriction was not propagated independently of identity")
 	}
 	first := <-reports
 	if first.Version != model.ClientVersion || first.OS != runtime.GOOS || first.GUIVersion != "" {

@@ -49,6 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   setLanguage("zh-CN");
   status = {
+    room_creation: { allowed: true },
     user: {
       id: "owner",
       name: "玩家",
@@ -76,7 +77,7 @@ beforeEach(() => {
     server: "https://example.test",
     name: "玩家",
     device_id: "owner",
-    control: "idle",
+    control: "online",
     engine: "stopped",
     selected_room: "",
 
@@ -90,6 +91,9 @@ beforeEach(() => {
     error: undefined,
     refresh: vi.fn(),
     updatedAt: Date.now(),
+    refreshing: false,
+    retryAt: 0,
+    stale: false,
   }));
   vi.mocked(rpc).mockImplementation(
     async (request) => defaultReply(request) as never,
@@ -115,7 +119,7 @@ test.each([null, "fr-FR", "invalid"])(
     app.unmount();
     render(<App />);
     expect(screen.queryByRole("radio")).toBeNull();
-    expect(screen.getByRole("button", { name: "Game library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "My rooms" })).toBeTruthy();
   },
 );
 
@@ -149,6 +153,9 @@ test("an existing offline error follows the selected language", async () => {
     error: { code: "local_service_unavailable", error: "服务离线" },
     refresh: vi.fn(),
     updatedAt: 0,
+    refreshing: false,
+    retryAt: 0,
+    stale: false,
   });
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "设置" }));
@@ -158,24 +165,32 @@ test("an existing offline error follows the selected language", async () => {
   );
   expect(screen.getByRole("alert").textContent).not.toMatch(/\p{Script=Han}/u);
   await userEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
-  expect(screen.getByText("Waiting for the local service")).toBeTruthy();
+  expect(
+    screen.getAllByText("Cannot reach the local service").length,
+  ).toBeGreaterThan(0);
   expect(rpc).not.toHaveBeenCalled();
 });
 
-test("catalog failure remains a failure and cannot create from stale data", async () => {
+test("catalog failure explains why creation is unavailable", async () => {
   vi.mocked(rpc).mockImplementation(async (request) => {
-    if (request.action === "games")
-      throw { code: "local_control_unreachable", error: "连接失败" };
+    if (request.action === "games") throw { code: "local_control_unreachable" };
     return defaultReply(request) as never;
   });
   render(<App />);
-  await userEvent.click(screen.getByRole("button", { name: /游戏库/ }));
-  expect(await screen.findByRole("alert")).toBeTruthy();
-  expect(screen.getByText("游戏库暂不可用")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "创建房间" })).toBeNull();
+  await waitFor(() =>
+    expect(screen.getByText(/无法连接联机服务/)).toBeTruthy(),
+  );
+  expect(
+    (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(
+    (screen.getByRole("button", { name: "加入房间" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(false);
 });
 
-test("console shelf reaches games beyond eight by keyboard and search resets to a valid selection", async () => {
+test("creation form can select every server game", async () => {
   const games = Array.from({ length: 10 }, (_, index) => ({
     ...game,
     id: `game-${index}`,
@@ -186,25 +201,77 @@ test("console shelf reaches games beyond eight by keyboard and search resets to 
       (request.action === "games" ? games : defaultReply(request)) as never,
   );
   render(<App />);
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "游戏库" }));
-  const first = await screen.findByRole("button", { name: "冒险 0" });
-  first.focus();
-  await user.keyboard("{End}");
-  const last = screen.getByRole("button", { name: "冒险 9" });
-  expect(document.activeElement).toBe(last);
-  expect(last.getAttribute("aria-pressed")).toBe("true");
-  await user.keyboard("{ArrowRight}");
-  expect(document.activeElement).toBe(first);
-  await user.type(
-    screen.getByRole("searchbox", { name: "搜索游戏" }),
-    "冒险 4",
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
   );
+  await userEvent.click(screen.getByRole("button", { name: "创建房间" }));
+  await userEvent.selectOptions(screen.getByRole("combobox"), "game-9");
+  expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe(
+    "game-9",
+  );
+  await userEvent.type(screen.getByLabelText("房间名称"), "最后一个游戏");
+  await userEvent.click(screen.getByRole("button", { name: "创建并连接" }));
+  expect(rpc).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: "create",
+      body: { game: "game-9", name: "最后一个游戏", expected_game_revision: 1 },
+    }),
+  );
+});
+
+test("creation restriction preserves invitation joining and recovers without login", async () => {
+  status.user!.state = "disabled";
+  status.room_creation = { allowed: false, reason: "account_disabled" };
+  const app = render(<App />);
   expect(
-    screen.getByRole("button", { name: "冒险 4" }).getAttribute("aria-pressed"),
-  ).toBe("true");
-  await user.click(screen.getByRole("button", { name: "创建房间" }));
-  expect(screen.getByRole("dialog").textContent).toContain("冒险 4");
+    (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(screen.getAllByText(/当前账号暂不可创建房间/).length).toBeGreaterThan(
+    0,
+  );
+  await userEvent.type(screen.getByLabelText("邀请码"), "test-code");
+  await userEvent.click(screen.getByRole("button", { name: "加入房间" }));
+  expect(rpc).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "join", body: { code: "test-code" } }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "返回我的房间" }));
+  status = { ...status, room_creation: { allowed: true } };
+  app.rerender(<App />);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+});
+
+test("an already open creation form responds to a new restriction", async () => {
+  const app = render(<App />);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  await userEvent.click(screen.getByRole("button", { name: "创建房间" }));
+  await userEvent.type(screen.getByLabelText("房间名称"), "未提交房间");
+  status = {
+    ...status,
+    room_creation: { allowed: false, reason: "account_disabled" },
+  };
+  app.rerender(<App />);
+  const submit = screen.getByRole("button", {
+    name: "创建并连接",
+  }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.submit(submit.closest("form")!);
+  expect(vi.mocked(rpc).mock.calls.some(([r]) => r.action === "create")).toBe(
+    false,
+  );
 });
 
 test("first use submits the online control endpoint by default", async () => {
@@ -258,7 +325,7 @@ test("renewed invitation uses the actual standalone invitation response", async 
     return defaultReply(request) as never;
   });
   render(<App />);
-  await userEvent.click(screen.getByRole("button", { name: "生成新邀请码" }));
+  await userEvent.click(screen.getByRole("button", { name: "邀请朋友" }));
   expect(await screen.findByRole("dialog")).toBeTruthy();
   expect(await screen.findByText("test-invitation")).toBeTruthy();
   expect(screen.getByRole("button", { name: "复制邀请码" })).toBeTruthy();
@@ -272,17 +339,19 @@ test("renewed invitation uses the actual standalone invitation response", async 
 
 test("an open join form stops accepting operations when the service disappears", async () => {
   const app = render(<App />);
-  await userEvent.click(screen.getByRole("button", { name: /邀请码入房/ }));
   await userEvent.type(screen.getByLabelText("邀请码"), "test-code");
   vi.mocked(useService).mockReturnValue({
     status,
     error: { code: "local_service_unavailable", error: "服务离线" },
     refresh: vi.fn(),
     updatedAt: Date.now(),
+    refreshing: false,
+    retryAt: 0,
+    stale: false,
   });
   app.rerender(<App />);
   expect(
-    (screen.getByRole("button", { name: "加入并连接" }) as HTMLButtonElement)
+    (screen.getByRole("button", { name: "加入房间" }) as HTMLButtonElement)
       .disabled,
   ).toBe(true);
   expect(
@@ -322,9 +391,8 @@ test("leave failure keeps the app running", async () => {
   });
   render(<App />);
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /设置/ }));
-  await user.click(screen.getByRole("button", { name: "退出与联机" }));
-  await user.click(screen.getByRole("button", { name: "离房并退出" }));
+  await user.click(screen.getByLabelText("个人资料"));
+  await user.click(screen.getByRole("button", { name: /^离房并退出/ }));
   await user.click(screen.getByRole("button", { name: "确认离房并退出" }));
   expect(
     (await screen.findAllByText(/操作结果.*确认|操作结果待确认/)).length,
@@ -344,7 +412,12 @@ test("creating a room submits the selected server game once and retains invitati
   });
   render(<App />);
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /游戏库/ }));
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
   await user.click(await screen.findByRole("button", { name: "创建房间" }));
   await user.type(screen.getByLabelText("房间名称"), "周末世界");
   const submit = screen.getByRole("button", { name: "创建并连接" });
@@ -393,6 +466,13 @@ function joinedParty() {
   status.permissions = { manage: true, join: false, leave: true };
   status.control = "online";
   status.engine = "running";
+  status.ip = "10.203.0.2";
+  status.lease_expires_at = new Date(Date.now() + 60000).toISOString();
+  status.membership = {
+    state: "active",
+    revision: 1,
+    valid_until: new Date(Date.now() + 60000).toISOString(),
+  };
   status.members = [
     {
       device_id: "owner",
@@ -411,13 +491,13 @@ function joinedParty() {
   ];
 }
 
-test("English room actions and copied diagnostics use complete translated messages", async () => {
+test("English room actions and diagnostics use complete translated messages", async () => {
   setLanguage("en-US");
   joinedParty();
   vi.mocked(rpc).mockImplementation(async (request) => {
     if (request.action === "doctor")
       return {
-        control: "connected",
+        control: "online",
         engine: "running",
         platform: {
           os: "windows",
@@ -429,7 +509,7 @@ test("English room actions and copied diagnostics use complete translated messag
   });
   render(<App />);
   const user = userEvent.setup();
-  expect(screen.getByText("2 / 4 members")).toBeTruthy();
+  expect(screen.getByText(/2 \/ 4/)).toBeTruthy();
   expect(screen.getByText(/^Expires /)).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Leave room" }));
   expect(
@@ -438,12 +518,13 @@ test("English room actions and copied diagnostics use complete translated messag
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   await user.click(screen.getByRole("button", { name: "Diagnostics" }));
   await user.click(screen.getByRole("button", { name: "Run diagnostics" }));
-  await user.click(
-    await screen.findByRole("button", { name: "Copy redacted diagnostics" }),
+  expect(await screen.findByText("Windows")).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "Copy redacted diagnostics" }),
+  ).toBeNull();
+  expect(document.querySelector("main")!.textContent).not.toMatch(
+    /\p{Script=Han}|\{\w+\}/u,
   );
-  const copied = vi.mocked(copyText).mock.calls[0][0];
-  expect(copied).toContain("Control service: Connected");
-  expect(copied).not.toMatch(/\p{Script=Han}|\{\w+\}/u);
 });
 
 test("party management disclosure supports Escape and retains confirmation before transfer", async () => {
@@ -500,9 +581,8 @@ test.each([false, true])(
     if (stale) status.snapshot_at = new Date(Date.now() - 60000).toISOString();
     render(<App />);
     expect(screen.getByText(stale ? "链路未知" : "直连")).toBeTruthy();
-    expect(
-      screen.getByText(stale ? "暂无实测数据" : "0.0 ms · 0% 丢包"),
-    ).toBeTruthy();
+    expect(screen.queryByText("0.0 ms") !== null).toBe(!stale);
+    expect(screen.queryByText("0.0%") !== null).toBe(!stale);
     await userEvent.click(screen.getByLabelText("管理 远山"));
     expect(
       (screen.getByRole("button", { name: "转让房主" }) as HTMLButtonElement)
@@ -512,10 +592,7 @@ test.each([false, true])(
       (screen.getByRole("button", { name: "踢出成员" }) as HTMLButtonElement)
         .disabled,
     ).toBe(stale);
-    expect(
-      (screen.getByRole("button", { name: "测延迟" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(stale);
+    expect(screen.queryByRole("button", { name: "测延迟" })).toBeNull();
   },
 );
 
@@ -529,6 +606,9 @@ test("offline startup keeps updates reachable and reports the local service fail
     error: { code: "local_service_unavailable", error: "服务离线" },
     refresh: vi.fn(),
     updatedAt: 0,
+    refreshing: false,
+    retryAt: 0,
+    stale: false,
   });
   render(<App />);
   const user = userEvent.setup();
@@ -538,23 +618,23 @@ test("offline startup keeps updates reachable and reports the local service fail
   expect(
     screen
       .getAllByRole("alert")
-      .some((v) => v.textContent?.includes("无法连接网络后台")),
+      .some((v) => v.textContent?.includes("无法连接本机服务")),
   ).toBe(true);
   expect(screen.queryByText("已是最新版")).toBeNull();
   expect(rpc).toHaveBeenCalledWith({ action: "update-check" });
   await user.click(screen.getByRole("button", { name: "网络诊断" }));
-  expect(screen.getByText("等待本机服务")).toBeTruthy();
+  expect(screen.getAllByText("无法连接本机服务").length).toBeGreaterThan(0);
   expect(
     (screen.getByRole("button", { name: "运行诊断" }) as HTMLButtonElement)
       .disabled,
   ).toBe(true);
 });
 
-test("diagnostics visualizes the real report and copies only an explicit redacted summary", async () => {
+test("diagnostics shows system checks without interfaces, peer data, or raw reports", async () => {
   vi.mocked(rpc).mockImplementation(async (request) => {
     if (request.action === "doctor")
       return {
-        control: "connected",
+        control: "online",
         engine: "stopped",
         nebula_version: "1.11.1",
         device_id: "private-id",
@@ -585,61 +665,76 @@ test("diagnostics visualizes the real report and copies only an explicit redacte
   await user.click(screen.getByRole("button", { name: "运行诊断" }));
   expect(await screen.findByText("Windows")).toBeTruthy();
   expect(screen.getByText("未找到")).toBeTruthy();
-  expect(screen.getByText("0 / 1 个已启用")).toBeTruthy();
+  expect(screen.getByText("1.11.1")).toBeTruthy();
   expect(document.querySelector("pre")).toBeNull();
-  await user.click(screen.getByRole("button", { name: "复制脱敏诊断" }));
-  expect(copyText).toHaveBeenCalledOnce();
-  const copied = vi.mocked(copyText).mock.calls[0][0];
-  expect(copied).toContain("控制端：已连接");
-  expect(copied).not.toMatch(/private-|10\.203|192\.0\.2|unexpected_secret/);
+  expect(screen.queryByText("查看网络接口")).toBeNull();
+  expect(screen.queryByText("成员链路")).toBeNull();
+  expect(screen.queryByRole("button", { name: "复制脱敏诊断" })).toBeNull();
+  expect(document.querySelector("main")!.textContent).not.toMatch(
+    /private-|192\.0\.2|unexpected_secret/,
+  );
+  expect(copyText).not.toHaveBeenCalled();
 });
 
-test.each(["fresh", "stale", "expired", "offline", "unlinked", "unmeasured"])(
-  "diagnostic peer metrics respect actual measurements: %s",
-  async (state) => {
-    joinedParty();
-    status.lease_expires_at = new Date(
-      Date.now() + (state === "expired" ? -1000 : 60000),
+test.each([
+  "fresh",
+  "stale",
+  "expired",
+  "offline",
+  "unlinked",
+  "unmeasured",
+  "old",
+  "window",
+  "lost",
+])("member metrics respect actual rolling measurements: %s", async (state) => {
+  joinedParty();
+  status.lease_expires_at = new Date(
+    Date.now() + (state === "expired" ? -1000 : 60000),
+  ).toISOString();
+  status.ip = "10.203.0.2";
+  status.peers = [
+    {
+      device_id: "guest",
+      name: "远山",
+      ip: "10.203.0.3",
+      measured_at: new Date().toISOString(),
+      mode: ["unlinked", "lost"].includes(state) ? "unknown" : "direct",
+      rtt_ms: ["unmeasured", "lost"].includes(state) ? undefined : 0,
+      loss_percent:
+        state === "unmeasured" ? undefined : state === "lost" ? 100 : 0,
+    },
+  ];
+  if (state === "stale")
+    status.snapshot_at = new Date(Date.now() - 60000).toISOString();
+  if (state === "offline")
+    vi.mocked(useService).mockReturnValue({
+      status,
+      error: { code: "local_service_unavailable", error: "服务离线" },
+      refresh: vi.fn(),
+      updatedAt: Date.now(),
+      refreshing: false,
+      retryAt: 0,
+      stale: false,
+    });
+  if (["old", "window"].includes(state))
+    status.peers[0].measured_at = new Date(
+      Date.now() - (state === "old" ? 31000 : 20000),
     ).toISOString();
-    status.ip = "10.203.0.2";
-    status.peers = [
-      {
-        device_id: "guest",
-        name: "远山",
-        ip: "10.203.0.3",
-        mode: state === "unlinked" ? "unknown" : "direct",
-        rtt_ms: state === "unmeasured" ? undefined : 0,
-        loss_percent: state === "unmeasured" ? undefined : 0,
-      },
-    ];
-    if (state === "stale")
-      status.snapshot_at = new Date(Date.now() - 60000).toISOString();
-    if (state === "offline")
-      vi.mocked(useService).mockReturnValue({
-        status,
-        error: { code: "local_service_unavailable", error: "服务离线" },
-        refresh: vi.fn(),
-        updatedAt: Date.now(),
-      });
-    render(<App />);
-    await userEvent.click(screen.getByRole("button", { name: "网络诊断" }));
-    if (state === "fresh") {
-      expect(screen.getByText("0.0 ms")).toBeTruthy();
-      expect(screen.getByText("0%")).toBeTruthy();
-    } else {
-      expect(screen.queryByText("0.0 ms")).toBeNull();
-      expect(screen.queryByRole("meter")).toBeNull();
-    }
-    if (["stale", "expired", "offline"].includes(state))
-      expect(
-        (
-          screen.getByRole("button", {
-            name: "测量 远山 的延迟",
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(true);
-  },
-);
+  render(<App />);
+  if (["fresh", "unlinked", "window"].includes(state)) {
+    expect(screen.getByText("0.0 ms")).toBeTruthy();
+    expect(screen.getByText("0.0%")).toBeTruthy();
+  } else {
+    expect(screen.queryByText("0.0 ms")).toBeNull();
+  }
+  if (state === "lost") expect(screen.getByText("100.0%")).toBeTruthy();
+  expect(vi.mocked(rpc).mock.calls.some(([r]) => r.action === "ping")).toBe(
+    false,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "网络诊断" }));
+  expect(screen.queryByText("0.0 ms")).toBeNull();
+  expect(screen.queryByText("成员链路")).toBeNull();
+});
 
 test("an idle device with a zero lease does not display an expired authorization", async () => {
   status.lease_expires_at = "0001-01-01T00:00:00Z";
@@ -667,6 +762,35 @@ test("guest binding preserves the current account and does not offer logout", as
   );
 });
 
+test("a restricted owner can still invite and leave an existing room", async () => {
+  joinedParty();
+  status.user!.state = "disabled";
+  status.room_creation = { allowed: false, reason: "account_disabled" };
+  render(<App />);
+  expect(
+    (screen.getByRole("button", { name: "邀请朋友" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(false);
+  await userEvent.click(screen.getByRole("button", { name: "离开房间" }));
+  await userEvent.click(screen.getByRole("button", { name: "确认离开房间" }));
+  expect(rpc).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "leave", room: "room" }),
+  );
+});
+
+test("profile menu opens account settings and closes with Escape", async () => {
+  render(<App />);
+  const profile = screen.getByLabelText("个人资料");
+  await userEvent.click(profile);
+  expect(screen.getByRole("button", { name: /^离房并退出/ })).toBeTruthy();
+  await userEvent.keyboard("{Escape}");
+  expect(profile.closest("details")!.open).toBe(false);
+  expect(document.activeElement).toBe(profile);
+  await userEvent.click(profile);
+  await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
+  expect(screen.getByRole("heading", { name: "设备信息" })).toBeTruthy();
+});
+
 test("a signed out account exposes login without exposing room creation", async () => {
   status.control = "signed_out";
   status.identity = "signed_out";
@@ -688,4 +812,20 @@ test("a signed out account exposes login without exposing room creation", async 
   expect(rpc).toHaveBeenCalledWith(
     expect.objectContaining({ action: "account-login" }),
   );
+});
+
+test("room detail reserves the sidebar for game information and actions", () => {
+  joinedParty();
+  render(<App />);
+  expect(screen.queryByPlaceholderText("粘贴邀请码")).toBeNull();
+  expect(screen.queryByRole("button", { name: "创建房间" })).toBeNull();
+  expect(screen.queryByText("暂停本机网络")).toBeNull();
+  const table = screen.getByRole("table");
+  expect(table.querySelectorAll("th")).toHaveLength(6);
+  for (const row of table.querySelectorAll("tbody tr"))
+    expect(row.querySelectorAll("td")).toHaveLength(6);
+  expect(table.closest(".room-main")).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "邀请朋友" }).closest("aside"),
+  ).toBeTruthy();
 });

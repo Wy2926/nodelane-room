@@ -18,19 +18,24 @@ import (
 	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
+	"github.com/nodelane/nodelane-room/internal/probe"
 	"github.com/slackhq/nebula/cert"
 	"github.com/slackhq/nebula/overlay"
 )
 
 func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
-	testExpiryWhileBlocked(t, false)
+	testBackgroundWhileControlBlocked(t, "expiry")
 }
 
 func TestMandatoryUpdateDeadlineWhileControlRequestIsBlocked(t *testing.T) {
-	testExpiryWhileBlocked(t, true)
+	testBackgroundWhileControlBlocked(t, "update")
 }
 
-func testExpiryWhileBlocked(t *testing.T, mandatory bool) {
+func TestAutomaticProbesWhileControlRequestIsBlocked(t *testing.T) {
+	testBackgroundWhileControlBlocked(t, "probe")
+}
+
+func testBackgroundWhileControlBlocked(t *testing.T, mode string) {
 	t.Helper()
 	requested := make(chan struct{}, 1)
 	release := make(chan struct{})
@@ -68,9 +73,12 @@ func testExpiryWhileBlocked(t *testing.T, mandatory bool) {
 		t.Fatal(err)
 	}
 	until := time.Now().Add(3 * time.Second).Truncate(time.Second)
-	if mandatory {
+	if mode == "update" {
 		deadline := time.Now().Add(time.Second)
 		r.updateState.Policy = &model.UpdatePolicy{MinimumVersion: "9.0.0", EffectiveAt: &deadline}
+		until = time.Now().Add(time.Minute).Truncate(time.Second)
+	}
+	if mode == "probe" {
 		until = time.Now().Add(time.Minute).Truncate(time.Second)
 	}
 	leaf, err := (&cert.TBSCertificate{Version: cert.Version2, Name: i.ID(), Networks: []netip.Prefix{netip.MustParsePrefix("10.203.0.2/16")}, Groups: []string{"room:test-room"}, PublicKey: pub, Curve: cert.Curve_CURVE25519, NotBefore: time.Now().Add(-time.Minute), NotAfter: until}).Sign(ca.Certificate, cert.Curve_CURVE25519, ca.Key)
@@ -86,6 +94,21 @@ func testExpiryWhileBlocked(t *testing.T, mandatory bool) {
 	if err = r.engine.Apply(engine.Config{Lease: r.lease, Snapshot: s, PrivateKey: key, DeviceID: i.ID(), DisableTUN: true}); err != nil {
 		t.Fatal(err)
 	}
+
+	if mode == "probe" {
+		receiver, e := probe.Start("127.0.0.13", "127.0.0.0/8", false)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer receiver.Close()
+		r.probe, e = probe.Start("127.0.0.12", "127.0.0.0/8", false)
+		if e != nil {
+			t.Fatal(e)
+		}
+		r.snapshot = model.Snapshot{Self: model.MembershipSelf{ValidUntil: &until}, Members: []model.Member{{IP: "127.0.0.13"}}}
+		r.probe.Update(r.snapshot)
+		receiver.Update(model.Snapshot{Members: []model.Member{{IP: "127.0.0.12"}}})
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
@@ -95,12 +118,26 @@ func testExpiryWhileBlocked(t *testing.T, mandatory bool) {
 	case <-time.After(time.Second):
 		t.Fatal("no blocked control request")
 	}
-	deadline := time.Now().Add(4 * time.Second)
-	for r.engine.Running() && time.Now().Before(deadline) {
-		time.Sleep(25 * time.Millisecond)
-	}
-	if r.engine.Running() {
-		t.Fatal("data plane survived credential expiration")
+	if mode == "probe" {
+		deadline := time.Now().Add(8 * time.Second)
+		for {
+			rtt, loss := r.probe.Stats("127.0.0.13")
+			if rtt != nil && loss != nil && *loss == 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("background probes stopped behind the blocked control request")
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+	} else {
+		deadline := time.Now().Add(4 * time.Second)
+		for r.engine.Running() && time.Now().Before(deadline) {
+			time.Sleep(25 * time.Millisecond)
+		}
+		if r.engine.Running() {
+			t.Fatal("data plane survived credential expiration")
+		}
 	}
 	cancel()
 	select {

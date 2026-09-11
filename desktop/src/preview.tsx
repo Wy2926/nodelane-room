@@ -5,11 +5,16 @@ import { clientVersion } from "./native/api";
 import { App } from "./app/App";
 import type { Game, Request, Room, Status } from "./shared/model";
 import "./styles/index.css";
-import { t, useLanguage } from "./i18n";
+import { t, useLanguage, setLanguage } from "./i18n";
 
 if (!import.meta.env.DEV)
   throw new Error("UI preview is only available in development");
 const scenario = new URLSearchParams(location.search).get("state");
+setLanguage(
+  new URLSearchParams(location.search).get("lang") === "en-US"
+    ? "en-US"
+    : "zh-CN",
+);
 const games: Game[] = [
   [
     "892970",
@@ -32,7 +37,7 @@ const games: Game[] = [
     "夜幕将至，篝火已燃起。与伙伴一起，在奇妙而危险的荒野中生存。",
   ],
   ["108600", "僵尸毁灭工程", "集结伙伴，寻找物资，建立你们的生存据点。"],
-  ["custom", "通用游戏", "为你喜欢的游戏配置端口，开启一个属于你们的世界。"],
+  ["custom", "通用游戏", "使用服务端配置的游戏规则。"],
 ].map(([id, name, summary]) => ({
   network: { version: 1, broadcast: true, multicast: true, ethernet_types: [] },
   id,
@@ -45,15 +50,20 @@ const games: Game[] = [
   background_url: id === "custom" ? "" : "preview",
   ports: id === "custom" ? [] : [{ protocol: "udp", port: 2456 }],
 }));
-let game = games[0];
-let room: Room | undefined =
-  scenario === "room" ? makeRoom("雾林小屋 · 今晚继续冒险", game) : undefined;
+const owned = [
+  makeRoom("周末的冒险小队", games[2]),
+  makeRoom("今天也要种地", games[1]),
+];
+let game = games[2];
+let room: Room | undefined = ["room", "metrics"].includes(scenario || "")
+  ? owned[0]
+  : undefined;
 let connected = !!room;
 let initialized = scenario !== "setup";
 let autoStart = false;
 function makeRoom(name: string, selected: Game): Room {
   return {
-    id: "preview-room",
+    id: crypto.randomUUID(),
     name,
     owner_user_id: "preview-user",
     game: selected.id,
@@ -66,13 +76,18 @@ function makeRoom(name: string, selected: Game): Room {
 }
 let statusSequence = 0;
 function status(): Status {
+  const measured = scenario === "metrics" && connected;
   return {
+    room_creation:
+      scenario === "restricted"
+        ? { allowed: false, reason: "account_disabled" }
+        : { allowed: true },
     user: initialized
       ? {
           id: "preview-user",
           name: "旅人",
           kind: "guest",
-          state: "active",
+          state: scenario === "restricted" ? "disabled" : "active",
           created_at: new Date().toISOString(),
         }
       : undefined,
@@ -86,6 +101,9 @@ function status(): Status {
       room_id: room?.id,
       device_id: "preview-player",
       revision: room?.revision || 0,
+      valid_until: measured
+        ? new Date(Date.now() + 60000).toISOString()
+        : undefined,
     },
     permissions: {
       manage: !!room,
@@ -93,7 +111,7 @@ function status(): Status {
       leave: connected,
     },
     network: {
-      state: connected ? "preparing" : "stopped",
+      state: measured ? "ready" : connected ? "preparing" : "stopped",
       generation: 0,
       applied_game_revision: 0,
     },
@@ -110,7 +128,21 @@ function status(): Status {
     name: "旅人",
     device_id: initialized ? "preview-player" : "",
     control: "online",
-    engine: "stopped",
+    engine: measured ? "running" : "stopped",
+    lease_expires_at: measured
+      ? new Date(Date.now() + 60000).toISOString()
+      : undefined,
+    ip: measured ? "10.203.0.2" : undefined,
+    lan: measured
+      ? {
+          ready: true,
+          version: 1,
+          ipv6: "fd00::2",
+          interface: "NodeLane",
+          mtu: 1300,
+          mac: "02:00:00:00:00:02",
+        }
+      : undefined,
     selected_room: connected ? room!.id : "",
     room: connected ? room : undefined,
     game: connected ? game : undefined,
@@ -138,7 +170,10 @@ function status(): Status {
             device_id: "preview-friend",
             name: "远山",
             ip: "10.203.0.3",
-            mode: "unknown",
+            mode: measured ? "direct" : "unknown",
+            measured_at: measured ? new Date().toISOString() : undefined,
+            rtt_ms: measured ? 18.4 : undefined,
+            loss_percent: measured ? 0 : undefined,
           },
         ]
       : [],
@@ -174,12 +209,12 @@ mockIPC(
     const request = payload?.requestData as Request;
     if (!request) throw new Error("Unsupported preview command");
     const execute = async () => {
+      if (scenario === "error")
+        throw { code: "local_service_unavailable", error: "预览服务故障" };
       switch (request.action) {
         case "account-poll":
           return { state: "none" };
         case "status":
-          if (scenario === "error")
-            throw { code: "service_unavailable", error: "预览服务故障" };
           return status();
         case "init":
           initialized = true;
@@ -187,21 +222,30 @@ mockIPC(
         case "games":
           return games;
         case "rooms":
-          return { rooms: room ? [room] : [], truncated: false };
+          return { rooms: initialized ? owned : [], truncated: false };
         case "capabilities":
           return { oidc_enabled: true, ready: true };
-        case "manage":
+        case "manage": {
+          const managed = owned.find((r) => r.id === request.room) || room;
           return {
-            permissions: { manage: true, join: false, leave: true },
-            room,
-            game,
+            permissions: { manage: true, join: !connected, leave: connected },
+            room: managed,
+            game: games.find((g) => g.id === managed?.game),
             members: status().members,
             server_time: new Date().toISOString(),
           };
+        }
+        case "owner-join":
+          room = owned.find((r) => r.id === request.room);
+          game = games.find((g) => g.id === room?.game) || games[0];
+          connected = !!room;
+          return { room };
         case "create": {
+          if (scenario === "restricted") throw { code: "account_disabled" };
           const body = request.body as { name: string; game: string };
           game = games.find((g) => g.id === body.game) || games[0];
           room = makeRoom(body.name, game);
+          owned.push(room);
           connected = true;
           return {
             room,
@@ -214,6 +258,7 @@ mockIPC(
         }
         case "join":
           room = makeRoom("朋友的房间", game);
+          room.owner_user_id = "preview-friend";
           connected = true;
           return { room };
         case "invite-info":
@@ -232,8 +277,22 @@ mockIPC(
           connected = false;
           return {};
         case "close":
+          owned.splice(
+            owned.findIndex((r) => r.id === request.room),
+            1,
+          );
           connected = false;
           room = undefined;
+          return {};
+        case "account-status":
+          return { user: status().user, room_creation: status().room_creation };
+        case "account-devices":
+          return [];
+        case "update-status":
+        case "update-check":
+          return { state: "idle", required: false };
+        case "network-stop":
+        case "network-retry":
           return {};
         case "doctor":
           return {

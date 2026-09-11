@@ -53,6 +53,9 @@ func (s *Store) AccountStatus(ctx context.Context, device string) (model.Account
 	if out.User, err = playerUser(ctx, tx, device); err != nil {
 		return out, err
 	}
+	if out.RoomCreation, err = roomCreationPermission(ctx, tx, device, out.User); err != nil {
+		return out, err
+	}
 	if err = tx.QueryRow(ctx, `SELECT d.device_id,v.name,d.revoked,d.last_seen,d.expires_at FROM user_devices d JOIN devices v ON v.id=d.device_id WHERE d.device_id=$1`, device).Scan(&out.Device.DeviceID, &out.Device.Name, &out.Device.Revoked, &out.Device.LastSeen, &out.Device.ExpiresAt); err != nil {
 		return out, err
 	}

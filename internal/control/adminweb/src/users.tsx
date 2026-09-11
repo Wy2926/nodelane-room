@@ -34,7 +34,7 @@ type OIDC = {
 const kinds: Record<string, string> = { guest: "访客", registered: "正式" };
 const states: Record<string, string> = {
   active: "正常",
-  disabled: "停用",
+  disabled: "限制建房",
   deleted: "已删除",
 };
 
@@ -173,14 +173,14 @@ export function Users({ api }: { api: API }) {
                   act(detail.user.state === "active" ? "disable" : "enable")
                 }
               >
-                {detail.user.state === "active" ? "停用并关闭其房间" : "启用"}
+                {detail.user.state === "active" ? "限制创建房间" : "恢复创建房间"}
               </Action>
               <Action run={() => act("logout")}>撤销全部设备登录</Action>
               <Action run={() => act("delete")}>逻辑删除并关闭其房间</Action>
             </div>
           )}
           <p>
-            撤销未绑定账号的访客设备后，该访客将无法找回。停用或删除会关闭其拥有的房间，并断开相关连接。
+            建房限制保留登录、加入和已有房间。删除账号会关闭其房间并断开连接。撤销未绑定账号的访客设备后，该访客将无法找回。
           </p>
           <Table
             heads={[

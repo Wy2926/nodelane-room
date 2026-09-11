@@ -10,8 +10,6 @@ import (
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
-const activeUserDevice = `SELECT u.id,u.name,u.kind,u.state,u.created_at FROM users u JOIN user_devices d ON d.user_id=u.id WHERE d.device_id=$1 AND NOT d.revoked AND (d.expires_at IS NULL OR d.expires_at>now()) AND u.state='active'`
-
 func playerUser(ctx context.Context, tx pgx.Tx, device string) (model.User, error) {
 	var u model.User
 	var revoked, expired bool
@@ -21,9 +19,6 @@ func playerUser(ctx context.Context, tx pgx.Tx, device string) (model.User, erro
 	}
 	if err != nil {
 		return u, err
-	}
-	if u.State == "disabled" {
-		return u, model.Failure("account_disabled")
 	}
 	if u.State == "deleted" {
 		return u, model.Failure("account_deleted")
@@ -35,6 +30,20 @@ func playerUser(ctx context.Context, tx pgx.Tx, device string) (model.User, erro
 		return u, model.Failure("auth_device_expired")
 	}
 	return u, nil
+}
+
+func roomCreationPermission(ctx context.Context, tx pgx.Tx, device string, user model.User) (model.RoomCreationPermission, error) {
+	if user.State == "disabled" {
+		return model.RoomCreationPermission{Reason: "account_disabled"}, nil
+	}
+	required, err := updateRequired(ctx, tx, device)
+	if err != nil {
+		return model.RoomCreationPermission{}, err
+	}
+	if required {
+		return model.RoomCreationPermission{Reason: "client_update_required"}, nil
+	}
+	return model.RoomCreationPermission{Allowed: true}, nil
 }
 
 func (s *Store) Account(ctx context.Context, device string) (model.User, error) {
@@ -296,11 +305,15 @@ func userAction(ctx context.Context, tx pgx.Tx, actor, id string, in model.UserA
 		return nil, model.Failure("admin_user_deleted")
 	}
 	switch in.Action {
-	case "enable":
-		if _, err := tx.Exec(ctx, `UPDATE users SET state='active' WHERE id=$1`, id); err != nil {
+	case "enable", "disable":
+		next := "active"
+		if in.Action == "disable" {
+			next = "disabled"
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET state=$2 WHERE id=$1`, id, next); err != nil {
 			return nil, err
 		}
-	case "disable", "delete", "logout", "revoke-device":
+	case "delete", "logout", "revoke-device":
 		device := ""
 		if in.Action == "revoke-device" {
 			device = in.DeviceID
@@ -315,12 +328,8 @@ func userAction(ctx context.Context, tx pgx.Tx, actor, id string, in model.UserA
 				return nil, ErrNotFound
 			}
 		}
-		if in.Action == "disable" || in.Action == "delete" {
-			next := "disabled"
-			if in.Action == "delete" {
-				next = "deleted"
-			}
-			if _, err := tx.Exec(ctx, `UPDATE users SET state=$2 WHERE id=$1`, id, next); err != nil {
+		if in.Action == "delete" {
+			if _, err := tx.Exec(ctx, `UPDATE users SET state='deleted' WHERE id=$1`, id); err != nil {
 				return nil, err
 			}
 		}
@@ -329,7 +338,7 @@ func userAction(ctx context.Context, tx pgx.Tx, actor, id string, in model.UserA
 				return nil, err
 			}
 		}
-		if err := revokeUserConnections(ctx, tx, id, device, in.Action == "disable" || in.Action == "delete"); err != nil {
+		if err := revokeUserConnections(ctx, tx, id, device, in.Action == "delete"); err != nil {
 			return nil, err
 		}
 	default:

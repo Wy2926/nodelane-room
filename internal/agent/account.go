@@ -257,7 +257,7 @@ func (r *Runtime) accountAction(ctx context.Context, in localapi.Request) (any, 
 }
 
 func loginTerminal(err error) bool {
-	return model.IsCode(err, "auth_oidc_unavailable", "auth_login_expired", "auth_login_unusable", "auth_login_denied", "auth_login_validation_failed", "auth_login_provider_unavailable", "auth_login_config_changed", "account_identity_conflict", "account_device_limit", "account_disabled", "account_deleted", "request_validation_failed")
+	return model.IsCode(err, "auth_oidc_unavailable", "auth_login_expired", "auth_login_unusable", "auth_login_denied", "auth_login_validation_failed", "auth_login_provider_unavailable", "auth_login_config_changed", "account_identity_conflict", "account_device_limit", "account_deleted", "request_validation_failed")
 }
 
 func (r *Runtime) saveLogin(pending pendingLogin) error {

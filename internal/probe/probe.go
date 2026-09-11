@@ -20,6 +20,10 @@ type Packet struct {
 	Type    string `json:"type"`
 	Nonce   string `json:"nonce,omitempty"`
 }
+
+// Measurement retention is separate from the control telemetry cache.
+const measurementWindow = 30 * time.Second
+
 type pending struct {
 	ip   string
 	done chan struct{}
@@ -156,6 +160,9 @@ func (s *Service) send(ip string, p Packet) error {
 	return err
 }
 func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	s.mu.Lock()
 	allowed := s.allowed[ip] || s.infrastructure
 	s.mu.Unlock()
@@ -173,12 +180,18 @@ func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
 	s.mu.Unlock()
 	start := time.Now()
 	ok := false
+	completed := false
 	defer func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		delete(s.pending, nonce)
-		if !s.allowed[ip] && !s.infrastructure {
+		if !completed || (!s.allowed[ip] && !s.infrastructure) {
 			return
+		}
+		select {
+		case <-s.done:
+			return
+		default:
 		}
 		v := append(s.recentLocked(ip), sample{rtt: time.Since(start), ok: ok, at: time.Now().UTC()})
 		if len(v) > 600 {
@@ -195,11 +208,13 @@ func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	case <-timer.C:
+		completed = true
 		return 0, model.Failure("local_peer_unreachable")
 	case <-s.done:
 		return 0, model.Failure("local_probe_unavailable")
 	case <-done:
 		ok = true
+		completed = true
 		return time.Since(start), nil
 	}
 }
@@ -262,7 +277,7 @@ func (s *Service) LastSuccess(ip string) bool {
 
 func (s *Service) recentLocked(ip string) []sample {
 	v := s.samples[ip]
-	cutoff := time.Now().Add(-model.TelemetryRetention)
+	cutoff := time.Now().Add(-measurementWindow)
 	n := 0
 	for n < len(v) && v[n].at.Before(cutoff) {
 		n++

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math/rand/v2"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/client"
@@ -33,7 +32,7 @@ func (r *Runtime) step(ctx context.Context) error {
 		}
 	}
 	if !i.Node {
-		user, err := r.api.RefreshAccount(ctx)
+		account, err := r.api.RefreshAccount(ctx)
 		if err != nil {
 			if client.MembershipEnded(err) || client.IdentityEnded(err) {
 				r.netMu.Lock()
@@ -50,8 +49,9 @@ func (r *Runtime) step(ctx context.Context) error {
 			}
 		}
 		r.stateMu.Lock()
-		r.status.User = user
-		r.status.Name = user.Name
+		r.status.User = &account.User
+		r.status.Name = account.User.Name
+		r.status.RoomCreation = account.RoomCreation
 		r.stateMu.Unlock()
 	}
 	if i.RoomID == "" && !i.Node {
@@ -292,9 +292,6 @@ func (r *Runtime) step(ctx context.Context) error {
 		}
 	}
 	r.probe.Update(snapshot)
-	p := r.probe
-	members := append([]model.Member(nil), snapshot.Members...)
-	nodes := append([]model.Node(nil), snapshot.Nodes...)
 	r.netMu.Unlock()
 	if i.Node {
 		if err = r.nodeApplied(); err != nil {
@@ -311,36 +308,6 @@ func (r *Runtime) step(ctx context.Context) error {
 		}
 	}
 	r.stateMu.Unlock()
-	if r.probeBusy.CompareAndSwap(false, true) {
-		go func() {
-			defer r.probeBusy.Store(false)
-			var wg sync.WaitGroup
-			ips := map[string]bool{}
-			for _, m := range members {
-				if m.DeviceID != i.ID() {
-					ips[m.IP] = true
-				}
-			}
-			for _, n := range nodes {
-				if n.DeviceID != i.ID() {
-					ips[n.IP] = true
-				}
-			}
-			if i.Node {
-				observed, _ := r.engine.Network()
-				for _, peer := range observed.Peers {
-					if len(ips) < 128 {
-						ips[peer.IP] = true
-					}
-				}
-			}
-			for ip := range ips {
-				wg.Add(1)
-				go func(ip string) { defer wg.Done(); _ = r.engine.Connect(ip); _, _ = p.Ping(ctx, ip) }(ip)
-			}
-			wg.Wait()
-		}()
-	}
 
 	return nil
 }

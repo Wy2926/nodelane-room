@@ -27,11 +27,17 @@ type Permissions struct {
 	Leave  bool `json:"leave"`
 }
 
+type RoomCreationPermission struct {
+	Allowed bool   `json:"allowed"`
+	Reason  string `json:"reason,omitempty"`
+}
+
 type AccountStatus struct {
-	User       User            `json:"user"`
-	Device     UserDevice      `json:"device"`
-	Membership MembershipSelf  `json:"membership"`
-	Occupancy  *MembershipSelf `json:"occupancy,omitempty"`
+	RoomCreation RoomCreationPermission `json:"room_creation"`
+	User         User                   `json:"user"`
+	Device       UserDevice             `json:"device"`
+	Membership   MembershipSelf         `json:"membership"`
+	Occupancy    *MembershipSelf        `json:"occupancy,omitempty"`
 }
 
 type RoomPage struct {

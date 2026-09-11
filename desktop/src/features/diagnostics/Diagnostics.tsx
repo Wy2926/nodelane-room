@@ -2,26 +2,20 @@ import { t, getLanguage, type MessageKey } from "../../i18n";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ArrowClockwise,
-  ArrowRight,
   CheckCircle,
   CircleDashed,
-  Copy,
-  Desktop,
-  Globe,
   Network,
-  Pulse,
   ShieldCheck,
   WarningCircle,
 } from "@phosphor-icons/react";
 import type { Status, Failure, Diagnostic } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
-import { formatTime, fresh } from "../../shared/time";
-import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
+import { connectionView } from "../../app/experience";
 
 type Tone = "ok" | "warning" | "neutral";
 const controlLabels: Record<string, MessageKey> = {
-  connected: "diagnostics.connected",
-  unreachable: "diagnostics.cannotConnect",
+  online: "diagnostics.connected",
+  offline: "diagnostics.cannotConnect",
   unconfigured: "settings.notConfigured",
   idle: "diagnostics.idle",
   connecting: "diagnostics.connecting",
@@ -34,8 +28,6 @@ const engineLabel = (value?: string) =>
     : value === "stopped"
       ? t("diagnostics.stopped")
       : t("diagnostics.unknown");
-const measurement = (value?: number) =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
 
 function CheckState({ tone, children }: { tone: Tone; children: ReactNode }) {
   const Icon =
@@ -63,7 +55,7 @@ export function Diagnostics({
   usable: boolean;
   serviceError?: Failure;
 }) {
-  const { perform, copy, busy } = actions;
+  const { perform, busy } = actions;
   const [report, setReport] = useState<{ data: Diagnostic; at: number }>();
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -71,15 +63,8 @@ export function Diagnostics({
     return () => clearInterval(timer);
   }, []);
   const available = !!status && !serviceError;
-  const running = available && status.engine === "running";
   const expiry = Date.parse(
     status?.ip && status.selected_room ? status.lease_expires_at || "" : "",
-  );
-  const leaseValid = Number.isFinite(expiry) && expiry > now;
-  const current = available && fresh(status.snapshot_at);
-  const measured = running && current && leaseValid;
-  const peers = (status?.peers || []).filter(
-    (peer) => peer.device_id !== status?.device_id,
   );
   const data = report?.data;
   const platform = data?.platform;
@@ -88,78 +73,26 @@ export function Diagnostics({
       ? platform.tap_interface_present
       : platform?.tun_device_present;
   const connected = available && status.control === "online";
-  const needsAttention =
-    !!serviceError ||
-    (available &&
-      (status.control === "offline" ||
-        !!status.error ||
-        (!!status.selected_room && (!running || !leaseValid))));
-  const summary = !available
-    ? t("diagnostics.waitingForTheLocalService")
-    : needsAttention
-      ? t("diagnostics.connectionNeedsChecking")
-      : running
-        ? t("diagnostics.gameNetworkIsRunning")
-        : t("diagnostics.readyToPlay");
-  const guidance = serviceError
-    ? t("diagnostics.serviceHelp")
-    : !status
-      ? t("diagnostics.readingLocalConnectionStatus")
-      : status.control === "offline"
-        ? t("diagnostics.controlHelp")
-        : status.selected_room && (!running || !leaseValid)
-          ? t("diagnostics.roomNotReadyHelp")
-          : running
-            ? t("diagnostics.runningHelp")
-            : t("diagnostics.joinRoomHelp");
+  const connection = connectionView(status, serviceError, false, now);
+  const authorizationExpiry = Math.min(
+    expiry,
+    Date.parse(status?.membership.valid_until || ""),
+  );
+  const authorized =
+    available &&
+    status.membership.state === "active" &&
+    authorizationExpiry > now;
+  useEffect(() => setReport(undefined), [status?.service_instance_id]);
   const run = () =>
     void perform<Diagnostic>(
       t("diagnostics.runDiagnostics"),
       { action: "doctor" },
       (value) => setReport({ data: value, at: Date.now() }),
     );
-  const copyReport = () => {
-    if (!data || !report) return;
-    // Explicit summary fields only; never copy raw errors, identifiers or interface data.
-    void copy(
-      [
-        t("diagnostics.reportTitle"),
-        t("diagnostics.checkedAt", {
-          time: formatTime(new Date(report.at).toISOString()),
-        }),
-        t("diagnostics.controlService", { 0: controlLabel(data.control) }),
-        t("diagnostics.gameNetwork", { 0: engineLabel(data.engine) }),
-        t("diagnostics.tunnelComponent", {
-          0:
-            driver === undefined
-              ? t("diagnostics.unknown")
-              : driver
-                ? t("diagnostics.found")
-                : t("diagnostics.notFound"),
-        }),
-        t("diagnostics.networkInterfaces", {
-          0: platform?.interface_error
-            ? t("diagnostics.failed")
-            : platform?.interfaces
-              ? t("diagnostics.complete")
-              : t("diagnostics.unknown"),
-        }),
-        t("diagnostics.serviceErrors", {
-          0: data.error
-            ? t("diagnostics.anErrorWasReportedViewItInThe")
-            : t("diagnostics.noneReported"),
-        }),
-        t("diagnostics.reportOmissions"),
-      ].join("\n"),
-    );
-  };
   return (
-    <div className="diagnostics-page">
+    <div className="diagnostics">
       <div className="page-intro section-head">
         <div>
-          <span className="eyebrow">
-            {t("diagnostics.understandEveryConnection")}
-          </span>
           <h2>{t("navigation.diagnostics")}</h2>
           <p>{t("diagnostics.intro")}</p>
         </div>
@@ -176,123 +109,76 @@ export function Diagnostics({
             : t("diagnostics.runDiagnostics")}
         </button>
       </div>
-      <section
-        className="network-overview console-surface"
-        aria-label={t("diagnostics.connectionOverview")}
-        data-tone={needsAttention ? "warning" : running ? "ok" : "neutral"}
+      <div
+        className="connection-state diagnostic-summary"
+        data-tone={connection.tone}
+        role="status"
       >
-        <div className="network-summary">
-          <span className="network-emblem">
-            <Pulse size={35} weight="light" aria-hidden="true" />
-          </span>
-          <div>
-            <h3>{summary}</h3>
-            <p>{guidance}</p>
-          </div>
-        </div>
-        <div
-          className="network-path"
-          aria-label={t("diagnostics.connectionStatus")}
-        >
-          <div>
-            <Desktop size={25} aria-hidden="true" />
-            <span>{t("diagnostics.localService")}</span>
-            <CheckState
-              tone={available ? "ok" : serviceError ? "warning" : "neutral"}
-            >
-              {available
-                ? t("diagnostics.connected")
-                : serviceError
-                  ? t("diagnostics.unavailable")
-                  : t("diagnostics.loading")}
-            </CheckState>
-          </div>
-          <ArrowRight className="path-arrow" size={22} aria-hidden="true" />
-          <div>
-            <Globe size={25} aria-hidden="true" />
-            <span>{t("diagnostics.controlServiceLabel")}</span>
-            <CheckState
-              tone={
-                !available
-                  ? "neutral"
-                  : connected
-                    ? "ok"
-                    : status.control === "offline"
-                      ? "warning"
-                      : "neutral"
-              }
-            >
-              {available
-                ? controlLabel(status.control)
-                : t("diagnostics.unknown")}
-            </CheckState>
-          </div>
-          <ArrowRight className="path-arrow" size={22} aria-hidden="true" />
-          <div>
-            <Network size={25} aria-hidden="true" />
-            <span>{t("diagnostics.gameNetworkLabel")}</span>
-            <CheckState
-              tone={
-                running
-                  ? "ok"
-                  : available && status.selected_room
-                    ? "warning"
-                    : "neutral"
-              }
-            >
-              {available
-                ? engineLabel(status.engine)
-                : t("diagnostics.unknown")}
-            </CheckState>
-          </div>
-        </div>
-      </section>
-      <div className="diagnostic-metrics">
-        <div className="console-surface">
-          <Network size={23} aria-hidden="true" />
-          <span>{t("diagnostics.localVirtualIp")}</span>
-          <strong className="mono selectable">
-            {available && status.ip ? status.ip : t("diagnostics.notAssigned")}
-          </strong>
-        </div>
-        <div className="console-surface">
-          <ShieldCheck size={23} aria-hidden="true" />
-          <span>{t("diagnostics.currentNetworkAuthorization")}</span>
-          <strong>
-            {!available || !Number.isFinite(expiry)
-              ? t("diagnostics.noAuthorization")
-              : leaseValid
-                ? t("diagnostics.minRemaining", {
-                    0: Math.ceil((expiry - now) / 60000),
-                  })
-                : t("diagnostics.authorizationExpired")}
-          </strong>
-          <small>
-            {available && Number.isFinite(expiry)
-              ? t("diagnostics.expires", {
-                  0: formatTime(status.lease_expires_at),
-                })
-              : t("diagnostics.availableAfterJoiningARoom")}
-          </small>
-        </div>
-        <div className="console-surface">
-          <Pulse size={23} aria-hidden="true" />
-          <span>{t("diagnostics.memberConnections")}</span>
-          <strong>
-            {measured
-              ? t("diagnostics.established", {
-                  0: peers.filter(
-                    (p) => p.mode === "direct" || p.mode === "relay",
-                  ).length,
-                })
-              : t("diagnostics.waitingForConnection")}
-          </strong>
-          <small>{t("diagnostics.basedOnActualTunnelState")}</small>
-        </div>
+        <h3>{t(connection.title)}</h3>
+        <p>{t(connection.help)}</p>
       </div>
-      <div className="diagnostic-columns">
+      <div className="diagnostic-grid">
         <section
-          className="diagnostic-system console-surface"
+          className="diagnostic-panel"
+          aria-labelledby="connection-check-title"
+        >
+          <h3 id="connection-check-title">
+            <Network size={23} aria-hidden="true" />
+            {t("diagnostics.liveConnection")}
+          </h3>
+          <dl className="system-checks">
+            <div>
+              <dt>{t("diagnostics.localService")}</dt>
+              <dd>
+                <CheckState tone={available ? "ok" : "warning"}>
+                  {available
+                    ? t("diagnostics.connected")
+                    : t("diagnostics.unavailable")}
+                </CheckState>
+              </dd>
+            </div>
+            <div>
+              <dt>{t("diagnostics.controlServiceLabel")}</dt>
+              <dd>
+                <CheckState tone={connected ? "ok" : "neutral"}>
+                  {available
+                    ? controlLabel(status.control)
+                    : t("diagnostics.unknown")}
+                </CheckState>
+              </dd>
+            </div>
+            <div>
+              <dt>{t("diagnostics.gameNetworkLabel")}</dt>
+              <dd>
+                {available
+                  ? engineLabel(status.engine)
+                  : t("diagnostics.unknown")}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("diagnostics.localVirtualIp")}</dt>
+              <dd className="mono selectable">
+                {authorized && status.ip
+                  ? status.ip
+                  : t("diagnostics.notAssigned")}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("diagnostics.currentNetworkAuthorization")}</dt>
+              <dd>
+                {!available || !Number.isFinite(expiry)
+                  ? t("diagnostics.noAuthorization")
+                  : authorized
+                    ? t("diagnostics.minRemaining", {
+                        0: Math.ceil((authorizationExpiry - now) / 60000),
+                      })
+                    : t("diagnostics.authorizationExpired")}
+              </dd>
+            </div>
+          </dl>
+        </section>
+        <section
+          className="diagnostic-panel"
           aria-labelledby="system-check-title"
         >
           <div className="diagnostic-section-head">
@@ -361,29 +247,6 @@ export function Diagnostics({
                     {data?.nebula_version || t("diagnostics.unknown")}
                   </dd>
                 </div>
-                <div>
-                  <dt>{t("diagnostics.networkInterfacesLabel")}</dt>
-                  <dd>
-                    <CheckState
-                      tone={
-                        platform?.interface_error
-                          ? "warning"
-                          : platform?.interfaces
-                            ? "ok"
-                            : "neutral"
-                      }
-                    >
-                      {platform?.interface_error
-                        ? t("diagnostics.readFailed")
-                        : platform?.interfaces
-                          ? t("diagnostics.enabled", {
-                              0: platform.interfaces.filter((i) => i.up).length,
-                              1: platform.interfaces.length,
-                            })
-                          : t("diagnostics.notAvailable")}
-                    </CheckState>
-                  </dd>
-                </div>
               </dl>
               {driver === false && (
                 <p className="diagnostic-warning">
@@ -392,146 +255,14 @@ export function Diagnostics({
               )}
               {data?.error && (
                 <p className="diagnostic-warning">
-                  {t("diagnostics.serviceReport")}
-                  {data.error}
+                  {t("diagnostics.reportProblem")}
                 </p>
               )}
-              {!!platform?.interfaces?.length && (
-                <details className="interface-details">
-                  <summary>{t("diagnostics.viewNetworkInterfaces")}</summary>
-                  {platform.interfaces.map((item, index) => (
-                    <div
-                      className="interface-row"
-                      key={`${item.name}-${index}`}
-                    >
-                      <div>
-                        <strong>{item.name}</strong>
-                        <CheckState tone={item.up ? "ok" : "neutral"}>
-                          {item.up
-                            ? t("diagnostics.enabledLabel")
-                            : t("diagnostics.disabled")}
-                        </CheckState>
-                      </div>
-                      <p className="mono selectable">
-                        {item.addresses?.join(" · ") ||
-                          t("diagnostics.noAddresses")}
-                      </p>
-                      <small>MTU {item.mtu}</small>
-                    </div>
-                  ))}
-                </details>
+              {(!available || now - report.at > 30000) && (
+                <p className="hint">{t("diagnostics.reportExpired")}</p>
               )}
-              <div className="diagnostic-copy">
-                <button disabled={!!busy} onClick={copyReport}>
-                  <Copy size={18} aria-hidden="true" />
-                  {t("diagnostics.copyRedactedDiagnostics")}
-                </button>
-                <p className="hint">{t("diagnostics.copyHelp")}</p>
-              </div>
             </>
           )}
-        </section>
-        <section
-          className="diagnostic-peers console-surface"
-          aria-labelledby="peer-check-title"
-        >
-          <div className="diagnostic-section-head">
-            <h3 id="peer-check-title">{t("diagnostics.memberConnections")}</h3>
-            <span className="hint">{t("diagnostics.latencyPacketLoss")}</span>
-          </div>
-          {!measured && peers.length > 0 && (
-            <p className="diagnostic-warning">{t("diagnostics.staleHelp")}</p>
-          )}
-          {!peers.length ? (
-            <div className="diagnostic-empty">
-              <Network size={34} weight="light" aria-hidden="true" />
-              <h4>
-                {status?.selected_room
-                  ? t("diagnostics.waitingForFriends")
-                  : t("diagnostics.noMemberConnectionsYet")}
-              </h4>
-              <p>{t("diagnostics.peersHelp")}</p>
-            </div>
-          ) : (
-            peers.map((peer) => {
-              const linked =
-                measured && (peer.mode === "direct" || peer.mode === "relay");
-              const loss =
-                linked &&
-                measurement(peer.loss_percent) &&
-                peer.loss_percent! <= 100
-                  ? peer.loss_percent
-                  : undefined;
-              const rtt =
-                linked && measurement(peer.rtt_ms) ? peer.rtt_ms : undefined;
-              return (
-                <article className="diagnostic-peer" key={peer.device_id}>
-                  <div className="peer-identity">
-                    <PlayerAvatar
-                      name={peer.name}
-                      identity={peer.device_id}
-                      size="small"
-                    />
-                    <strong>{peer.name}</strong>
-                    <CheckState tone={linked ? "ok" : "neutral"}>
-                      {!measured
-                        ? t("diagnostics.connectionUnknown")
-                        : peer.mode === "direct"
-                          ? t("diagnostics.direct")
-                          : peer.mode === "relay"
-                            ? t("diagnostics.relay")
-                            : t("diagnostics.notConnected")}
-                    </CheckState>
-                  </div>
-                  <div className="peer-measurements">
-                    <div>
-                      <small>{t("diagnostics.roundTripLatency")}</small>
-                      <strong>
-                        {rtt === undefined
-                          ? t("diagnostics.notMeasured")
-                          : `${rtt.toFixed(1)} ms`}
-                      </strong>
-                    </div>
-                    <div>
-                      <small>{t("diagnostics.packetLoss")}</small>
-                      <strong>
-                        {loss === undefined
-                          ? t("diagnostics.notMeasured")
-                          : `${loss.toFixed(0)}%`}
-                      </strong>
-                    </div>
-                    <button
-                      className="icon-button"
-                      aria-label={t("diagnostics.measureLatencyTo", {
-                        0: peer.name,
-                      })}
-                      title={t("diagnostics.measureLatency")}
-                      disabled={!usable || !measured}
-                      onClick={() =>
-                        void perform(t("diagnostics.measureLatency"), {
-                          action: "ping",
-                          target: peer.device_id,
-                        })
-                      }
-                    >
-                      <Pulse size={22} />
-                    </button>
-                  </div>
-                  {loss !== undefined && (
-                    <meter
-                      min={0}
-                      max={100}
-                      value={loss}
-                      aria-label={t("diagnostics.packetLossFor", {
-                        0: peer.name,
-                      })}
-                    />
-                  )}
-                </article>
-              );
-            })
-          )}
-          <p className="hint peer-note">{t("diagnostics.measurementsHelp")}</p>
         </section>
       </div>
     </div>

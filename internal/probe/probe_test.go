@@ -43,14 +43,42 @@ func TestProbeMembership(t *testing.T) {
 
 func TestProbeWindowExpiry(t *testing.T) {
 	now := time.Now()
-	s := &Service{samples: map[string][]sample{"peer": {{at: now.Add(-61 * time.Second), ok: false}, {at: now.Add(-40 * time.Second), rtt: 10 * time.Millisecond, ok: true}, {at: now.Add(-5 * time.Second), ok: false}}}}
+	s := &Service{samples: map[string][]sample{"peer": {{at: now.Add(-31 * time.Second), ok: false}, {at: now.Add(-20 * time.Second), rtt: 10 * time.Millisecond, ok: true}, {at: now.Add(-5 * time.Second), ok: false}}}}
 	rtt, loss := s.Stats("peer")
 	if rtt == nil || *rtt != 10 || loss == nil || *loss != 50 {
 		t.Fatalf("window statistics: %v %v", rtt, loss)
 	}
-	s.samples["peer"] = []sample{{at: now.Add(-61 * time.Second), ok: true}}
+	s.samples["peer"] = []sample{{at: now.Add(-31 * time.Second), ok: true}}
 	rtt, loss = s.Stats("peer")
 	if rtt != nil || loss != nil || !s.LastSample("peer").IsZero() {
 		t.Fatal("stale probes remained current")
+	}
+}
+
+func TestProbeAllLossAndNoSamples(t *testing.T) {
+	s := &Service{samples: map[string][]sample{"peer": {{at: time.Now(), ok: false}}}}
+	rtt, loss := s.Stats("peer")
+	if rtt != nil || loss == nil || *loss != 100 {
+		t.Fatal("all lost probes must report 100% loss without an RTT")
+	}
+	if rtt, loss = s.Stats("unknown"); rtt != nil || loss != nil {
+		t.Fatal("no probes must not become zero loss")
+	}
+}
+
+func TestCancelledProbeDoesNotCountAsLoss(t *testing.T) {
+	s, err := Start("127.0.0.22", "127.0.0.0/8", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.Update(model.Snapshot{Members: []model.Member{{IP: "127.0.0.23"}}})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err = s.Ping(ctx, "127.0.0.23"); err == nil {
+		t.Fatal("expected cancelled probe")
+	}
+	if rtt, loss := s.Stats("127.0.0.23"); rtt != nil || loss != nil {
+		t.Fatal("cancellation was recorded as packet loss")
 	}
 }

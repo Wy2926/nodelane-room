@@ -7,9 +7,11 @@ import type { Status } from "../../shared/model";
 export function Account({
   status,
   actions,
+  unavailable = false,
 }: {
   status?: Status;
   actions: Actions;
+  unavailable?: boolean;
 }) {
   const [server, setServer] = useState("https://room.nodelane.net");
   const [name, setName] = useState("");
@@ -17,6 +19,7 @@ export function Account({
   const [message, setMessage] = useState("");
   const [loginAvailable, setLoginAvailable] = useState(false);
   useEffect(() => {
+    if (unavailable) return;
     let active = true;
     setLoginAvailable(false);
     const timer = setTimeout(() => {
@@ -39,7 +42,7 @@ export function Account({
       active = false;
       clearTimeout(timer);
     };
-  }, [server, status?.service_instance_id]);
+  }, [server, status?.service_instance_id, unavailable]);
   const [devices, setDevices] = useState<
     { device_id: string; name: string; revoked: boolean }[]
   >([]);
@@ -50,6 +53,7 @@ export function Account({
   }>();
   const configured = !!status?.device_id;
   useEffect(() => {
+    if (unavailable) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -76,8 +80,9 @@ export function Account({
       active = false;
       clearTimeout(timer);
     };
-  }, [status?.user?.id, status?.service_instance_id]);
+  }, [status?.user?.id, status?.service_instance_id, unavailable]);
   useEffect(() => {
+    if (unavailable) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -104,7 +109,7 @@ export function Account({
       clearTimeout(timer);
     };
     // The account transaction is owned by the Go service; resume after remounts.
-  }, []);
+  }, [unavailable]);
   const waiting = [
     "starting",
     "waiting",
@@ -172,7 +177,9 @@ export function Account({
       <div className="account-actions">
         {status?.user?.kind === "guest" && (
           <button
-            disabled={!loginAvailable || !!actions.busy || waiting}
+            disabled={
+              unavailable || !loginAvailable || !!actions.busy || waiting
+            }
             onClick={() =>
               void actions.perform(t("account.bind"), {
                 action: "account-link",
@@ -183,14 +190,14 @@ export function Account({
           </button>
         )}
         <button
-          disabled={!loginAvailable || !!actions.busy || waiting}
+          disabled={unavailable || !loginAvailable || !!actions.busy || waiting}
           onClick={login}
         >
           {t("account.login")}
         </button>
         {waiting && (
           <button
-            disabled={!!actions.busy}
+            disabled={unavailable || !!actions.busy}
             onClick={() =>
               void actions.perform(t("account.reopen"), {
                 action:
@@ -207,7 +214,7 @@ export function Account({
           <>
             {occupancy && (
               <button
-                disabled={!!actions.busy}
+                disabled={unavailable || !!actions.busy}
                 onClick={() =>
                   actions.confirm(
                     t("account.takeover"),
@@ -227,7 +234,7 @@ export function Account({
               </button>
             )}
             <button
-              disabled={!!actions.busy}
+              disabled={unavailable || !!actions.busy}
               onClick={() =>
                 actions.confirm(t("account.logout"), t("account.logoutHelp"), {
                   action: "account-logout",
@@ -240,7 +247,7 @@ export function Account({
         )}
         {waiting && (
           <button
-            disabled={!!actions.busy}
+            disabled={unavailable || !!actions.busy}
             onClick={() =>
               void actions.perform(t("account.cancel"), {
                 action: "account-cancel",
@@ -265,6 +272,7 @@ export function Account({
               <span>{device.name}</span>
               <button
                 disabled={
+                  unavailable ||
                   device.revoked ||
                   device.device_id === status?.device_id ||
                   !!actions.busy

@@ -1,10 +1,5 @@
 @import "./tokens.css";
 @import "./base.css";
 @import "./layout.css";
-@import "./feedback.css";
 @import "./forms.css";
-@import "../features/catalog/catalog.css";
-@import "../features/rooms/rooms.css";
-@import "../features/rooms/members.css";
-@import "../features/device/device.css";
-@import "../features/diagnostics/diagnostics.css";
+@import "./feedback.css";

@@ -33,7 +33,7 @@ var BusinessCodes = map[string]CodeSpec{
 	"auth_device_expired":                   {403, "此设备授权已到期，请重新登录", "manual"},
 	"auth_device_revoked":                   {403, "此设备已被退出登录", "manual"},
 	"auth_identity_scope_conflict":          {403, "设备身份用途不匹配", "manual"},
-	"account_disabled":                      {403, "账号已停用，请联系管理员", "manual"},
+	"account_disabled":                      {403, "当前账号暂不可创建房间，加入和已有房间不受影响", "manual"},
 	"account_deleted":                       {403, "此账号已不可使用", "none"},
 	"account_in_use":                        {409, "账号正在另一设备联机", "manual"},
 	"account_device_limit":                  {409, "已达设备数量上限，请先退出旧设备", "manual"},
