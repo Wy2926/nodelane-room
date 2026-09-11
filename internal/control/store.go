@@ -19,7 +19,7 @@ import (
 //go:embed schema.sql
 var schema string
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 var (
 	ErrUnauthorized = errors.New("authentication required")
@@ -224,7 +224,7 @@ func (s *Store) Sweep(ctx context.Context) error {
 				return err
 			}
 		}
-		for _, q := range []string{"DELETE FROM challenges WHERE expires_at<now()", "DELETE FROM sessions WHERE expires_at<now()", "DELETE FROM invitations WHERE expires_at<now()", "DELETE FROM enrollment_keys WHERE expires_at<now()-interval '1 day'", "DELETE FROM admin_sessions WHERE expires_at<now() OR last_seen<now()-interval '30 minutes'", "DELETE FROM idempotency WHERE expires_at<now()", "DELETE FROM rate_limits WHERE window_start<now()-interval '1 day'", "DELETE FROM addresses WHERE release_after<now()", "DELETE FROM certificates WHERE expires_at<now()-interval '1 hour'", "DELETE FROM events WHERE created_at<now()-interval '7 days'"} {
+		for _, q := range []string{"DELETE FROM login_transactions WHERE expires_at<now()", "DELETE FROM challenges WHERE expires_at<now()", "DELETE FROM sessions WHERE expires_at<now()", "DELETE FROM invitations WHERE expires_at<now()", "DELETE FROM enrollment_keys WHERE expires_at<now()-interval '1 day'", "DELETE FROM admin_sessions WHERE expires_at<now() OR last_seen<now()-interval '30 minutes'", "DELETE FROM idempotency WHERE expires_at<now()", "DELETE FROM rate_limits WHERE window_start<now()-interval '1 day'", "DELETE FROM addresses WHERE release_after<now()", "DELETE FROM certificates WHERE expires_at<now()-interval '1 hour'", "DELETE FROM events WHERE created_at<now()-interval '7 days'"} {
 			if _, err = tx.Exec(ctx, q); err != nil {
 				return err
 			}

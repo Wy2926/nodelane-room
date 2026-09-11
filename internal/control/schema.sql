@@ -8,6 +8,32 @@ CREATE TABLE devices (
  id text PRIMARY KEY, name text NOT NULL, public_key bytea NOT NULL UNIQUE,
  created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE users (
+ id text PRIMARY KEY, name text NOT NULL, kind text NOT NULL CHECK(kind IN ('guest','registered')),
+ state text NOT NULL DEFAULT 'active' CHECK(state IN ('active','disabled','deleted')),
+ created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE user_devices (
+ device_id text PRIMARY KEY REFERENCES devices(id), user_id text NOT NULL REFERENCES users(id),
+ revoked boolean NOT NULL DEFAULT false, expires_at timestamptz, last_seen timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(device_id,user_id)
+);
+CREATE INDEX user_devices_user ON user_devices(user_id);
+CREATE TABLE user_identities (
+ issuer text NOT NULL, subject text NOT NULL, user_id text NOT NULL REFERENCES users(id),
+ PRIMARY KEY(issuer,subject), UNIQUE(user_id,issuer)
+);
+CREATE TABLE oidc_settings (
+ id integer PRIMARY KEY CHECK(id=1), issuer text NOT NULL, client_id text NOT NULL,
+ client_secret text NOT NULL, enabled boolean NOT NULL, revision bigint NOT NULL DEFAULT 1
+);
+CREATE TABLE login_transactions (
+ id text PRIMARY KEY, device_id text NOT NULL, public_key bytea NOT NULL, name text NOT NULL,
+ proof_hash text NOT NULL, link_user_id text REFERENCES users(id), session_hash text,
+ browser_hash text, state_hash text UNIQUE, nonce text, verifier text, config_revision bigint NOT NULL,
+ issuer text, subject text, result_user_id text REFERENCES users(id),
+ phase text NOT NULL DEFAULT 'pending', expires_at timestamptz NOT NULL, consumed_at timestamptz
+);
 CREATE TABLE challenges (
  id text PRIMARY KEY, device_id text NOT NULL, name text NOT NULL, public_key bytea NOT NULL,
  nonce bytea NOT NULL, scope text NOT NULL DEFAULT 'player', grant_id text, expires_at timestamptz NOT NULL
@@ -29,15 +55,19 @@ INSERT INTO games(id,name,summary,ports,enabled) VALUES
  ('custom','通用游戏','游戏端口及发现规则由管理员配置。','[{"protocol":"tcp","port":1,"port_end":65535},{"protocol":"udp","port":1,"port_end":65535}]',true),
  ('minecraft-java','Minecraft Java','通过虚拟 IP 和服务端配置端口直接连接。','[{"protocol":"tcp","port":25565}]',true);
 CREATE TABLE rooms (
- id text PRIMARY KEY, name text NOT NULL, owner_id text NOT NULL REFERENCES devices(id), game text NOT NULL REFERENCES games(id),
+ id text PRIMARY KEY, name text NOT NULL, owner_user_id text NOT NULL REFERENCES users(id), game text NOT NULL REFERENCES games(id),
  capacity integer NOT NULL CHECK (capacity BETWEEN 1 AND 32), revision bigint NOT NULL DEFAULT 1,
  expires_at timestamptz NOT NULL, closed boolean NOT NULL DEFAULT false
 );
 CREATE TABLE members (
- room_id text NOT NULL REFERENCES rooms(id), device_id text NOT NULL REFERENCES devices(id),
- ip text NOT NULL, mac text NOT NULL DEFAULT '', active boolean NOT NULL DEFAULT true, banned boolean NOT NULL DEFAULT false,
- last_seen timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(room_id,device_id)
+ room_id text NOT NULL REFERENCES rooms(id), device_id text NOT NULL, user_id text NOT NULL,
+ ip text NOT NULL, mac text NOT NULL DEFAULT '', active boolean NOT NULL DEFAULT true,
+ last_seen timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(room_id,device_id), FOREIGN KEY(device_id,user_id) REFERENCES user_devices(device_id,user_id)
 );
+CREATE TABLE room_bans (
+ room_id text NOT NULL REFERENCES rooms(id), user_id text NOT NULL REFERENCES users(id), PRIMARY KEY(room_id,user_id)
+);
+CREATE UNIQUE INDEX one_active_user_room ON members(user_id) WHERE active;
 CREATE UNIQUE INDEX one_active_room ON members(device_id) WHERE active;
 CREATE UNIQUE INDEX unique_active_ip ON members(ip) WHERE active;
 CREATE UNIQUE INDEX unique_room_mac ON members(room_id,mac) WHERE active AND mac<>'';
@@ -93,4 +123,4 @@ CREATE TABLE idempotency (
  expires_at timestamptz NOT NULL, PRIMARY KEY(device_id,key)
 );
 CREATE TABLE rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL);
-INSERT INTO schema_version(version) VALUES (4);
+INSERT INTO schema_version(version) VALUES (5);

@@ -66,8 +66,13 @@ func New(dir string, log *slog.Logger) (*Runtime, error) {
 			return nil, err
 		}
 		r.identity = i
-		r.api = client.NewAPI(i)
+		if !i.SignedOut {
+			r.api = client.NewAPI(i)
+		}
 		r.setPublicIdentity(i)
+		if i.SignedOut {
+			r.status.Control = "signed_out"
+		}
 	}
 	return r, nil
 }

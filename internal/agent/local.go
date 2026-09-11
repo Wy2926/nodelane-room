@@ -87,6 +87,8 @@ func (r *Runtime) localHandler() http.Handler {
 		var out any
 		var err error
 		switch in.Action {
+		case "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover":
+			out, err = r.accountAction(req.Context(), in)
 		case "init":
 			out, err = r.Init(req.Context(), in.Server, in.Name)
 		case "status":

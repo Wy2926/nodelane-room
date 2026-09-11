@@ -3,7 +3,7 @@ export interface Room {
   name: string;
   game: string;
   game_name: string;
-  owner_id: string;
+  owner_user_id: string;
   expires_at: string;
   closed: boolean;
 }
@@ -87,7 +87,7 @@ export interface Snapshot {
 }
 export interface RoomSnapshot {
   room: Room;
-  members: { device_id: string; name: string; ip: string; last_seen: string }[];
+  members: { user_id: string; device_id: string; name: string; ip: string; last_seen: string }[];
   game: Game;
 }
 export interface Link {

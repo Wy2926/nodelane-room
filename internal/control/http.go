@@ -38,6 +38,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics)
 	s.registerPlayer(mux)
+	s.registerUsers(mux)
+	s.registerOIDC(mux)
 	s.registerNode(mux)
 	s.registerAdmin(mux)
 	s.registerAdminWeb(mux)

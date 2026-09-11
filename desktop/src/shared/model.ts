@@ -24,7 +24,7 @@ export type Game = {
 export type Room = {
   id: string;
   name: string;
-  owner_id: string;
+  owner_user_id: string;
   game: string;
   game_name: string;
   revision: number;
@@ -33,6 +33,7 @@ export type Room = {
   closed: boolean;
 };
 export type Member = {
+  user_id: string;
   mac?: string;
   device_id: string;
   name: string;
@@ -47,7 +48,9 @@ export type Peer = {
   rtt_ms?: number;
   loss_percent?: number;
 };
+export type User = { id: string; name: string; kind: "guest" | "registered"; state: string; created_at: string };
 export type Status = {
+  user?: User;
   lan_version: number;
   lan?: {
     version: number;
@@ -83,6 +86,7 @@ export type Management = {
 export type Invitation = { code: string; expires_at: string };
 export type RoomResult = { room: Room; invitation?: Invitation };
 export type Action =
+  | "account-login" | "account-link" | "account-poll" | "account-cancel" | "account-logout" | "account-takeover"
   | "status"
   | "init"
   | "games"

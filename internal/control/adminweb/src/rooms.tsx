@@ -220,7 +220,7 @@ export function RoomPanel({
                     <strong>{m.name}</strong>
                     <small className="mono">{m.ip}</small>
                     <small>
-                      {m.device_id === room.owner_id ? "房主" : ""}{" "}
+                      {m.user_id === room.owner_user_id ? "房主" : ""}{" "}
                       {date(m.last_seen)}
                     </small>
                   </td>

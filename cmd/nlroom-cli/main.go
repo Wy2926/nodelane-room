@@ -44,7 +44,7 @@ func command() *cobra.Command {
 		return print(cmd, out)
 	}
 	var server, name string
-	init := &cobra.Command{Use: "init", Short: "Create and register this device", RunE: func(cmd *cobra.Command, _ []string) error {
+	init := &cobra.Command{Use: "init", Short: "Create a guest account with a local device credential", RunE: func(cmd *cobra.Command, _ []string) error {
 		return call(cmd, localapi.Request{Action: "init", Server: server, Name: name})
 	}}
 	init.Flags().StringVar(&server, "server", "", "Control HTTPS origin")
@@ -52,6 +52,20 @@ func command() *cobra.Command {
 	_ = init.MarkFlagRequired("server")
 	_ = init.MarkFlagRequired("name")
 	root.AddCommand(init)
+	account := &cobra.Command{Use: "account", Short: "Guest upgrade and account login; open the returned URL in your browser"}
+	var loginServer, loginName string
+	login := &cobra.Command{Use: "login", Args: cobra.NoArgs, Short: "Sign in to an account; switching discards access to an unlinked guest", RunE: func(cmd *cobra.Command, _ []string) error {
+		return call(cmd, localapi.Request{Action: "account-login", Server: loginServer, Name: loginName})
+	}}
+	login.Flags().StringVar(&loginServer, "server", "https://room.nodelane.net", "Control origin for an unconfigured device")
+	login.Flags().StringVar(&loginName, "name", "Player", "Display name for a new account")
+	account.AddCommand(login)
+	for _, action := range []string{"link", "poll", "cancel", "logout", "takeover"} {
+		account.AddCommand(&cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			return call(cmd, localapi.Request{Action: "account-" + action})
+		}})
+	}
+	root.AddCommand(account)
 	root.AddCommand(&cobra.Command{Use: "games", Short: "List server games and their configured ports", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		var games []model.Game
 		if err := localapi.Call(cmd.Context(), dir, localapi.Request{Action: "games"}, &games); err != nil {

@@ -1,3 +1,4 @@
+import { Account } from "./Account";
 import { t, getLanguage, setLanguage, translate, isLanguage } from "../../i18n";
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
@@ -70,6 +71,7 @@ export function Settings({ status, actions, usable }: {
           </section>}
           {category === "device" && <section aria-labelledby="device-title">
             <div className="settings-section-head"><h3 id="device-title">{t("settings.deviceInformation")}</h3><p>{t("settings.deviceHelp")}</p></div>
+            <Account status={status} actions={actions} />
             <dl className="device-details">
               <div><dt>{t("settings.deviceNickname")}</dt><dd>{status?.name || t("settings.notConfigured")}</dd></div>
               <div><dt>{t("settings.gamingService")}</dt><dd className="selectable">{status?.server || t("settings.notConfigured")}</dd></div>

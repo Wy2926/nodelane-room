@@ -54,17 +54,18 @@ function makeRoom(name: string, selected: Game): Room {
   return {
     id: "preview-room",
     name,
-    owner_id: "preview-player",
+    owner_user_id: "preview-user",
     game: selected.id,
     game_name: selected.name,
     revision: 1,
-    capacity: 8,
+    capacity: 4,
     closed: false,
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
 }
 function status(): Status {
   return {
+    user: initialized ? {id: "preview-user", name: "旅人", kind: "guest", state: "active", created_at: new Date().toISOString()} : undefined,
     version: "0.2.0",
     protocol_version: 2,
     lan_version: 1,
@@ -79,13 +80,13 @@ function status(): Status {
     members: connected
       ? [
           {
-            device_id: "preview-player",
+            device_id: "preview-player", user_id: "preview-user",
             name: "旅人",
             ip: "10.203.0.2",
             last_seen: new Date().toISOString(),
           },
           {
-            device_id: "preview-friend",
+            device_id: "preview-friend", user_id: "preview-friend",
             name: "远山",
             ip: "10.203.0.3",
             last_seen: new Date().toISOString(),
@@ -134,6 +135,8 @@ mockIPC(
     const request = payload?.requestData as Request;
     if (!request) throw new Error("Unsupported preview command");
     switch (request.action) {
+      case "account-poll":
+        return { state: "none" };
       case "status":
         if (scenario === "error")
           throw { code: "service_unavailable", error: "预览服务故障" };

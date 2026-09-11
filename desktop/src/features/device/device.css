@@ -75,3 +75,7 @@
 @media (max-width: 900px) { .settings-layout { grid-template-columns: 184px minmax(0, 1fr); gap: var(--space-5); } .settings-content { padding: var(--space-6); } .setting-value { display: none; } .update-version { padding: var(--space-5); } .update-version h4 { font-size: var(--text-lg); } .update-action { flex-wrap: wrap; } }
 @media (max-width: 650px) { .settings-layout { grid-template-columns: 1fr; } .settings-profile { display: none; } .settings-nav { grid-template-columns: 1fr 1fr; } .settings-signature { display: none; } .settings-content { padding: var(--space-5); min-height: 0; } .device-details > div { grid-template-columns: 1fr; gap: var(--space-2); } .update-icon, .session-icon { display: none; } .theme-preview { padding: var(--space-5); } .panel { padding: var(--space-6); } }
 @media (forced-colors: active) { .switch-row input { appearance: auto; } .switch-row input::before { display: none; } }
+
+.account-panel { margin-block: 1.5rem; padding: 1.25rem; border: 1px solid var(--line-strong); border-radius: 12px; }
+.account-panel p { margin-block: .75rem; overflow-wrap: anywhere; }
+.account-actions { display: flex; flex-wrap: wrap; gap: .75rem; }

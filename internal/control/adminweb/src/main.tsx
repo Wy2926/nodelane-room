@@ -21,6 +21,7 @@ import {
 } from "./components";
 import { NodeEditor, NodePanel, NodeTable, states } from "./nodes";
 import { RoomPanel, RoomTable } from "./rooms";
+import { Users, OIDCSettings } from "./users";
 import { Games } from "./games";
 import type { API, Room, Session, Snapshot, Telemetry } from "./types";
 import "./style.css";
@@ -207,6 +208,7 @@ function App() {
   const nodeDevices = new Set((data?.nodes || []).map((n) => n.device_id));
   const selectedNode = data?.nodes.find((n) => n.id === nodeID);
   const tabs: Record<string, string> = {
+    users: "用户管理",
     overview: "网络总览",
     nodes: "节点管理",
     rooms: "房间与成员",
@@ -247,7 +249,7 @@ function App() {
               aria-current={tab === key ? "page" : undefined}
               onClick={() => setTab(key)}
             >
-              <span>{["◈", "▤", "◫", "◇", "≡", "⚙"][i]}</span>
+                <span>{["◎", "◈", "▤", "◫", "◇", "≡", "⚙"][i]}</span>
               {label}
             </button>
           ))}
@@ -321,7 +323,7 @@ function App() {
                         data.rooms.filter(
                           (r) => !r.closed && Date.parse(r.expires_at) > now,
                         ).length,
-                        "每房最多 32 位成员",
+                        "每房默认 4 位成员",
                       ],
                       [
                         "正在上报",
@@ -375,6 +377,7 @@ function App() {
                 />
               </Card>
             )}
+            {tab === "users" && <><Users api={api} /><OIDCSettings api={api} publicURL={data.public_url} /></>}
             {tab === "games" && (
               <Games games={data.games} api={api} refresh={refresh} />
             )}

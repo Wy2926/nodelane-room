@@ -4,7 +4,7 @@
 
 ## 当前源码与产物
 
-当前为统一 Ethernet LAN、数据库结构 4、本机 IPC 2；最近产品验证为 2026-09-11 的 LAN 回归。下表保留原检查结果，后续改动不能据此自动判定通过；网络设计见 [游戏网络](game-network.md)。
+当前为访客/OIDC 账号、默认 4 人房间、统一 Ethernet LAN、数据库结构 5、本机 IPC 2；最近产品验证为 2026-09-11 的账号回归。下表保留原检查结果，后续改动不能据此自动判定通过；网络设计见 [游戏网络](game-network.md)。
 
 | 对象 | 适用范围 |
 |---|---|
@@ -12,7 +12,23 @@
 | 当前完整安装包 | LAN 改造后尚未重新生成和验收；Windows TAP 驱动须独立准备 |
 | 历史 0.2.0 安装包与镜像 | 使用旧数据面，不能与当前客户端混用；发布源码提交和镜像摘要见 [IMAGES.txt](../deploy/IMAGES.txt)，旧包/WebView 结果只列于历史证据 |
 
-## 最近产品检查（2026-09-11）
+## 最近账号检查（2026-09-11）
+
+基于 `2b8274853bcad35d7254634fc89914565f3f6b32` 的未提交工作区；代码清单统一 LF 后的 SHA256 为 `b6ffa26895f97af0ca2eaaa875d973cdccedc5304b5b7b9f0006fd7e09bd26fb`，明细见 [清单](../.local/users-source-manifest.json)。未生成或发布完整安装包。
+
+| 检查 | 实际结果与证据 |
+|---|---|
+| Windows Go 与独立 PostgreSQL | gofmt、`go vet ./...`、全量普通测试通过；新增账号测试实际连接独立 PostgreSQL，覆盖同名访客、升级保留用户/房间、默认 4 人、拒绝合并、跨设备所有权与封禁、设备退出、管理员停用与证书撤销、旧续租缓存失效。[vet](../.local/users-windows-vet.log)、[测试](../.local/users-windows-test.log) |
+| OIDC | 本地测试 IdP 执行 discovery、授权码、PKCE S256、JWKS/RSA 签名与浏览器确认；错误 issuer、audience、nonce、azp、过期令牌和错误领取证明被拒绝。尚未对接真实第三方租户 |
+| Linux Go 与独立 PostgreSQL | vet、`go test -count=1 ./...`、`go test -race -count=1 ./...` 全部通过，含退出后重启与退出响应丢失恢复测试；不是跳过数据库用例。[普通测试](../.local/nodelane-test-20260911-134954-7492c4/test.log)、[race](../.local/nodelane-test-20260911-134954-7492c4/race.log) |
+| 真实 Linux TAP/Nebula | 隔离双客户端经原生 relay 验证 TCP/UDP、IPv4/IPv6、32 KB 数据报、广播/组播、策略收紧、跨房隔离及离房/关房/踢人；TAP MTU 1500、底层 MTU 1280。[结果](../.local/nodelane-test-20260911-134954-7492c4/results.json)、[回归输出](../.local/users-docker-verification-final.log) |
+| 桌面、管理台与桥接 | 桌面构建及 36 项测试、管理台构建及 13 项测试通过；Windows Rust 4 项通过，已安装服务烟测跳过。浏览器预览核对访客身份、绑定入口、账号/设备区分及凭据丢失提示；不是原生 WebView 或真实 OIDC 登录验收 |
+
+首次新增管理台测试的错误文案断言失败，已修正并重新通过本机及容器构建。Windows 两项账号持久化测试因临时目录不满足 ProgramData 保护要求而跳过，已在隔离 Linux 中执行；真实 Windows DPAPI/ACL/Named Pipe 与系统浏览器流程仍须真机验收。外网 Steam、MMDB 样本、双机 NAT/Minecraft 及其他游戏本体未验收。本轮临时容器、卷、网络和预览已清理。
+
+同日补充 Logto 参数说明及保存反馈后，管理台构建和 13 项测试通过，覆盖保存后重新打开表单恢复 issuer、client ID 和启用状态，以及 secret 不回显；管理台 `app.js` SHA256 为 `a730c238b83a6f079465ca3b8e09125814f4599ccd37d4cf6ce5d34ba4d2d992`。Go 控制包、架构和契约测试通过，本次未配置测试数据库，数据库用例跳过。已只读核对 `auth.nodelane.net` 的 discovery 元数据，尚未使用真实 App ID/Secret 完成登录，也未部署此次改动。
+
+## LAN 改造检查（2026-09-11）
 
 | 检查 | 实际结果与证据 |
 |---|---|

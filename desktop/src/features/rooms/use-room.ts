@@ -24,7 +24,7 @@ export function useRoom(
     ? fresh(status?.snapshot_at) && !serviceError
     : !managementError && Date.now() - managementAt < 15000;
 
-  const owner = room?.owner_id === status?.device_id;
+  const owner = room?.owner_user_id === status?.user?.id;
   const canManage =
     !!room &&
     owner &&

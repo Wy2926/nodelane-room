@@ -7,6 +7,7 @@
 | 任务 | 实现与测试入口 | 文档章节 |
 |---|---|---|
 | 包依赖、进程分工 | `cmd/`、`scripts/architecture/` | [代码组织](architecture.md#代码组织) |
+| 用户、访客、OIDC | `internal/control/users*`、`oidc*`、`internal/agent/account.go`、`internal/client/account.go`、`internal/model/user.go` | [用户身份](architecture.md#用户身份)、[账号登录配置](deployment.md#账号登录配置) |
 | 房间、成员、游戏配置 | `internal/control/` 的 `rooms`、`games`、`player_*`、`store` | [游戏规则](architecture.md#游戏目录与网络规则)、[事务与快照](architecture.md#事务与快照) |
 | 管理台、初始化、节点 | `internal/control/admin*`、`setup*`、`node*`；`internal/agent/node*` | [控制实例](architecture.md#控制实例与配置)、[节点协议](architecture.md#v2-管理与节点协议) |
 | LAN、授权、凭据到期 | `internal/lan/`、`internal/engine/`、`internal/agent/network.go`、`runtime*_test.go` | [数据面](architecture.md#数据面)、[游戏网络](game-network.md) |
@@ -133,7 +134,8 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
           Invitation.tsx 临时邀请码及复制
           Confirmation.tsx 权限操作和离房退出确认
       device/ 初始化与桌面偏好
-        Setup.tsx 默认线上控制端、设备昵称与首次使用
+        Setup.tsx 默认线上控制端、访客昵称与首次使用
+        Account.tsx 访客绑定、浏览器登录、设备切换与退出账号
         Settings.tsx 分类偏好、设备信息、更新界面占位与退出
         device.css 欢迎界面、分类设置与更新面板样式
       diagnostics/ 真实网络诊断
@@ -172,6 +174,7 @@ go.mod 模块依赖与 Nebula 补丁锁定
 go.sum 依赖校验和
 internal/ 产品内部实现
   agent/ 玩家与节点后台状态协调
+    account.go 受保护的登录事务、本机账号切换与退出
     health.go 存活与就绪检查
     images.go 受限控制端图片读取与本机图片响应
     local.go 本机 RPC 服务、玩家命令分派与后台启停
@@ -182,7 +185,7 @@ internal/ 产品内部实现
     node_local.go 节点本机命令与脱敏日志缓冲
     player.go 玩家初始化、游戏目录与房间操作
     runtime.go 共享运行状态、构造、持久化与后台主循环
-    runtime_test.go 控制请求阻塞时的凭据到期测试
+    runtime_test.go 控制请求阻塞时的凭据到期及账号注销恢复测试
     status.go 玩家连接状态、实际探测与本机诊断
     telemetry.go 节点与玩家的短期监控采集和独立上报
     traffic_linux.go Linux 隧道网卡上传下载查询
@@ -192,6 +195,7 @@ internal/ 产品内部实现
     traffic_udp_linux_test.go 真实 UDP 双向字节计数与去重测试
     traffic_udp_other.go 非 Linux 平台 UDP 观察器占位
   client/ 控制面 API 客户端
+    account.go OIDC 登录发起、设备证明领取与账号状态读取
     api.go 控制面认证、幂等请求与 SSE 恢复
     enrollment.go 基础设施节点登记认证
   control/ 按调用方分文件的 HTTP API 与共享事务状态
@@ -230,7 +234,12 @@ internal/ 产品内部实现
         rooms.tsx 房间汇总、成员详情与授权操作
         style.css 管理台与移动端布局样式
         types.ts 前端 HTTP 与监控类型
-    auth.go 设备挑战、会话与房间权限校验
+        users.tsx 用户分页、设备与会话管理和 OIDC 配置
+        users.test.tsx 用户停用原因与 OIDC secret 清除交互测试
+    auth.go 显式访客登记、设备挑战、会话与房间权限校验
+    users.go 用户查询、事务授权检查、管理操作与连接撤销
+    users_test.go OIDC 完整流程、身份升级、冲突、跨设备封禁与撤销测试
+    oidc.go 单提供方 OIDC 配置、浏览器登录与设备授权领取
     deployment.go 数据库配置校验、控制面创建与独立实例接入事务
     game_import.go Steam 链接、资料及图片下载与来源和大小校验
     games.go 游戏目录、完整端口区间与 LAN 策略更新事务
@@ -293,6 +302,7 @@ internal/ 产品内部实现
     game.go 游戏目录、LAN 策略/心跳、端口区间与管理类型
     lan.go LAN 版本、MAC、完整端口区间校验与 IPv6 地址推导
     model.go 设备、房间、凭据与 LAN 客户端状态类型
+    user.go 用户、设备、OIDC 登录与管理请求类型
     node.go 节点配置、登记、操作与同步类型
     telemetry.go 非持久化监控采样与窗口协议
   nodehost/ Linux 原生节点安装生命周期

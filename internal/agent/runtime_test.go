@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/device"
 	"github.com/nodelane/nodelane-room/internal/engine"
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/pki"
 	"github.com/slackhq/nebula/cert"
@@ -93,5 +95,72 @@ func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("runtime did not stop")
+	}
+}
+
+func TestSignedOutIdentityStaysSignedOutAfterRestart(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires the installed protected ProgramData state directory; exercised in isolated Linux")
+	}
+	dir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r, err := New(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, err := device.NewIdentity("https://example.invalid", "player")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i.SignedOut = true
+	if err = r.persist(i); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := New(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.api != nil || restored.status.Control != "signed_out" || restored.identity.ID() != i.ID() {
+		t.Fatal("signed out identity was silently restored")
+	}
+	if err = restored.step(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLogoutOfAlreadyRevokedDevicePersistsSignedOut(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires protected ProgramData state; exercised in isolated Linux")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }))
+	defer server.Close()
+	dir := t.TempDir()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r, err := New(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i, err := device.NewIdentity(server.URL, "player")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.persist(i); err != nil {
+		t.Fatal(err)
+	}
+	r.api = client.NewAPI(i)
+	watchStopped := false
+	r.watchCancel = func() { watchStopped = true }
+	if _, err = r.accountAction(context.Background(), localapi.Request{Action: "account-logout"}); err != nil {
+		t.Fatal(err)
+	}
+	if !watchStopped || r.watchCancel != nil {
+		t.Fatal("logout retained the old room watcher")
+	}
+	restored, err := New(dir, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.api != nil || !restored.identity.SignedOut {
+		t.Fatal("revoked logout left device signed in")
 	}
 }

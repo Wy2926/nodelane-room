@@ -46,6 +46,10 @@ func (s *Store) challenge(ctx context.Context, in model.ChallengeRequest, scope,
 			if _, err := nodeForDevice(ctx, tx, in.DeviceID); err != nil {
 				return ErrForbidden
 			}
+		} else if scope == "player" {
+			if _, err := playerUser(ctx, tx, in.DeviceID); err != nil {
+				return err
+			}
 		} else {
 			var used bool
 			if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM node_bindings WHERE device_id=$1)", in.DeviceID).Scan(&used); err != nil {
@@ -94,16 +98,27 @@ func (s *Store) verify(ctx context.Context, in model.VerifyRequest, scope string
 				return ErrForbidden
 			}
 		} else {
-			var used bool
-			if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM node_bindings WHERE device_id=$1)", id).Scan(&used); err != nil {
-				return err
+			if scope == "guest" {
+				var exists bool
+				if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM devices WHERE id=$1)", id).Scan(&exists); err != nil {
+					return err
+				}
+				if !exists {
+					user := randomID()
+					if _, err := tx.Exec(ctx, "INSERT INTO users(id,name,kind) VALUES($1,$2,'guest')", user, name); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, "INSERT INTO devices(id,name,public_key) VALUES($1,$2,$3)", id, name, pub); err != nil {
+						return err
+					}
+					if _, err := tx.Exec(ctx, "INSERT INTO user_devices(device_id,user_id) VALUES($1,$2)", id, user); err != nil {
+						return err
+					}
+				}
 			}
-			if used {
-				return ErrForbidden
-			}
-			if _, err := tx.Exec(ctx, "INSERT INTO devices(id,name,public_key) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name", id, name, pub); err != nil {
-				return err
-			}
+			var err error
+			out, err = issuePlayerSession(ctx, tx, id)
+			return err
 		}
 		_, err := tx.Exec(ctx, "INSERT INTO sessions(token_hash,device_id,scope,expires_at) VALUES($1,$2,$3,$4)", hash(out.Token), id, sessionScope, out.ExpiresAt)
 		return err
@@ -122,9 +137,17 @@ func (s *Store) authenticate(ctx context.Context, token, scope string) (string, 
 	if err != nil {
 		return "", ErrUnauthorized
 	}
+	if scope == "player" {
+		if _, err := s.Account(ctx, id); err != nil {
+			return "", err
+		}
+	}
 	return id, nil
 }
 func activeMember(ctx context.Context, tx pgx.Tx, room, device string) error {
+	if _, err := playerUser(ctx, tx, device); err != nil {
+		return err
+	}
 	var ok bool
 	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM members m JOIN rooms r ON r.id=m.room_id WHERE m.room_id=$1 AND m.device_id=$2 AND m.active AND NOT r.closed AND r.expires_at>now())", room, device).Scan(&ok)
 	if err != nil {
@@ -136,8 +159,11 @@ func activeMember(ctx context.Context, tx pgx.Tx, room, device string) error {
 	return nil
 }
 func owner(ctx context.Context, tx pgx.Tx, room, device string) error {
+	if _, err := playerUser(ctx, tx, device); err != nil {
+		return err
+	}
 	var ok bool
-	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1 AND owner_id=$2 AND NOT closed AND expires_at>now())", room, device).Scan(&ok)
+	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1 AND owner_user_id=(SELECT user_id FROM user_devices WHERE device_id=$2) AND NOT closed AND expires_at>now())", room, device).Scan(&ok)
 	if err != nil {
 		return err
 	}

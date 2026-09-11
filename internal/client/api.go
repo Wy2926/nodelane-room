@@ -52,6 +52,21 @@ type API struct {
 func NewAPI(i device.Identity) *API {
 	return &API{Identity: i, HTTP: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}}
 }
+func (a *API) RegisterGuest(ctx context.Context) error {
+	a.mu.Lock()
+	a.Identity.PendingGuest = true
+	a.mu.Unlock()
+	return a.Authenticate(ctx)
+}
+func (a *API) Account() *model.User {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.session.User == nil {
+		return nil
+	}
+	u := *a.session.User
+	return &u
+}
 func (a *API) Authenticate(ctx context.Context) error { _, err := a.login(ctx); return err }
 func (a *API) login(ctx context.Context) (string, error) {
 	a.mu.Lock()
@@ -64,6 +79,9 @@ func (a *API) login(ctx context.Context) (string, error) {
 	}
 	pub := ed25519.PrivateKey(a.Identity.PrivateKey).Public().(ed25519.PublicKey)
 	scope, prefix := "player", "/v2/auth"
+	if a.Identity.PendingGuest {
+		scope, prefix = "guest", "/v2/auth/guest"
+	}
 	if a.Identity.Node {
 		scope, prefix = "node", "/v2/node/auth"
 	}
@@ -76,6 +94,7 @@ func (a *API) login(ctx context.Context) (string, error) {
 	if err := a.request(ctx, "POST", prefix+"/verify", model.VerifyRequest{ID: challenge.ID, Signature: sig}, &a.session, "", ID()); err != nil {
 		return "", err
 	}
+	a.Identity.PendingGuest = false
 	return a.session.Token, nil
 }
 func (a *API) Call(ctx context.Context, method, path string, in, out any) error {

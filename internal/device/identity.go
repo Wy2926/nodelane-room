@@ -15,6 +15,8 @@ import (
 )
 
 type Identity struct {
+	SignedOut     bool   `json:"signed_out,omitempty"`
+	PendingGuest  bool   `json:"pending_guest,omitempty"`
 	Server        string `json:"server"`
 	Name          string `json:"name"`
 	PrivateKey    []byte `json:"private_key"`

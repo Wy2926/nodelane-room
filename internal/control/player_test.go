@@ -87,12 +87,12 @@ func TestCapacityAndOneRoomUnderConcurrency(t *testing.T) {
 			statusError(t, err, 409)
 		}
 	}
-	if success != 31 {
-		t.Fatalf("joined %d, want 31", success)
+	if success != model.RoomCapacity-1 {
+		t.Fatalf("joined %d, want %d", success, model.RoomCapacity-1)
 	}
 	var n int
 	must(t, s.Pool.QueryRow(context.Background(), "SELECT count(DISTINCT ip) FROM members WHERE active").Scan(&n))
-	if n != 32 {
+	if n != model.RoomCapacity {
 		t.Fatal("IP allocation collided")
 	}
 	statusError(t, host.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{Name: "second", Game: "custom"}, nil), 409)
@@ -129,10 +129,10 @@ func TestAuthenticationReplayAndIdentityBinding(t *testing.T) {
 	must(t, err)
 	pub := ed25519.PrivateKey(i.PrivateKey).Public().(ed25519.PublicKey)
 	in := model.ChallengeRequest{DeviceID: i.ID(), Name: i.Name, PublicKey: pub}
-	c, err := s.Challenge(ctx, in)
+	c, err := s.challenge(ctx, in, "guest", "")
 	must(t, err)
-	sig := ed25519.Sign(i.PrivateKey, append([]byte("nodelane-auth-v2:player:"+c.ID+":"), c.Nonce...))
-	session, err := s.Verify(ctx, model.VerifyRequest{ID: c.ID, Signature: sig})
+	sig := ed25519.Sign(i.PrivateKey, append([]byte("nodelane-auth-v2:guest:"+c.ID+":"), c.Nonce...))
+	session, err := s.verify(ctx, model.VerifyRequest{ID: c.ID, Signature: sig}, "guest")
 	must(t, err)
 	if session.DeviceID != i.ID() {
 		t.Fatal("identity mismatch")

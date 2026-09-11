@@ -45,6 +45,16 @@ React 管理台构建后嵌入 Go。三类身份不能互换，房间操作只�
 
 Windows 状态目录只能位于 ProgramData 的直接子目录，使用最终 ACL/管理员所有权原子创建；拒绝普通用户预创建的目录、重解析点和用户可控制的父目录。安装文件放在管理员拥有的 Program Files 目录。不能通过把状态移到用户可写路径来绕过服务权限错误。
 
+## 用户身份
+
+用户、设备、OIDC 身份与隧道密钥分别存储。`users` 为稳定账号 ID，昵称允许重复；`user_devices` 将设备公钥身份绑定到账号；`user_identities` 以 `(issuer, subject)` 唯一关联外部身份。节点继续使用独立机器授权。账号身份为 guest/registered，状态为 active/disabled/deleted；付费权益未实现，也不混入身份或管理员角色。
+
+访客仅通过 `/v2/auth/guest/*` 显式登记，签名 scope 为 guest；普通 player 挑战只接受已有且有效的设备授权。访客私钥遗失不能凭昵称找回。正式用户通过浏览器 OIDC 登录，设备获得 30 天授权；一小时会话由签名挑战续取，每次都检查账号状态、设备撤销与授权截止。服务端逐请求检查共享数据库；玩家写入及幂等返回之前在同一事务复查会话。管理员停用/删除关闭其拥有的房间、作废邀请码并撤销连接；重新启用不恢复旧房间或成员。注销或撤销设备后，旧私钥不能重新获取会话。
+
+OIDC 按 [OpenID Connect Core](https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation) 验证 ID Token，使用服务端 Authorization Code + PKCE S256、可信 issuer/JWKS、audience/nonce/state 和浏览器 Cookie 绑定，并要求页面确认设备。客户端开始和领取都证明设备私钥所有权；五分钟登录事务存于 PostgreSQL，可跨副本处理。访客升级保持用户 ID 和房间；已有外部身份返回冲突，不合并数据。新设备登录绑定到已有正式用户，房主管理不等于网络授权。每个账号只有一个 active 成员，显式断开其他设备后才能在本机加入房间；房间封禁按用户生效。新房间默认 4 人，结构上限仍为 32。
+
+IdP 的账号停用/登出目前不自动同步到本站；未接 Back-Channel Logout 或供应接口。需要即时停用时在本站管理台执行；正式设备授权最长 30 天，到期重新 OIDC 登录。用户删除保留身份关联，避免同一个外部身份自动重建账号。数据库包含 CA、OIDC client secret、短期 PKCE 材料，必须保护数据库和备份；日志、审计和用户/会话列表不返回这些凭据。
+
 ## 事务与快照
 
 共享业务写事务由 `Store.Write` 使用固定 PostgreSQL advisory lock 串行化；读快照可并发。此设计优先保证跨副本一致性，增加控制副本不会直接提升这条写路径的并发吞吐；锁粒度调整须以压测为依据，并保持授权、状态、幂等和事件的原子性。限速计数另用数据库原子 upsert。

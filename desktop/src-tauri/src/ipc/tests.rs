@@ -1,6 +1,36 @@
 use super::transport::exchange;
 use super::*;
 
+#[test]
+fn login_browser_rejects_arbitrary_urls_and_accepts_loopback() {
+    let path = "/v2/auth/oidc/browser?id=0123456789abcdef0123456789abcdef";
+    for origin in [
+        "https://room.example",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://[::1]:8080",
+    ] {
+        assert!(valid_login_url(&format!("{origin}{path}")));
+    }
+    for origin in [
+        "http://localhost.evil.example",
+        "http://127.0.0.1.evil.example",
+        "https://user@room.example",
+        "file://room.example",
+    ] {
+        assert!(!valid_login_url(&format!("{origin}{path}")));
+    }
+    assert!(!valid_login_url(
+        "https://room.example/unrelated?id=0123456789abcdef0123456789abcdef"
+    ));
+    assert!(!valid_login_url(&format!(
+        "https://room.example{path}#fragment"
+    )));
+    assert!(!valid_login_url(&format!(
+        "https://room.example{path}&redirect=elsewhere"
+    )));
+}
+
 // Run only against an explicitly provisioned disposable/installed Go service.
 // Unlike the duplex tests, this uses the production pipe/socket transport.
 #[tokio::test]
@@ -35,7 +65,7 @@ async fn installed_service_roundtrip() {
 fn refuses_admin_and_path_injection() {
     assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"port"}"#).is_err());
     assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"remove-port"}"#).is_err());
-	assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"service-install"}"#).is_err());
+    assert!(serde_json::from_str::<PlayerRequest>(r#"{"action":"service-install"}"#).is_err());
     assert!(
         serde_json::from_str::<PlayerRequest>(r#"{"action":"status","path":"/admin"}"#).is_err()
     );

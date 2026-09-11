@@ -47,7 +47,7 @@ export function Members({
       <div className="members">
         {members.map((m, index) => {
           const self = m.device_id === status.device_id;
-          const host = m.device_id === room.owner_id;
+          const host = m.user_id === room.owner_user_id;
           const peer = isCurrent
             ? status.peers.find((p) => p.device_id === m.device_id)
             : undefined;

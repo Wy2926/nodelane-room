@@ -4,7 +4,7 @@
 
 玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面设计见 [客户端设计](docs/client.md)，修改代码先用 [任务导航](docs/files.md#按任务读取) 定位。
 
-V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 4，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。当前 LAN 变更尚未发布；[镜像清单](deploy/IMAGES.txt) 中历史 0.2.0 镜像不包含本轮架构，不能与当前客户端混用。本机 IPC 为版本 2。当前检查与未验收项见 [验证记录](docs/validation.md)。
+V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 5，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。当前 LAN 变更尚未发布；[镜像清单](deploy/IMAGES.txt) 中历史 0.2.0 镜像不包含本轮架构，不能与当前客户端混用。本机 IPC 为版本 2。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
 ## 控制面和节点
 
@@ -75,7 +75,7 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 | 命令 | 行为 |
 |---|---|
 | `room invite` | 生成有效 30 分钟的新邀请码，旧码立即失效；可多人使用至房满 |
-| `room kick <device-id>` | 踢出并禁止该设备再次用邀请码进入本房；撤销全部旧证书 |
+| `room kick <device-id>` | 踢出目标，并禁止该账号的所有设备再次用邀请码进入本房；撤销旧证书 |
 | `room transfer <device-id>` | 转让房间管理权，不迁移游戏进程或存档 |
 | `room leave` | 退出房间、停止本机网络；房主保留房间管理权 |
 | `room close` | 房主关闭房间，撤销所有成员凭据 |
@@ -85,7 +85,7 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 | `doctor` | 查看 LAN 就绪信息、网卡、凭据、控制状态和探测结果 |
 | `nlroom-service service install/uninstall` | 注册或删除 Windows 服务，需要管理员 |
 
-每设备同时一房，每房最多 32 人，有效期 24 小时；房主离线不关闭房间。玩家设备身份绑定本机私钥；管理台使用独立的管理员账号密码。默认地址池 `10.203.0.0/16`，页面初始化时可改，运行中不能直接换池。
+每账号同时一台设备联机、每设备同时一房，新房间默认 4 人，有效期 24 小时；房主离线不关闭房间。填写昵称创建访客，身份由本机私钥证明，昵称不唯一且不能用于找回账号。绑定 OIDC 后成为正式用户，用户 ID、房间和房主身份保留；不同账号不自动合并。管理台使用独立的管理员账号密码。默认地址池 `10.203.0.0/16`，页面初始化时可改，运行中不能直接换池。
 
 证书最多 10 分钟，剩余约 7 分钟开始续签。控制失联期间不接受新操作；游戏流量受最近心跳后 45 秒授权及当前凭据截止时间约束，实际可用时间也取决于对端和 relay。端口与 LAN 策略变化会受控重启 Nebula，短暂重连，这是规避固定上游版本防火墙热更新竞争的措施。
 
@@ -114,6 +114,12 @@ nlroom-service --state-dir /state/client daemon
 nlroom-cli --state-dir /state/client init --server https://room.example.com --name 玩家甲
 nlroom-cli --state-dir /state/client status --json
 ```
+
+## 玩家账号
+
+首次使用填写昵称创建访客。设置 → 设备信息可绑定账号、登录已有账号、断开其他设备联机或退出正式账号；登录使用系统浏览器，凭据不进入桌面页面。未绑定访客丢失本机身份或切换账号后无法凭昵称找回，建议先绑定。窗口退出和账号退出分别处理。
+
+CLI 使用 `account link` 或 `account login --server <origin> --name <昵称>` 获取登录地址，在浏览器完成并确认设备后运行 `account poll`；`account cancel` 停止等待，`account logout` 撤销正式账号当前设备，`account takeover` 断开此账号其他设备的房间连接。账号绑定和服务端用户管理见 [账号登录配置](docs/deployment.md#账号登录配置)。
 
 ## 开发与构建
 
@@ -176,4 +182,4 @@ python scripts/desktop/build.py --platform linux --arch amd64 --release dist/0.2
 
 部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/0.2.0/nodelane-room-0.2.0-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。`--extended` 额外验证真实十分钟证书续签与断控到期。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
 
-源码入口见 [文件索引](docs/files.md)，调用方与权限分工见 [架构说明](docs/architecture.md)，接口见 [OpenAPI](docs/openapi.yaml)。V2 不包含多管理员角色、TOTP 或云资源自动创建；LAN 兼容范围和游戏验收要求见游戏网络文档。
+源码入口见 [文件索引](docs/files.md)，调用方与权限分工见 [架构说明](docs/architecture.md)，接口见 [OpenAPI](docs/openapi.yaml)。当前不包含支付、多账号合并、管理员 OIDC、多管理员角色、TOTP 或云资源自动创建；LAN 兼容范围和游戏验收要求见游戏网络文档。

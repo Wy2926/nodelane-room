@@ -100,6 +100,9 @@ func TestPackageBoundaries(t *testing.T) {
 				if (pkg == "internal/model" || pkg == "internal/device") && !strings.HasPrefix(imp, module) && strings.Contains(strings.Split(imp, "/")[0], ".") {
 					t.Errorf("%s: shared data must not depend on third-party implementations: %s", rel, imp)
 				}
+				if (strings.HasPrefix(imp, "github.com/coreos/go-oidc/") || imp == "golang.org/x/oauth2") && pkg != "internal/control" {
+					t.Errorf("%s: OIDC belongs to internal/control", rel)
+				}
 				if imp == "github.com/jackc/pgx/v5" || strings.HasPrefix(imp, "github.com/jackc/pgx/v5/") {
 					if pkg != "internal/control" {
 						t.Errorf("%s: PostgreSQL belongs to internal/control", rel)

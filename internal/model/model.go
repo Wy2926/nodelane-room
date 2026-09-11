@@ -25,7 +25,7 @@ const (
 	ProbePort     = 4243
 	LANPort       = 4244
 	LANVersion    = 1
-	RoomCapacity  = 32
+	RoomCapacity  = 4
 	LeaseDuration = 10 * time.Minute
 )
 
@@ -35,17 +35,18 @@ type Device struct {
 	PublicKey []byte `json:"public_key"`
 }
 type Room struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	OwnerID   string    `json:"owner_id"`
-	Game      string    `json:"game"`
-	GameName  string    `json:"game_name"`
-	Revision  int64     `json:"revision"`
-	Capacity  int       `json:"capacity"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Closed    bool      `json:"closed"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	OwnerUserID string    `json:"owner_user_id"`
+	Game        string    `json:"game"`
+	GameName    string    `json:"game_name"`
+	Revision    int64     `json:"revision"`
+	Capacity    int       `json:"capacity"`
+	ExpiresAt   time.Time `json:"expires_at"`
+	Closed      bool      `json:"closed"`
 }
 type Member struct {
+	UserID   string    `json:"user_id"`
 	MAC      string    `json:"mac,omitempty"`
 	DeviceID string    `json:"device_id"`
 	Name     string    `json:"name"`
@@ -101,6 +102,7 @@ type VerifyRequest struct {
 	Signature []byte `json:"signature"`
 }
 type Session struct {
+	User      *User     `json:"user,omitempty"`
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
 	DeviceID  string    `json:"device_id"`
@@ -138,6 +140,7 @@ type Peer struct {
 	Error       string   `json:"error,omitempty"`
 }
 type Status struct {
+	User            *User      `json:"user,omitempty"`
 	LAN             *LANStatus `json:"lan,omitempty"`
 	LANVersion      int        `json:"lan_version"`
 	Version         string     `json:"version"`

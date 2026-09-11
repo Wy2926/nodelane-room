@@ -35,6 +35,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   setLanguage("zh-CN");
   status = {
+    user: {id: "owner", name: "玩家", kind: "guest", state: "active", created_at: new Date().toISOString()},
     version: "0.2.0",
     protocol_version: 2,
     lan_version: 1,
@@ -186,9 +187,9 @@ test("renewed invitation uses the actual standalone invitation response", async 
     name: "联机房间",
     game: game.id,
     game_name: game.name,
-    owner_id: "owner",
+    owner_user_id: "owner",
     revision: 1,
-    capacity: 32,
+    capacity: 4,
     closed: false,
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
@@ -234,11 +235,11 @@ test("configured game ports are read-only and stop state is explicit", async () 
   status.room = {
     id: "room",
     name: "房间",
-    owner_id: "owner",
+    owner_user_id: "owner",
     game: game.id,
     game_name: game.name,
     revision: 1,
-    capacity: 32,
+    capacity: 4,
     closed: false,
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
@@ -312,11 +313,11 @@ function joinedParty() {
   status.room = {
     id: "room",
     name: "周末世界",
-    owner_id: "owner",
+    owner_user_id: "owner",
     game: game.id,
     game_name: game.name,
     revision: 1,
-    capacity: 8,
+    capacity: 4,
     closed: false,
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
@@ -325,13 +326,13 @@ function joinedParty() {
   status.engine = "running";
   status.members = [
     {
-      device_id: "owner",
+      device_id: "owner", user_id: "owner",
       name: "玩家",
       ip: "10.203.0.2",
       last_seen: new Date().toISOString(),
     },
     {
-      device_id: "guest",
+      device_id: "guest", user_id: "guest",
       name: "远山",
       ip: "10.203.0.3",
       last_seen: new Date().toISOString(),
@@ -348,7 +349,7 @@ test("English room actions and copied diagnostics use complete translated messag
   });
   render(<App />);
   const user = userEvent.setup();
-  expect(screen.getByText("2 / 8 members")).toBeTruthy();
+  expect(screen.getByText("2 / 4 members")).toBeTruthy();
   expect(screen.getByText(/^Expires /)).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Leave room" }));
   expect(screen.getByRole("button", { name: "Confirm: Leave room" })).toBeTruthy();
@@ -554,4 +555,26 @@ test("an idle device with a zero lease does not display an expired authorization
   await userEvent.click(screen.getByRole("button", { name: "网络诊断" }));
   expect(screen.getByText("暂无授权")).toBeTruthy();
   expect(screen.queryByText("授权已到期")).toBeNull();
+});
+
+
+test("guest binding preserves the current account and does not offer logout", async () => {
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
+  expect(screen.queryByRole("button", { name: "退出账号" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "绑定账号" }));
+  expect(rpc).toHaveBeenCalledWith({ action: "account-link" });
+  expect(rpc).not.toHaveBeenCalledWith(expect.objectContaining({ action: "init" }));
+});
+
+test("a signed out account exposes login without exposing room creation", async () => {
+  status.control = "signed_out";
+  status.user = undefined;
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "我的房间" }));
+  expect(screen.getByRole("button", { name: "登录已有账号" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "创建房间" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "登录已有账号" }));
+  expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ action: "account-login" }));
 });

@@ -1,3 +1,4 @@
+import { Account } from "./Account";
 import { t } from "../../i18n";
 import type { Actions } from "../../app/use-actions";
 export function Setup({ actions }: { actions: Actions }) {
@@ -34,6 +35,7 @@ export function Setup({ actions }: { actions: Actions }) {
           {t("setup.startYourJourney")}</button>
         <p className="hint">{t("setup.identityHelp")}</p>
       </form>
+      <Account actions={actions} />
     </section>
   );
 }

@@ -65,7 +65,7 @@ func user(t *testing.T, server *httptest.Server, name string) *client.API {
 	must(t, err)
 	a := client.NewAPI(i)
 	a.HTTP = server.Client()
-	must(t, a.Authenticate(context.Background()))
+	must(t, a.RegisterGuest(context.Background()))
 	return a
 }
 func create(t *testing.T, a *client.API) model.RoomResult {

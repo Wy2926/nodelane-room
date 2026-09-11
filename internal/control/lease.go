@@ -29,6 +29,13 @@ func (s *Store) issueLease(ctx context.Context, tx pgx.Tx, ca *pki.Authority, ro
 		if expires.Before(until) {
 			until = expires
 		}
+		var grant *time.Time
+		if err = tx.QueryRow(ctx, "SELECT expires_at FROM user_devices WHERE device_id=$1", device).Scan(&grant); err != nil {
+			return out, err
+		}
+		if grant != nil && grant.Before(until) {
+			until = *grant
+		}
 		groups = []string{"room:" + room}
 		out.RoomID = room
 		if _, err = tx.Exec(ctx, "UPDATE members SET last_seen=now() WHERE room_id=$1 AND device_id=$2", room, device); err != nil {
@@ -92,14 +99,18 @@ func (s *Store) nodeLease(ctx context.Context, ca *pki.Authority, device, key, r
 		if err != nil || (n.State != "active" && n.State != "draining") {
 			return ErrForbidden
 		}
-		var obsolete bool
-		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM idempotency i LEFT JOIN certificates c ON c.fingerprint=i.response->>'fingerprint' WHERE i.device_id=$1 AND i.key=$2 AND (c.fingerprint IS NULL OR c.revoked OR c.expires_at<=now()))`, device, key).Scan(&obsolete)
-		if err != nil {
-			return err
-		}
-		if obsolete {
-			return ErrConflict
-		}
-		return nil
+		return validCachedLease(ctx, tx, device, key)
 	}, func(tx pgx.Tx) (any, error) { return s.issueLease(ctx, tx, ca, "", device, in) })
+}
+
+func validCachedLease(ctx context.Context, tx pgx.Tx, device, key string) error {
+	var obsolete bool
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM idempotency i LEFT JOIN certificates c ON c.fingerprint=i.response->>'fingerprint' WHERE i.device_id=$1 AND i.key=$2 AND i.expires_at>now() AND (c.fingerprint IS NULL OR c.revoked OR c.expires_at<=now()))`, device, key).Scan(&obsolete)
+	if err != nil {
+		return err
+	}
+	if obsolete {
+		return ErrConflict
+	}
+	return nil
 }

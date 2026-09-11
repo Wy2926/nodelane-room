@@ -3,31 +3,46 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"github.com/nodelane/nodelane-room/internal/localapi"
 
 	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/device"
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
 func (r *Runtime) Init(ctx context.Context, server, name string) (string, error) {
 	r.op.Lock()
 	defer r.op.Unlock()
-	if r.api != nil {
+	if r.api != nil && !r.identity.PendingGuest {
 		return "", localapi.Failure("already_initialized", "device is already initialized")
 	}
 	i, err := device.NewIdentity(server, name)
+	if r.identity.PendingGuest && r.identity.Server == server && r.identity.Name == name {
+		i = r.identity
+		err = nil
+	}
 	if err != nil {
 		return "", localapi.Failure("invalid_request", err.Error())
+	}
+	if err = r.clearLogin(); err != nil {
+		return "", err
+	}
+	i.PendingGuest = true
+	if err = r.persist(i); err != nil {
+		return "", err
 	}
 	a := client.NewAPI(i)
 	if err = a.Authenticate(ctx); err != nil {
 		return "", err
 	}
+	i.PendingGuest = false
 	if err = r.persist(i); err != nil {
 		return "", err
 	}
 	r.api = a
+	r.stateMu.Lock()
+	r.status.User = a.Account()
+	r.stateMu.Unlock()
 	r.Wake()
 	return i.ID(), nil
 }

@@ -13,7 +13,7 @@ import (
 
 func readRoom(ctx context.Context, tx pgx.Tx, id string) (model.Room, error) {
 	var r model.Room
-	err := tx.QueryRow(ctx, "SELECT r.id,r.name,r.owner_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game WHERE r.id=$1", id).Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName)
+	err := tx.QueryRow(ctx, "SELECT r.id,r.name,r.owner_user_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game WHERE r.id=$1", id).Scan(&r.ID, &r.Name, &r.OwnerUserID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName)
 	return r, noRows(err)
 }
 
@@ -23,7 +23,7 @@ func (s *Store) OwnedRooms(ctx context.Context, device string) ([]model.Room, er
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, "SELECT id FROM rooms WHERE owner_id=$1 AND NOT closed AND expires_at>now() ORDER BY expires_at DESC,id LIMIT 500", device)
+	rows, err := tx.Query(ctx, "SELECT id FROM rooms WHERE owner_user_id=(SELECT user_id FROM user_devices WHERE device_id=$1) AND NOT closed AND expires_at>now() ORDER BY expires_at DESC,id LIMIT 500", device)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,11 @@ func (s *Store) RoomManagement(ctx context.Context, roomID, device string) (mode
 	if out.Room, err = readRoom(ctx, tx, roomID); err != nil {
 		return out, err
 	}
-	if out.Room.OwnerID != device {
+	u, err := playerUser(ctx, tx, device)
+	if err != nil {
+		return out, err
+	}
+	if out.Room.OwnerUserID != u.ID {
 		return out, ErrForbidden
 	}
 	if err = tx.QueryRow(ctx, "SELECT now()").Scan(&out.ServerTime); err != nil {
@@ -68,7 +72,7 @@ func (s *Store) RoomManagement(ctx context.Context, roomID, device string) (mode
 }
 func (s *Store) available(ctx context.Context, tx pgx.Tx, device string) error {
 	var used bool
-	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM members WHERE device_id=$1 AND active) OR EXISTS(SELECT 1 FROM node_bindings WHERE device_id=$1)", device).Scan(&used)
+	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM members WHERE user_id=(SELECT user_id FROM user_devices WHERE device_id=$1) AND active) OR EXISTS(SELECT 1 FROM node_bindings WHERE device_id=$1)", device).Scan(&used)
 	if err != nil {
 		return err
 	}
@@ -82,7 +86,7 @@ func (s *Store) addMember(ctx context.Context, tx pgx.Tx, room, device string) e
 		return err
 	}
 	var banned bool
-	err := tx.QueryRow(ctx, "SELECT banned FROM members WHERE room_id=$1 AND device_id=$2", room, device).Scan(&banned)
+	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM room_bans WHERE room_id=$1 AND user_id=(SELECT user_id FROM user_devices WHERE device_id=$2))", room, device).Scan(&banned)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
@@ -105,7 +109,7 @@ func (s *Store) addMember(ctx context.Context, tx pgx.Tx, room, device string) e
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, "INSERT INTO members(room_id,device_id,ip) VALUES($1,$2,$3) ON CONFLICT(room_id,device_id) DO UPDATE SET ip=EXCLUDED.ip,active=true,last_seen=now()", room, device, ip)
+	_, err = tx.Exec(ctx, "INSERT INTO members(room_id,device_id,user_id,ip) VALUES($1,$2,(SELECT user_id FROM user_devices WHERE device_id=$2),$3) ON CONFLICT(room_id,device_id) DO UPDATE SET ip=EXCLUDED.ip,active=true,last_seen=now()", room, device, ip)
 	if err != nil {
 		return err
 	}
@@ -144,7 +148,7 @@ func (s *Store) createRoom(ctx context.Context, tx pgx.Tx, device string, in mod
 		return out, ErrForbidden
 	}
 	id := randomID()
-	_, err = tx.Exec(ctx, "INSERT INTO rooms(id,name,owner_id,game,capacity,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '24 hours')", id, in.Name, device, in.Game, model.RoomCapacity)
+	_, err = tx.Exec(ctx, "INSERT INTO rooms(id,name,owner_user_id,game,capacity,expires_at) VALUES($1,$2,(SELECT user_id FROM user_devices WHERE device_id=$3),$4,$5,now()+interval '24 hours')", id, in.Name, device, in.Game, model.RoomCapacity)
 	if err != nil {
 		return out, err
 	}
@@ -214,7 +218,7 @@ func (s *Store) roomAction(ctx context.Context, tx pgx.Tx, room, device, action 
 		if err := revoke(ctx, tx, room, in.DeviceID); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, "UPDATE members SET banned=true WHERE room_id=$1 AND device_id=$2", room, in.DeviceID); err != nil {
+		if err := banMember(ctx, tx, room, in.DeviceID); err != nil {
 			return nil, err
 		}
 	case "transfer":
@@ -224,7 +228,7 @@ func (s *Store) roomAction(ctx context.Context, tx pgx.Tx, room, device, action 
 		if err := activeMember(ctx, tx, room, in.DeviceID); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec(ctx, "UPDATE rooms SET owner_id=$2 WHERE id=$1", room, in.DeviceID); err != nil {
+		if _, err := tx.Exec(ctx, "UPDATE rooms SET owner_user_id=(SELECT user_id FROM user_devices WHERE device_id=$2) WHERE id=$1", room, in.DeviceID); err != nil {
 			return nil, err
 		}
 	case "close":
@@ -267,7 +271,7 @@ func (s *Store) Snapshot(ctx context.Context, room, device string) (model.Snapsh
 	}
 	if room != "" {
 		var permitted bool
-		err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1 AND owner_id=$2) OR EXISTS(SELECT 1 FROM members WHERE room_id=$1 AND device_id=$2)", room, device).Scan(&permitted)
+		err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1 AND owner_user_id=(SELECT user_id FROM user_devices WHERE device_id=$2)) OR EXISTS(SELECT 1 FROM members WHERE room_id=$1 AND device_id=$2)", room, device).Scan(&permitted)
 		if err != nil {
 			return out, err
 		}
@@ -315,13 +319,13 @@ func (s *Store) Snapshot(ctx context.Context, room, device string) (model.Snapsh
 }
 
 func readRoomMembers(ctx context.Context, tx pgx.Tx, room string) ([]model.Member, error) {
-	rows, err := tx.Query(ctx, "SELECT m.device_id,d.name,m.ip,m.last_seen,m.mac FROM members m JOIN devices d ON d.id=m.device_id WHERE m.room_id=$1 AND m.active ORDER BY m.device_id", room)
+	rows, err := tx.Query(ctx, "SELECT m.device_id,u.name,m.ip,m.last_seen,m.mac,m.user_id FROM members m JOIN users u ON u.id=m.user_id JOIN user_devices d ON d.device_id=m.device_id WHERE m.room_id=$1 AND m.active AND u.state='active' AND NOT d.revoked AND (d.expires_at IS NULL OR d.expires_at>now()) ORDER BY m.device_id", room)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.Member, error) {
 		var out model.Member
-		err := row.Scan(&out.DeviceID, &out.Name, &out.IP, &out.LastSeen, &out.MAC)
+		err := row.Scan(&out.DeviceID, &out.Name, &out.IP, &out.LastSeen, &out.MAC, &out.UserID)
 		return out, err
 	})
 }
@@ -344,7 +348,7 @@ func (s *Store) adminRoomAction(ctx context.Context, tx pgx.Tx, actor, room, act
 			return nil, err
 		}
 		if err = revoke(ctx, tx, room, device); err == nil {
-			_, err = tx.Exec(ctx, "UPDATE members SET banned=true WHERE room_id=$1 AND device_id=$2", room, device)
+			err = banMember(ctx, tx, room, device)
 		}
 	default:
 		return nil, ErrInvalid

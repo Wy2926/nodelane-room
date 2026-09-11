@@ -21,6 +21,28 @@ func (r *Runtime) step(ctx context.Context) error {
 		return nil
 	}
 	i := r.identity
+	if !i.Node {
+		user, err := r.api.RefreshAccount(ctx)
+		if err != nil {
+			if client.IsDenied(err) {
+				r.netMu.Lock()
+				r.stopNetworkLocked()
+				r.snapshot = model.Snapshot{}
+				r.netMu.Unlock()
+			}
+			return err
+		}
+		if i.PendingGuest {
+			i.PendingGuest = false
+			if err := r.persist(i); err != nil {
+				return err
+			}
+		}
+		r.stateMu.Lock()
+		r.status.User = user
+		r.status.Name = user.Name
+		r.stateMu.Unlock()
+	}
 	if i.RoomID == "" && !i.Node {
 		r.netMu.Lock()
 		r.stopNetworkLocked()

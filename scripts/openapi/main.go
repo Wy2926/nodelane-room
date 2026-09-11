@@ -103,7 +103,7 @@ func run() error {
 	generated = map[string]bool{}
 	schema(reflect.TypeOf(model.NetworkSample{}))
 	schema(reflect.TypeOf(model.TelemetrySnapshot{}))
-	for _, v := range []any{model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
+	for _, v := range []any{model.User{}, model.UserDetail{}, model.UserPage{}, model.UserAction{}, model.LoginStart{}, model.LoginAttempt{}, model.LoginClaim{}, model.LoginResult{}, model.OIDCSettings{}, model.Session{}, model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
 		schema(reflect.TypeOf(v))
 	}
 	schema(reflect.TypeOf(model.RoomManagement{}))
@@ -115,7 +115,7 @@ func run() error {
 	paths := doc["paths"].(map[string]any)
 
 	paths["/v2/auth/verify"].(M)["post"].(M)["summary"] = "Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce"
-	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh database schema version 4 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
+	doc["info"] = M{"title": "NodeLane Room V2", "version": model.Version, "description": "Fresh database schema version 5 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
 	str := M{"type": "string"}
 	empty := object(M{})
 	ok := object(M{"ok": M{"type": "boolean", "enum": []bool{true}}}, "ok")
@@ -159,6 +159,36 @@ func run() error {
 		}
 		paths[path].(map[string]any)[method] = op
 	}
+	add("/v2/auth/guest/challenge", "post", "Begin explicit guest registration; 100 requests per source IP per hour", "", ref("ChallengeRequest"), ref("Challenge"), false)
+	add("/v2/auth/guest/verify", "post", "Prove the device key and atomically create a guest user; existing device proofs cannot change ownership or restore revoked grants", "", ref("VerifyRequest"), ref("Session"), false)
+	add("/v2/auth/challenge", "post", "Challenge an existing authorized account device; never creates a player account", "", ref("ChallengeRequest"), ref("Challenge"), false)
+	add("/v2/auth/verify", "post", "Verify player-scoped device proof against active user and nonrevoked device grant", "", ref("VerifyRequest"), ref("Session"), false)
+	add("/v2/me", "get", "Current account, distinct from the device and paid entitlements", "Bearer", nil, ref("User"), false)
+	add("/v2/me/logout", "post", "Revoke this registered account device and its live network authorization; guest must link first", "Bearer", empty, ok, true)
+	add("/v2/me/takeover", "post", "Explicitly release this account's other devices from rooms; current device can then join", "Bearer", empty, ok, true)
+	add("/v2/me/identity", "post", "Link one OIDC identity to the authenticated guest without changing user ID; identity conflict never merges accounts", "Bearer", ref("LoginStart"), ref("LoginAttempt"), false)
+	add("/v2/auth/oidc/start", "post", "Begin browser login for a new device key; 5-minute transaction", "", ref("LoginStart"), ref("LoginAttempt"), false)
+	add("/v2/auth/oidc/claim", "post", "Poll and consume login using the original device signature and private proof", "", ref("LoginClaim"), ref("LoginResult"), false)
+	add("/v2/admin/oidc", "get", "Read the configured issuer, client ID and enabled state; never returns the secret", "AdminCookie", nil, ref("OIDCSettings"), false)
+	add("/v2/admin/oidc", "put", "Configure one OIDC provider and invalidate pending logins; omitted secret retains the credential only for the same issuer and client ID", "AdminCookie", ref("OIDCSettings"), ok, true)
+	add("/v2/admin/users", "get", "List 50 users ordered by ID, optional q nickname/ID and after cursor", "AdminCookie", nil, ref("UserPage"), false)
+	paths["/v2/admin/users"].(M)["get"].(M)["parameters"] = []any{M{"name": "q", "in": "query", "schema": str}, M{"name": "after", "in": "query", "schema": str}}
+	add("/v2/admin/users/{user}", "get", "Consistent account, devices, up to 100 rooms and up to 100 active session metadata; no credentials", "AdminCookie", nil, ref("UserDetail"), false)
+	add("/v2/admin/users/{user}/actions", "post", "Enable, disable, delete, logout or revoke-device; reason required, disable/delete close owned rooms and revoke network authority atomically", "AdminCookie", ref("UserAction"), ok, true)
+	for _, route := range []struct{ path, method string }{{"browser", "get"}, {"callback", "get"}, {"confirm", "post"}} {
+		path := "/v2/auth/oidc/" + route.path
+		add(path, route.method, "OIDC browser flow; browser-bound state, PKCE S256, nonce, and explicit device confirmation", "", nil, str, false)
+		paths[path].(M)[route.method].(M)["responses"].(M)["200"] = M{"description": "Escaped HTML confirmation or completion page", "content": M{"text/html": M{"schema": str}}}
+		paths[path].(M)[route.method].(M)["responses"].(M)["303"] = M{"description": "Redirect to configured OIDC authorization endpoint"}
+	}
+	paths["/v2/auth/oidc/browser"].(M)["get"].(M)["parameters"] = []any{M{"name": "id", "in": "query", "required": true, "schema": str}}
+	paths["/v2/auth/oidc/callback"].(M)["get"].(M)["parameters"] = []any{M{"name": "state", "in": "query", "required": true, "schema": str}, M{"name": "code", "in": "query", "schema": str}, M{"name": "error", "in": "query", "schema": str}}
+	paths["/v2/auth/oidc/confirm"].(M)["post"].(M)["requestBody"] = M{"required": true, "content": M{"application/x-www-form-urlencoded": M{"schema": object(M{"id": str, "csrf": str}, "id", "csrf")}}}
+	schemas["LoginStart"].(M)["description"] = "proof is SHA256 of a 64-hex-character random private proof. Sign UTF8(nodelane-login-start:<device_id>:<proof_hash>) with the device Ed25519 key. Only a valid device signature can start enrollment."
+	schemas["LoginClaim"].(M)["description"] = "proof is the original private proof; sign UTF8(nodelane-login-claim:<id>:<proof>). A successful claim is consumed once. Never log proof or returned sessions."
+	schemas["OIDCSettings"].(M)["properties"].(M)["client_secret"].(M)["writeOnly"] = true
+	schemas["Room"].(M)["properties"].(M)["capacity"].(M)["default"] = model.RoomCapacity
+
 	delete(paths, "/v2/admin/bootstrap")
 	add("/v2/rooms", "get", "This player's owned, open, unexpired rooms; newest expiry first, at most 500", "Bearer", nil, M{"type": "array", "items": ref("Room")}, false)
 	add("/v2/rooms/{room}/manage", "get", "Owner-only consistent room, game, member and game-policy view, including after leaving; never grants tunnel authority", "Bearer", nil, ref("RoomManagement"), false)
@@ -166,7 +196,7 @@ func run() error {
 		"transport":        "HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener",
 		"protocol_version": 2,
 		"rpc": M{"method": "POST", "path": "/rpc", "max_request_bytes": 65536, "max_response_bytes": 4 << 20,
-			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
+			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
 			"error":     object(M{"code": str, "error": str}, "code", "error"),
 			"responses": M{"status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": M{"type": "array", "items": ref("Room")}, "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
 		"images": M{"method": "GET", "path": "/game-images/{game}/{kind}", "kind": []string{"cover", "background"}, "max_response_bytes": 5 << 20, "description": "Public JPEG/PNG fetched only from the configured control origin, without session or redirects; at most two concurrent downloads; never part of status."},
@@ -178,11 +208,11 @@ func run() error {
 	paths["/v2/admin/games/import"].(M)["post"].(M)["description"] = "Only https://store.steampowered.com/app/<id>/ links; fixed store API and HTTPS steamstatic.com artwork, public resolved addresses, bounded redirects/downloads. No API key. 10 imports/admin/minute, at most 500 games. External failure stores nothing; a completed retry returns its cached response. Steam Store appdetails availability and fields may change. Ports are configured manually after import."
 	add("/v2/admin/games/{game}", "put", "Update name, TCP/UDP port intervals, Ethernet LAN policy and enabled state using the original revision", "AdminCookie", ref("GameUpdateRequest"), ref("Game"), true)
 	add("/v2/rooms/{room}/heartbeat", "post", "Renew membership; LAN rooms require lan_version=1 and register the local unicast MAC", "Bearer", ref("HeartbeatRequest"), ok, true)
-	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 4; no schema migration. Disabling withdraws game authorization."
+	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 5; no schema migration. Disabling withdraws game authorization."
 	schemas["RoomRequest"].(M)["properties"].(M)["game"].(M)["description"] = "Enabled game ID from GET /v2/games, or custom; no game-specific discovery."
 	add("/v2/admin/setup", "get", "Check local database configuration and loaded control plane readiness", "", nil, object(M{"initialized": M{"type": "boolean"}, "configured": M{"type": "boolean"}}, "initialized", "configured"), false)
 	add("/v2/admin/setup", "post", "Use a 10 minute local console code to create a control plane or connect an independent instance", "", setup, object(M{"ok": M{"type": "boolean"}, "public_url": str}, "ok", "public_url"), false)
-	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 4), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
+	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 5), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
 	add("/v2/admin/login", "post", "Login; rate limited to 8/IP and 30 total per minute", "", credentials, session, false)
 	add("/v2/admin/session", "get", "Restore current session and stable CSRF token", "AdminCookie", nil, session, false)
 	add("/v2/admin/logout", "post", "Revoke current session", "AdminCookie", empty, ok, false)

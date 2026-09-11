@@ -400,6 +400,66 @@ components:
                 - relay_ips
                 - probe_at
             type: object
+        LoginAttempt:
+            properties:
+                expires_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                url:
+                    type: string
+            required:
+                - id
+                - url
+                - expires_at
+            type: object
+        LoginClaim:
+            description: proof is the original private proof; sign UTF8(nodelane-login-claim:<id>:<proof>). A successful claim is consumed once. Never log proof or returned sessions.
+            properties:
+                id:
+                    type: string
+                proof:
+                    type: string
+                signature:
+                    format: byte
+                    type: string
+            required:
+                - id
+                - proof
+                - signature
+            type: object
+        LoginResult:
+            properties:
+                session:
+                    $ref: '#/components/schemas/Session'
+                state:
+                    type: string
+            required:
+                - state
+            type: object
+        LoginStart:
+            description: proof is SHA256 of a 64-hex-character random private proof. Sign UTF8(nodelane-login-start:<device_id>:<proof_hash>) with the device Ed25519 key. Only a valid device signature can start enrollment.
+            properties:
+                device_id:
+                    type: string
+                name:
+                    type: string
+                proof:
+                    type: string
+                public_key:
+                    format: byte
+                    type: string
+                signature:
+                    format: byte
+                    type: string
+            required:
+                - signature
+                - device_id
+                - public_key
+                - name
+                - proof
+            type: object
         Member:
             properties:
                 device_id:
@@ -413,7 +473,10 @@ components:
                     type: string
                 name:
                     type: string
+                user_id:
+                    type: string
             required:
+                - user_id
                 - device_id
                 - name
                 - ip
@@ -650,6 +713,22 @@ components:
                 - report
                 - results
             type: object
+        OIDCSettings:
+            properties:
+                client_id:
+                    type: string
+                client_secret:
+                    type: string
+                    writeOnly: true
+                enabled:
+                    type: boolean
+                issuer:
+                    type: string
+            required:
+                - issuer
+                - client_id
+                - enabled
+            type: object
         OK:
             additionalProperties: false
             properties:
@@ -697,6 +776,7 @@ components:
         Room:
             properties:
                 capacity:
+                    default: 4
                     format: int64
                     type: integer
                 closed:
@@ -712,7 +792,7 @@ components:
                     type: string
                 name:
                     type: string
-                owner_id:
+                owner_user_id:
                     type: string
                 revision:
                     format: int64
@@ -720,7 +800,7 @@ components:
             required:
                 - id
                 - name
-                - owner_id
+                - owner_user_id
                 - game
                 - game_name
                 - revision
@@ -769,7 +849,6 @@ components:
                 - room
             type: object
         Session:
-            additionalProperties: false
             properties:
                 device_id:
                     type: string
@@ -778,6 +857,8 @@ components:
                     type: string
                 token:
                     type: string
+                user:
+                    $ref: '#/components/schemas/User'
             required:
                 - token
                 - expires_at
@@ -854,6 +935,8 @@ components:
                 snapshot_at:
                     format: date-time
                     type: string
+                user:
+                    $ref: '#/components/schemas/User'
                 version:
                     type: string
             required:
@@ -927,6 +1010,103 @@ components:
                 - download_bytes
                 - scope
             type: object
+        User:
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                kind:
+                    type: string
+                name:
+                    type: string
+                state:
+                    type: string
+            required:
+                - id
+                - name
+                - kind
+                - state
+                - created_at
+            type: object
+        UserAction:
+            properties:
+                action:
+                    type: string
+                device_id:
+                    type: string
+                reason:
+                    type: string
+            required:
+                - action
+                - reason
+            type: object
+        UserDetail:
+            properties:
+                devices:
+                    items:
+                        $ref: '#/components/schemas/UserDevice'
+                    type: array
+                rooms:
+                    items:
+                        $ref: '#/components/schemas/Room'
+                    type: array
+                sessions:
+                    items:
+                        $ref: '#/components/schemas/UserSession'
+                    type: array
+                user:
+                    $ref: '#/components/schemas/User'
+            required:
+                - user
+                - devices
+                - rooms
+                - sessions
+            type: object
+        UserDevice:
+            properties:
+                device_id:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+                last_seen:
+                    format: date-time
+                    type: string
+                name:
+                    type: string
+                revoked:
+                    type: boolean
+            required:
+                - device_id
+                - name
+                - revoked
+                - last_seen
+            type: object
+        UserPage:
+            properties:
+                next:
+                    type: string
+                users:
+                    items:
+                        $ref: '#/components/schemas/User'
+                    type: array
+            required:
+                - users
+                - next
+            type: object
+        UserSession:
+            properties:
+                device_id:
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+            required:
+                - device_id
+                - expires_at
+            type: object
         VerifyRequest:
             additionalProperties: false
             properties:
@@ -955,7 +1135,7 @@ components:
             scheme: bearer
             type: http
 info:
-    description: 'Fresh database schema version 4 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
+    description: 'Fresh database schema version 5 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
     title: NodeLane Room V2
     version: 0.2.0
 openapi: 3.0.3
@@ -1099,7 +1279,7 @@ paths:
                 - Admin
     /v2/admin/games/{game}:
         put:
-            description: TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 4; no schema migration. Disabling withdraws game authorization.
+            description: TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 5; no schema migration. Disabling withdraws game authorization.
             parameters:
                 - in: path
                   name: game
@@ -1588,6 +1768,87 @@ paths:
             summary: Issue one-use temporary key; replaces prior key, plaintext shown only once and never cached
             tags:
                 - Admin
+    /v2/admin/oidc:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/OIDCSettings'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Read the configured issuer, client ID and enabled state; never returns the secret
+            tags:
+                - Admin
+        put:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/OIDCSettings'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Configure one OIDC provider and invalidate pending logins; omitted secret retains the credential only for the same issuer and client ID
+            tags:
+                - Admin
     /v2/admin/password:
         post:
             parameters:
@@ -1812,7 +2073,7 @@ paths:
             tags:
                 - Admin
         post:
-            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 4), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
+            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 5), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
             parameters:
                 - in: header
                   name: Origin
@@ -1982,10 +2243,134 @@ paths:
             summary: 'Current instance memory only: 60-second observations, stale after 15 seconds; no durable cursor'
             tags:
                 - Admin
+    /v2/admin/users:
+        get:
+            parameters:
+                - in: query
+                  name: q
+                  schema:
+                    type: string
+                - in: query
+                  name: after
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserPage'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: List 50 users ordered by ID, optional q nickname/ID and after cursor
+            tags:
+                - Admin
+    /v2/admin/users/{user}:
+        get:
+            parameters:
+                - in: path
+                  name: user
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserDetail'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Consistent account, devices, up to 100 rooms and up to 100 active session metadata; no credentials
+            tags:
+                - Admin
+    /v2/admin/users/{user}/actions:
+        post:
+            parameters:
+                - in: path
+                  name: user
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UserAction'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Enable, disable, delete, logout or revoke-device; reason required, disable/delete close owned rooms and revoke network authority atomically
+            tags:
+                - Admin
     /v2/auth/challenge:
         post:
-            operationId: challenge
-            parameters: []
             requestBody:
                 content:
                     application/json:
@@ -1999,16 +2384,51 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Challenge'
                     description: Success
-                default:
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
                     $ref: '#/components/responses/Error'
             security: []
-            summary: Request a one-minute single-use challenge
+            summary: Challenge an existing authorized account device; never creates a player account
             tags:
                 - Player
-    /v2/auth/verify:
+    /v2/auth/guest/challenge:
         post:
-            operationId: verify
-            parameters: []
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ChallengeRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Challenge'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Begin explicit guest registration; 100 requests per source IP per hour
+            tags:
+                - Player
+    /v2/auth/guest/verify:
+        post:
             requestBody:
                 content:
                     application/json:
@@ -2022,10 +2442,215 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/Session'
                     description: Success
-                default:
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
                     $ref: '#/components/responses/Error'
             security: []
-            summary: Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce
+            summary: Prove the device key and atomically create a guest user; existing device proofs cannot change ownership or restore revoked grants
+            tags:
+                - Player
+    /v2/auth/oidc/browser:
+        get:
+            parameters:
+                - in: query
+                  name: id
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/html:
+                            schema:
+                                type: string
+                    description: Escaped HTML confirmation or completion page
+                "303":
+                    description: Redirect to configured OIDC authorization endpoint
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: OIDC browser flow; browser-bound state, PKCE S256, nonce, and explicit device confirmation
+            tags:
+                - Player
+    /v2/auth/oidc/callback:
+        get:
+            parameters:
+                - in: query
+                  name: state
+                  required: true
+                  schema:
+                    type: string
+                - in: query
+                  name: code
+                  schema:
+                    type: string
+                - in: query
+                  name: error
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        text/html:
+                            schema:
+                                type: string
+                    description: Escaped HTML confirmation or completion page
+                "303":
+                    description: Redirect to configured OIDC authorization endpoint
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: OIDC browser flow; browser-bound state, PKCE S256, nonce, and explicit device confirmation
+            tags:
+                - Player
+    /v2/auth/oidc/claim:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginClaim'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LoginResult'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Poll and consume login using the original device signature and private proof
+            tags:
+                - Player
+    /v2/auth/oidc/confirm:
+        post:
+            requestBody:
+                content:
+                    application/x-www-form-urlencoded:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                csrf:
+                                    type: string
+                                id:
+                                    type: string
+                            required:
+                                - id
+                                - csrf
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        text/html:
+                            schema:
+                                type: string
+                    description: Escaped HTML confirmation or completion page
+                "303":
+                    description: Redirect to configured OIDC authorization endpoint
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: OIDC browser flow; browser-bound state, PKCE S256, nonce, and explicit device confirmation
+            tags:
+                - Player
+    /v2/auth/oidc/start:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginStart'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LoginAttempt'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Begin browser login for a new device key; 5-minute transaction
+            tags:
+                - Player
+    /v2/auth/verify:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/VerifyRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Session'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Verify player-scoped device proof against active user and nonrevoked device grant
             tags:
                 - Player
     /v2/games:
@@ -2083,6 +2708,158 @@ paths:
                     $ref: '#/components/responses/Error'
             security: []
             summary: Downloaded public game artwork; image is cover or background
+            tags:
+                - Player
+    /v2/me:
+        get:
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/User'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Current account, distinct from the device and paid entitlements
+            tags:
+                - Player
+    /v2/me/identity:
+        post:
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginStart'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LoginAttempt'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Link one OIDC identity to the authenticated guest without changing user ID; identity conflict never merges accounts
+            tags:
+                - Player
+    /v2/me/logout:
+        post:
+            parameters:
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties: {}
+                            required: []
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Revoke this registered account device and its live network authorization; guest must link first
+            tags:
+                - Player
+    /v2/me/takeover:
+        post:
+            parameters:
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties: {}
+                            required: []
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Explicitly release this account's other devices from rooms; current device can then join
             tags:
                 - Player
     /v2/node/auth/challenge:
@@ -2825,6 +3602,12 @@ x-local-api:
                 action:
                     enum:
                         - init
+                        - account-login
+                        - account-link
+                        - account-poll
+                        - account-cancel
+                        - account-logout
+                        - account-takeover
                         - status
                         - games
                         - rooms

@@ -9,6 +9,7 @@ import { Feedback } from "./Feedback";
 import type { Page } from "./navigation";
 import { Empty } from "../shared/ui/Empty";
 import { Setup } from "../features/device/Setup";
+import { Account } from "../features/device/Account";
 import { Settings } from "../features/device/Settings";
 import { Diagnostics } from "../features/diagnostics/Diagnostics";
 import { GameLibrary } from "../features/catalog/GameLibrary";
@@ -51,7 +52,8 @@ function Client() {
       {page === "settings" && <Settings status={service.status} actions={actions} usable={!!service.status && !service.error && !actions.busy} />}
       {page === "doctor" && <Diagnostics status={service.status} actions={actions} usable={!!service.status && !service.error && !actions.busy} serviceError={service.error} />}
       {service.status && !service.status.device_id && <RoomDialogs actions={actions} status={service.status} serviceError={service.error} onJoined={() => setPage("rooms")} />}
-      {service.status?.device_id && (
+      {service.status?.control === "signed_out" && page !== "settings" && page !== "doctor" && <Account status={service.status} actions={actions} />}
+      {service.status?.device_id && service.status.control !== "signed_out" && (
         <Session
           status={service.status}
           serviceError={service.error}

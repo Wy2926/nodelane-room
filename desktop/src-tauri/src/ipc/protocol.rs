@@ -20,6 +20,12 @@ impl Failure {
 #[serde(rename_all = "kebab-case")]
 pub enum Action {
     Status,
+    AccountLogin,
+    AccountLink,
+    AccountPoll,
+    AccountCancel,
+    AccountLogout,
+    AccountTakeover,
     Init,
     Games,
     Rooms,

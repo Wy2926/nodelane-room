@@ -80,13 +80,13 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err := tx.Query(ctx, "SELECT r.id,r.name,r.owner_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game ORDER BY r.expires_at DESC LIMIT 500")
+	rows, err := tx.Query(ctx, "SELECT r.id,r.name,r.owner_user_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game ORDER BY r.expires_at DESC LIMIT 500")
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var r model.Room
-		if err = rows.Scan(&r.ID, &r.Name, &r.OwnerID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName); err != nil {
+		if err = rows.Scan(&r.ID, &r.Name, &r.OwnerUserID, &r.Game, &r.Revision, &r.Capacity, &r.ExpiresAt, &r.Closed, &r.GameName); err != nil {
 			rows.Close()
 			return out, err
 		}
