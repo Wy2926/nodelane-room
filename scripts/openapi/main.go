@@ -44,6 +44,8 @@ func schema(t reflect.Type) M {
 			return M{"type": "string", "format": "byte"}
 		}
 		return M{"type": "array", "items": schema(t.Elem())}
+	case reflect.Map:
+		return M{"type": "object", "additionalProperties": schema(t.Elem())}
 	case reflect.Struct:
 		name := t.Name()
 		if generated[name] {
@@ -109,13 +111,16 @@ func run() error {
 	schema(reflect.TypeOf(model.RoomManagement{}))
 	schema(reflect.TypeOf(model.HeartbeatRequest{}))
 	schema(reflect.TypeOf(model.Status{}))
+	for _, v := range []any{model.UpdateOverview{}, model.UpdateCheck{}, model.UpdateRepository{}, model.ClientReport{}} {
+		schema(reflect.TypeOf(v))
+	}
 	schemes := components["securitySchemes"].(map[string]any)
 	schemes["AdminCookie"] = M{"type": "apiKey", "in": "cookie", "name": "__Host-nlroom-admin", "description": "12 hour random session; 30 minute idle timeout. Secure, HttpOnly, SameSite=Strict. All admin writes also require exact Origin and X-CSRF-Token."}
 	schemes["NodeBearer"] = M{"type": "http", "scheme": "bearer", "description": "One-hour session scoped to the current nonrevoked node identity binding. Cannot authorize player/admin APIs."}
 	paths := doc["paths"].(map[string]any)
 
 	paths["/v2/auth/verify"].(M)["post"].(M)["summary"] = "Verify Ed25519 signature over UTF8(nodelane-auth-v2:player:<id>:) followed by the raw nonce"
-	doc["info"] = M{"title": "NodeLane Room V2", "version": model.ControlVersion, "description": "Fresh database schema version 5 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
+	doc["info"] = M{"title": "NodeLane Room V2", "version": model.ControlVersion, "description": "Fresh database schema version 6 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials."}
 	str := M{"type": "string"}
 	empty := object(M{})
 	ok := object(M{"ok": M{"type": "boolean", "enum": []bool{true}}}, "ok")
@@ -164,6 +169,23 @@ func run() error {
 	add("/v2/auth/challenge", "post", "Challenge an existing authorized account device; never creates a player account", "", ref("ChallengeRequest"), ref("Challenge"), false)
 	add("/v2/auth/verify", "post", "Verify player-scoped device proof against active user and nonrevoked device grant", "", ref("VerifyRequest"), ref("Session"), false)
 	add("/v2/me", "get", "Current account, distinct from the device and paid entitlements", "Bearer", nil, ref("User"), false)
+	add("/v2/client/report", "post", "Authenticated device service/GUI version and update result; independent of room membership", "Bearer", ref("ClientReport"), ok, true)
+	add("/v2/updates/check", "get", "Public update policy, signed TUF metadata and ordered HTTPS package URLs; no-store, 120/IP/minute", "", nil, ref("UpdateCheck"), false)
+	paths["/v2/updates/check"].(M)["get"].(M)["parameters"] = []any{M{"name": "version", "in": "query", "required": true, "schema": str}, M{"name": "os", "in": "query", "required": true, "schema": M{"type": "string", "enum": []string{"windows", "linux"}}}, M{"name": "arch", "in": "query", "required": true, "schema": M{"type": "string", "enum": []string{"amd64", "arm64"}}}, M{"name": "installed", "in": "query", "schema": M{"type": "string", "enum": []string{"1"}}, "description": "Retrieve the exact installed release for a verified Linux rollback package; includes published and paused releases."}}
+	add("/v2/admin/updates", "get", "Update sources, latest 200 releases, policies, version distribution, latest 100 device/release results and 100 devices", "AdminCookie", nil, ref("UpdateOverview"), false)
+	paths["/v2/admin/updates"].(M)["get"].(M)["parameters"] = []any{M{"name": "after", "in": "query", "schema": str}}
+	for _, v := range []struct{ path, model, summary string }{{"sources", "UpdateSource", "Save R2/S3/HTTPS configuration with original revision; secrets are encrypted and write-only"}, {"repository", "UpdateRepository", "Import at most 3 MiB signed TUF metadata with original revision; signature, expiry and monotonic trusted versions required"}, {"releases", "UpdateRelease", "Create immutable signed target draft or change notes/state with original revision; publication requires a verified enabled source"}, {"policies", "UpdatePolicy", "Set recommendation and optional minimum version/deadline per platform with original revision; empty release_id clears policy and preserves revision"}} {
+		add("/v2/admin/updates/"+v.path, "put", v.summary, "AdminCookie", ref(v.model), ref(v.model), true)
+	}
+	add("/v2/admin/updates/sources/{source}/test", "post", "Test stored source connectivity; does not verify a package or modify publication", "AdminCookie", empty, ok, false)
+	add("/v2/admin/updates/releases/{release}/sources/{source}", "post", "Verify the complete signed size and SHA256 of an existing object before recording a replica", "AdminCookie", empty, ok, false)
+	add("/v2/admin/updates/releases/{release}/sources/{source}", "put", "Upload immutable full package to R2/S3 and verify download; maximum signed size 2 GiB; repeat verifies existing object", "AdminCookie", nil, ok, false)
+	paths["/v2/admin/updates/releases/{release}/sources/{source}"].(M)["put"].(M)["requestBody"] = M{"required": true, "content": M{"application/octet-stream": M{"schema": M{"type": "string", "format": "binary"}}}}
+	for _, name := range []string{"access_key", "secret_key"} {
+		schemas["UpdateSource"].(M)["properties"].(M)[name].(M)["writeOnly"] = true
+	}
+	paths["/v2/admin/updates/repository"].(M)["put"].(M)["responses"].(M)["200"].(M)["content"].(M)["application/json"].(M)["schema"] = object(M{"revision": M{"type": "integer", "format": "int64"}}, "revision")
+	schemas["UpdatePolicy"].(M)["description"] = "At the deadline, below-minimum or unreported devices lose existing network grants and create/join/lease/heartbeat return update_required before idempotency replay. Update check, report, diagnostics and account management remain available. Versions are authenticated self-reports, not remote attestation."
 	add("/v2/me/logout", "post", "Revoke this registered account device and its live network authorization; guest must link first", "Bearer", empty, ok, true)
 	add("/v2/me/takeover", "post", "Explicitly release this account's other devices from rooms; current device can then join", "Bearer", empty, ok, true)
 	add("/v2/me/identity", "post", "Link one OIDC identity to the authenticated guest without changing user ID; identity conflict never merges accounts", "Bearer", ref("LoginStart"), ref("LoginAttempt"), false)
@@ -198,9 +220,9 @@ func run() error {
 		"transport":        "HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener",
 		"protocol_version": 2,
 		"rpc": M{"method": "POST", "path": "/rpc", "max_request_bytes": 65536, "max_response_bytes": 4 << 20,
-			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
+			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover", "update-status", "update-check", "update-install", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
 			"error":     object(M{"code": str, "error": str}, "code", "error"),
-			"responses": M{"status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": M{"type": "array", "items": ref("Room")}, "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
+			"responses": M{"update-status": ref("UpdateStatus"), "update-check": ref("UpdateStatus"), "update-install": object(M{"elevate": M{"type": "boolean"}}, "elevate"), "status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": M{"type": "array", "items": ref("Room")}, "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
 		"images": M{"method": "GET", "path": "/game-images/{game}/{kind}", "kind": []string{"cover", "background"}, "max_response_bytes": 5 << 20, "description": "Public JPEG/PNG fetched only from the configured control origin, without session or redirects; at most two concurrent downloads; never part of status."},
 	}
 	add("/v2/games", "get", "Enabled server game catalog; all games use the mandatory Ethernet LAN policy", "Bearer", nil, M{"type": "array", "items": ref("Game")}, false)
@@ -210,11 +232,11 @@ func run() error {
 	paths["/v2/admin/games/import"].(M)["post"].(M)["description"] = "Only https://store.steampowered.com/app/<id>/ links; fixed store API and HTTPS steamstatic.com artwork, public resolved addresses, bounded redirects/downloads. No API key. 10 imports/admin/minute, at most 500 games. External failure stores nothing; a completed retry returns its cached response. Steam Store appdetails availability and fields may change. Ports are configured manually after import."
 	add("/v2/admin/games/{game}", "put", "Update name, TCP/UDP port intervals, Ethernet LAN policy and enabled state using the original revision", "AdminCookie", ref("GameUpdateRequest"), ref("Game"), true)
 	add("/v2/rooms/{room}/heartbeat", "post", "Renew membership; LAN rooms require lan_version=1 and register the local unicast MAC", "Bearer", ref("HeartbeatRequest"), ok, true)
-	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 5; no schema migration. Disabling withdraws game authorization."
+	paths["/v2/admin/games/{game}"].(M)["put"].(M)["description"] = "TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 6; no schema migration. Disabling withdraws game authorization."
 	schemas["RoomRequest"].(M)["properties"].(M)["game"].(M)["description"] = "Enabled game ID from GET /v2/games, or custom; no game-specific discovery."
 	add("/v2/admin/setup", "get", "Check local database configuration and loaded control plane readiness", "", nil, object(M{"initialized": M{"type": "boolean"}, "configured": M{"type": "boolean"}}, "initialized", "configured"), false)
 	add("/v2/admin/setup", "post", "Use a 10 minute local console code to create a control plane or connect an independent instance", "", setup, object(M{"ok": M{"type": "boolean"}, "public_url": str}, "ok", "public_url"), false)
-	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 5), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
+	paths["/v2/admin/setup"].(M)["post"].(M)["description"] = "Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 6), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz."
 	add("/v2/admin/login", "post", "Login; rate limited to 8/IP and 30 total per minute", "", credentials, session, false)
 	add("/v2/admin/session", "get", "Restore current session and stable CSRF token", "AdminCookie", nil, session, false)
 	add("/v2/admin/logout", "post", "Revoke current session", "AdminCookie", empty, ok, false)

@@ -1,5 +1,5 @@
 # Capture the player's SID BEFORE UAC, including elevation using another admin account.
-param([switch]$Rollback, [string]$SourceDir = $PSScriptRoot, [switch]$Quiet)
+param([switch]$Rollback, [string]$SourceDir = $PSScriptRoot, [switch]$Quiet, [switch]$ManagedUpdate)
 $ErrorActionPreference = 'Stop'
 function Invoke-ElevatedInstaller([string]$Installer, [string]$OwnerSid, [string]$SourceDir, [switch]$Rollback, [switch]$Quiet) {
   $pipeName = 'NodeLaneRoom-install-' + [guid]::NewGuid().ToString('N')
@@ -31,6 +31,11 @@ try {
   $installer = Join-Path $PSScriptRoot 'install.ps1'
   $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
   $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
+  if ($ManagedUpdate) {
+    if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Managed updates require the elevated verified updater.' }
+    $ownerSid = (Get-Content -LiteralPath (Join-Path $env:ProgramData 'NodeLaneRoom/owner.sid') -Raw).Trim()
+    $null = [Security.Principal.SecurityIdentifier]::new($ownerSid)
+  }
   if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
     & $installer -OwnerSid $ownerSid -SourceDir $SourceDir -Rollback:$Rollback -Quiet:$Quiet
   } else {

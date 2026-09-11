@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/localapi"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/platform"
 )
 
@@ -87,11 +88,21 @@ func (r *Runtime) localHandler() http.Handler {
 		var out any
 		var err error
 		switch in.Action {
+		case "update-check", "update-status", "update-install", "update-cancel-install":
+			out, err = r.updateAction(req.Context(), in)
 		case "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover":
 			out, err = r.accountAction(req.Context(), in)
 		case "init":
 			out, err = r.Init(req.Context(), in.Server, in.Name)
 		case "status":
+			var report struct {
+				GUIVersion string `json:"gui_version"`
+			}
+			if json.Unmarshal(in.Body, &report) == nil && model.ValidVersion(report.GUIVersion) {
+				r.updateMu.Lock()
+				r.guiVersion = report.GUIVersion
+				r.updateMu.Unlock()
+			}
 			out = r.Status()
 		case "doctor":
 			out = r.Doctor()

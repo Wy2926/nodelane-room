@@ -3,7 +3,8 @@ import { t, getLanguage, setLanguage, translate, isLanguage } from "../../i18n";
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { ArrowClockwise, Check, Copy, Desktop, DownloadSimple, Info, Moon, Power, SlidersHorizontal } from "@phosphor-icons/react";
+import { Check, Copy, Desktop, DownloadSimple, Moon, Power, SlidersHorizontal } from "@phosphor-icons/react";
+import { Updates } from "./Updates";
 import type { Status } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
 import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
@@ -22,7 +23,6 @@ export function Settings({ status, actions, usable }: {
   const { busy, setBusy, setError, confirm, quit, copy } = actions;
   const [category, setCategory] = useState<typeof categories[number]["id"]>("preferences");
   const [autoStart, setAutoStart] = useState<boolean>();
-  const [updateRequested, setUpdateRequested] = useState(false);
   useEffect(() => {
     let active = true;
     if (isTauri()) void isEnabled().then((value) => { if (active) setAutoStart(value); }).catch(() => {});
@@ -82,9 +82,7 @@ export function Settings({ status, actions, usable }: {
           {category === "updates" && <section aria-labelledby="updates-title">
             <div className="settings-section-head"><h3 id="updates-title">{t("settings.versionAndUpdates")}</h3><p>{t("settings.updatesHelp")}</p></div>
             <div className="update-version"><span className="update-icon"><DownloadSimple size={36} weight="light" aria-hidden="true" /></span><div><span className="muted">NodeLane Room</span><h4>{t("settings.currentVersion")}<span className="mono">{clientVersion}</span></h4><p>{t("settings.serviceVersion")}<span className="mono">{status?.version || t("settings.unavailable")}</span></p></div></div>
-            <div className="update-action"><div><strong>{t("settings.checkForClientUpdates")}</strong><p>{t("settings.updatesUnavailable")}</p></div><button onClick={() => setUpdateRequested(true)}><ArrowClockwise size={19} aria-hidden="true" />{t("settings.checkForUpdates")}</button></div>
-            {updateRequested && <div className="update-message" role="status"><Info size={22} aria-hidden="true" /><p>{t("settings.updatesUnavailableHelp")}</p></div>}
-            <div className="settings-help"><h4>{t("settings.howToUpdate")}</h4><p>{t("settings.manualUpdateHelp")}</p></div>
+            <Updates />
           </section>}
           {category === "session" && <section aria-labelledby="session-title">
             <div className="settings-section-head"><h3 id="session-title">{t("settings.exitAndConnection")}</h3><p>{t("settings.chooseHowYouWantToSayGoodbyeFor")}</p></div>

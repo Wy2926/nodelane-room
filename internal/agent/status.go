@@ -19,6 +19,10 @@ func (r *Runtime) Status() model.Status {
 		s.Version = model.NodeVersion
 	}
 	s.LANVersion = model.LANVersion
+	if !r.nodeMode {
+		u := r.updateStatus()
+		s.Update = &u
+	}
 	r.netMu.Lock()
 	defer r.netMu.Unlock()
 	s.Room = r.snapshot.Room

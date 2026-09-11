@@ -1,0 +1,13 @@
+[Unit]
+Description=Install a verified NodeLane Room update
+After=network-online.target
+ConditionPathExists=/var/lib/nlroom/update-job.bin
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/nlroom/nlroom-update apply
+User=root
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+SendSIGKILL=no
+UMask=0077

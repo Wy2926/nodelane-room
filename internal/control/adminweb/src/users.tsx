@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Action, Card, Field, Table, date } from "./components";
 import type { API, Room } from "./types";
+import type { Software } from "./updates";
 
 type User = { id: string; name: string; kind: string; state: string; created_at: string };
 type UserPage = { users: User[]; next: string };
-type Detail = { user: User; devices: { device_id: string; name: string; revoked: boolean; last_seen: string; expires_at?: string }[]; rooms: Room[]; sessions: { device_id: string; expires_at: string }[] };
+type Detail = { user: User; devices: { device_id: string; name: string; revoked: boolean; last_seen: string; expires_at?: string; software?: Software }[]; rooms: Room[]; sessions: { device_id: string; expires_at: string }[] };
 type OIDC = { issuer: string; client_id: string; client_secret?: string; enabled: boolean };
 const kinds: Record<string, string> = { guest: "访客", registered: "正式" };
 const states: Record<string, string> = { active: "正常", disabled: "停用", deleted: "已删除" };
@@ -47,7 +48,7 @@ export function Users({ api }: { api: API }) {
       <label>操作原因<input value={reason} maxLength={500} onChange={e => setReason(e.target.value)} /></label>
       {detail.user.state !== "deleted" && <div className="actions"><Action run={() => act(detail.user.state === "active" ? "disable" : "enable")}>{detail.user.state === "active" ? "停用并关闭其房间" : "启用"}</Action><Action run={() => act("logout")}>撤销全部设备登录</Action><Action run={() => act("delete")}>逻辑删除并关闭其房间</Action></div>}
       <p>撤销未绑定账号的访客设备后，该访客将无法找回。停用或删除会关闭其拥有的房间，并断开相关连接。</p>
-      <Table heads={["设备", "标识", "状态", "最近登录", "授权截止", "操作"]} empty={!detail.devices.length}>{detail.devices.map(d => <tr key={d.device_id}><td>{d.name}</td><td>{d.device_id}</td><td>{d.revoked ? "已撤销" : "已登记"}</td><td>{date(d.last_seen)}</td><td>{d.expires_at ? date(d.expires_at) : "访客本机凭据"}</td><td>{!d.revoked && detail.user.state !== "deleted" && <Action run={() => act("revoke-device", d.device_id)}>撤销</Action>}</td></tr>)}</Table>
+      <Table heads={["设备", "标识", "状态", "最近登录", "软件版本 / 平台", "版本上报", "授权截止", "操作"]} empty={!detail.devices.length}>{detail.devices.map(d => <tr key={d.device_id}><td>{d.name}</td><td>{d.device_id}</td><td>{d.revoked ? "已撤销" : "已登记"}</td><td>{date(d.last_seen)}</td><td>{d.software ? `${d.software.version} / ${d.software.gui_version || "界面未知"} · ${d.software.os}/${d.software.arch}` : "未知"}</td><td>{date(d.software?.reported_at)}</td><td>{d.expires_at ? date(d.expires_at) : "访客本机凭据"}</td><td>{!d.revoked && detail.user.state !== "deleted" && <Action run={() => act("revoke-device", d.device_id)}>撤销</Action>}</td></tr>)}</Table>
       <h3>有效会话（最多 100 条）</h3><Table heads={["设备", "到期"]} empty={!detail.sessions.length}>{detail.sessions.map((s, i) => <tr key={`${s.device_id}-${i}`}><td>{s.device_id}</td><td>{date(s.expires_at)}</td></tr>)}</Table>
       <h3>关联房间（最多 100 个）</h3><Table heads={["房间", "角色", "状态"]} empty={!detail.rooms.length}>{detail.rooms.map(r => <tr key={r.id}><td>{r.name}</td><td>{r.owner_user_id === selected ? "房主" : "成员"}</td><td>{r.closed ? "已关闭" : date(r.expires_at)}</td></tr>)}</Table>
     </Card>}

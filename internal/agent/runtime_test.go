@@ -22,6 +22,15 @@ import (
 )
 
 func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
+	testExpiryWhileBlocked(t, false)
+}
+
+func TestMandatoryUpdateDeadlineWhileControlRequestIsBlocked(t *testing.T) {
+	testExpiryWhileBlocked(t, true)
+}
+
+func testExpiryWhileBlocked(t *testing.T, mandatory bool) {
+	t.Helper()
 	requested := make(chan struct{}, 1)
 	release := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +67,11 @@ func TestCredentialExpiryWhileControlRequestIsBlocked(t *testing.T) {
 		t.Fatal(err)
 	}
 	until := time.Now().Add(3 * time.Second).Truncate(time.Second)
+	if mandatory {
+		deadline := time.Now().Add(time.Second)
+		r.updateState.Policy = &model.UpdatePolicy{MinimumVersion: "9.0.0", EffectiveAt: &deadline}
+		until = time.Now().Add(time.Minute).Truncate(time.Second)
+	}
 	leaf, err := (&cert.TBSCertificate{Version: cert.Version2, Name: i.ID(), Networks: []netip.Prefix{netip.MustParsePrefix("10.203.0.2/16")}, Groups: []string{"room:test-room"}, PublicKey: pub, Curve: cert.Curve_CURVE25519, NotBefore: time.Now().Add(-time.Minute), NotAfter: until}).Sign(ca.Certificate, cert.Curve_CURVE25519, ca.Key)
 	if err != nil {
 		t.Fatal(err)

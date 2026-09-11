@@ -50,6 +50,7 @@ export type Peer = {
 };
 export type User = { id: string; name: string; kind: "guest" | "registered"; state: string; created_at: string };
 export type Status = {
+  update?: UpdateStatus;
   user?: User;
   lan_version: number;
   lan?: {
@@ -86,6 +87,7 @@ export type Management = {
 export type Invitation = { code: string; expires_at: string };
 export type RoomResult = { room: Room; invitation?: Invitation };
 export type Action =
+  | "update-check" | "update-status" | "update-install"
   | "account-login" | "account-link" | "account-poll" | "account-cancel" | "account-logout" | "account-takeover"
   | "status"
   | "init"
@@ -111,6 +113,15 @@ export type Request = {
   body?: unknown;
 };
 export type Failure = { code: string; error: string };
+export type UpdateStatus = {
+  state: string;
+  error_code?: string;
+  downloaded: number;
+  checked_at: string;
+  required: boolean;
+  policy?: { minimum_version?: string; effective_at?: string };
+  release?: { id: string; version: string; notes: string; size: number };
+};
 export type Diagnostic = {
   nebula_version: string;
   control: string;

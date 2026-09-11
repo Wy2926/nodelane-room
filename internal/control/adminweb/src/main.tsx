@@ -23,6 +23,7 @@ import { NodeEditor, NodePanel, NodeTable, states } from "./nodes";
 import { RoomPanel, RoomTable } from "./rooms";
 import { Users, OIDCSettings } from "./users";
 import { Games } from "./games";
+import { Updates } from "./updates";
 import type { API, Room, Session, Snapshot, Telemetry } from "./types";
 import "./style.css";
 
@@ -209,6 +210,7 @@ function App() {
   const selectedNode = data?.nodes.find((n) => n.id === nodeID);
   const tabs: Record<string, string> = {
     users: "用户管理",
+    updates: "更新管理",
     overview: "网络总览",
     nodes: "节点管理",
     rooms: "房间与成员",
@@ -378,6 +380,7 @@ function App() {
               </Card>
             )}
             {tab === "users" && <><Users api={api} /><OIDCSettings api={api} publicURL={data.public_url} /></>}
+            {tab === "updates" && <Updates api={api} />}
             {tab === "games" && (
               <Games games={data.games} api={api} refresh={refresh} />
             )}

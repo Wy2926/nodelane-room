@@ -12,11 +12,12 @@ type User struct {
 }
 
 type UserDevice struct {
-	DeviceID  string     `json:"device_id"`
-	Name      string     `json:"name"`
-	Revoked   bool       `json:"revoked"`
-	LastSeen  time.Time  `json:"last_seen"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	Software  *DeviceSoftware `json:"software,omitempty"`
+	DeviceID  string          `json:"device_id"`
+	Name      string          `json:"name"`
+	Revoked   bool            `json:"revoked"`
+	LastSeen  time.Time       `json:"last_seen"`
+	ExpiresAt *time.Time      `json:"expires_at,omitempty"`
 }
 
 type UserDetail struct {

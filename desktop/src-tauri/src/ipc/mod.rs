@@ -43,6 +43,10 @@ pub async fn player_request(
     if request_data.body.is_null() {
         request_data.body = serde_json::json!({});
     }
+    if matches!(request_data.action, protocol::Action::Status) {
+        request_data.body = serde_json::json!({"gui_version": env!("CARGO_PKG_VERSION")});
+    }
+    let installing = matches!(request_data.action, protocol::Action::UpdateInstall);
     let login = matches!(
         request_data.action,
         protocol::Action::AccountLogin | protocol::Action::AccountLink
@@ -55,6 +59,18 @@ pub async fn player_request(
     let (_, bytes) = request("POST", "/rpc", bytes, 4 << 20).await?;
     let value: Value = serde_json::from_slice(&bytes)
         .map_err(|_| Failure::new("invalid_response", "服务响应格式无效"))?;
+    if installing && value.get("elevate").and_then(Value::as_bool) == Some(true) {
+        if let Err(error) = launch_updater() {
+            let _ = request(
+                "POST",
+                "/rpc",
+                br#"{"action":"update-cancel-install"}"#.to_vec(),
+                65536,
+            )
+            .await;
+            return Err(error);
+        }
+    }
     if login {
         let url = value
             .get("url")
@@ -67,6 +83,65 @@ pub async fn player_request(
         open_login_browser(url)?;
     }
     Ok(value)
+}
+
+fn launch_updater() -> Result<(), Failure> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::{
+            FOLDERID_ProgramFiles, SHGetKnownFolderPath, ShellExecuteW,
+        };
+        let mut folder = std::ptr::null_mut();
+        if unsafe {
+            SHGetKnownFolderPath(&FOLDERID_ProgramFiles, 0, std::ptr::null_mut(), &mut folder)
+        } != 0
+        {
+            return Err(Failure::new(
+                "update_install_failed",
+                "Could not locate the installed updater",
+            ));
+        }
+        let mut length = 0;
+        unsafe {
+            while *folder.add(length) != 0 {
+                length += 1;
+            }
+        }
+        let base = unsafe { String::from_utf16_lossy(std::slice::from_raw_parts(folder, length)) };
+        unsafe {
+            windows_sys::Win32::System::Com::CoTaskMemFree(folder.cast());
+        }
+        let target: Vec<u16> = format!("{base}\\NodeLaneRoom\\nlroom-update.exe")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+        let args: Vec<u16> = "launch".encode_utf16().chain(Some(0)).collect();
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                verb.as_ptr(),
+                target.as_ptr(),
+                args.as_ptr(),
+                std::ptr::null(),
+                0,
+            )
+        };
+        if result as isize <= 32 {
+            return Err(Failure::new(
+                "update_install_failed",
+                "Update elevation was cancelled or failed",
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err(Failure::new(
+            "update_install_failed",
+            "Unexpected elevation request",
+        ))
+    }
 }
 
 fn valid_login_url(value: &str) -> bool {

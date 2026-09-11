@@ -97,6 +97,11 @@ func (s *Server) playerMutation(next func(*http.Request, pgx.Tx, string, []byte)
 			if err := validPlayerSession(r.Context(), tx, id, hash(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))); err != nil {
 				return err
 			}
+			if r.URL.Path == "/v2/rooms" || r.URL.Path == "/v2/rooms/join" || strings.HasSuffix(r.URL.Path, "/lease") || strings.HasSuffix(r.URL.Path, "/heartbeat") {
+				if err := requireUpdated(r.Context(), tx, id); err != nil {
+					return err
+				}
+			}
 			if strings.HasSuffix(r.URL.Path, "/lease") {
 				if err := activeMember(r.Context(), tx, r.PathValue("room"), id); err != nil {
 					return err

@@ -2,10 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,18 +21,24 @@ import (
 )
 
 type Runtime struct {
-	nodeMode        bool
-	nodeServer      string
-	nodeState       NodeState
-	nodeSelected    *model.Node
-	nodePending     string
-	nodeLastRenewal time.Time
-	nodeControlOK   bool
-	udpTraffic      *udpTraffic
-	telemetryAt     time.Time
-	telemetryOffset int
-	renewAt         time.Time
-	logs            *LogBuffer
+	updateMu          sync.Mutex
+	updateState       model.UpdateStatus
+	updateWake        chan struct{}
+	guiVersion        string
+	versionReportedAt time.Time
+	lastVersionReport model.ClientReport
+	nodeMode          bool
+	nodeServer        string
+	nodeState         NodeState
+	nodeSelected      *model.Node
+	nodePending       string
+	nodeLastRenewal   time.Time
+	nodeControlOK     bool
+	udpTraffic        *udpTraffic
+	telemetryAt       time.Time
+	telemetryOffset   int
+	renewAt           time.Time
+	logs              *LogBuffer
 
 	op               sync.Mutex
 	stateMu          sync.Mutex
@@ -58,6 +66,10 @@ type Runtime struct {
 func New(dir string, log *slog.Logger) (*Runtime, error) {
 	r := &Runtime{dir: dir, log: log, engine: engine.New(log), imageSlots: make(chan struct{}, 2), wake: make(chan struct{}, 1), status: model.Status{Control: "unconfigured", Engine: "stopped", Peers: []model.Peer{}}}
 	i, err := platform.LoadIdentity(dir)
+	r.updateWake = make(chan struct{}, 1)
+	if b, e := platform.LoadPrivateFile(filepath.Join(dir, "update-policy.bin")); e == nil {
+		_ = json.Unmarshal(b, &r.updateState.Policy)
+	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -115,6 +127,14 @@ func (r *Runtime) setPublicIdentity(i device.Identity) {
 }
 
 func (r *Runtime) Run(ctx context.Context) error {
+	updateDone := make(chan struct{})
+	go func() {
+		defer close(updateDone)
+		if !r.nodeMode {
+			r.runUpdates(ctx)
+		}
+	}()
+	defer func() { <-updateDone }()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -125,7 +145,11 @@ func (r *Runtime) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				required := requiredLocally(r.updateStatus().Policy)
 				r.netMu.Lock()
+				if required {
+					r.stopNetworkLocked()
+				}
 				r.engine.Expire(time.Now())
 				if r.lease.IP != "" && !time.Now().Before(r.lease.ExpiresAt) {
 					r.stopNetworkLocked()

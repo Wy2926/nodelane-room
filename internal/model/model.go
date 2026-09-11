@@ -140,23 +140,24 @@ type Peer struct {
 	Error       string   `json:"error,omitempty"`
 }
 type Status struct {
-	User            *User      `json:"user,omitempty"`
-	LAN             *LANStatus `json:"lan,omitempty"`
-	LANVersion      int        `json:"lan_version"`
-	Version         string     `json:"version"`
-	ProtocolVersion int        `json:"protocol_version"`
-	Server          string     `json:"server"`
-	Name            string     `json:"name"`
-	SelectedRoom    string     `json:"selected_room"`
-	Game            *Game      `json:"game,omitempty"`
-	Members         []Member   `json:"members"`
-	SnapshotAt      time.Time  `json:"snapshot_at"`
-	DeviceID        string     `json:"device_id"`
-	Control         string     `json:"control"`
-	Engine          string     `json:"engine"`
-	Error           string     `json:"error,omitempty"`
-	Room            *Room      `json:"room,omitempty"`
-	LeaseExpiresAt  time.Time  `json:"lease_expires_at,omitempty"`
-	IP              string     `json:"ip,omitempty"`
-	Peers           []Peer     `json:"peers"`
+	Update          *UpdateStatus `json:"update,omitempty"`
+	User            *User         `json:"user,omitempty"`
+	LAN             *LANStatus    `json:"lan,omitempty"`
+	LANVersion      int           `json:"lan_version"`
+	Version         string        `json:"version"`
+	ProtocolVersion int           `json:"protocol_version"`
+	Server          string        `json:"server"`
+	Name            string        `json:"name"`
+	SelectedRoom    string        `json:"selected_room"`
+	Game            *Game         `json:"game,omitempty"`
+	Members         []Member      `json:"members"`
+	SnapshotAt      time.Time     `json:"snapshot_at"`
+	DeviceID        string        `json:"device_id"`
+	Control         string        `json:"control"`
+	Engine          string        `json:"engine"`
+	Error           string        `json:"error,omitempty"`
+	Room            *Room         `json:"room,omitempty"`
+	LeaseExpiresAt  time.Time     `json:"lease_expires_at,omitempty"`
+	IP              string        `json:"ip,omitempty"`
+	Peers           []Peer        `json:"peers"`
 }

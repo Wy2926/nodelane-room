@@ -1,5 +1,6 @@
 param(
   [string]$Go = 'go',
+  [string]$UpdateRoot = '',
   [ValidateSet('control','node','client')]
   [string[]]$Components = @('control','node','client'),
   [ValidateSet('windows/amd64','windows/arm64','linux/amd64','linux/arm64')]
@@ -17,6 +18,11 @@ foreach ($role in @('control','node','client')) {
 # The control image serves the pinned node installers for both Linux architectures.
 if ($Components -contains 'control') { $Components += 'node' }
 function Invoke-Go { & $Go @args; if ($LASTEXITCODE -ne 0) { throw "go failed with exit code $LASTEXITCODE" } }
+$buildFlags = '-s -w'
+if ($UpdateRoot) {
+  $trust = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $UpdateRoot)))
+  $buildFlags += ' -X github.com/nodelane/nodelane-room/internal/update.TrustedRootBase64=' + $trust
+}
 Invoke-Go mod verify
 if ($Components -contains 'control') {
   & npm.cmd --prefix internal/control/adminweb ci
@@ -54,12 +60,12 @@ try {
       $commands = switch ($role) {
         'control' { @('nodelane-server') }
         'node' { @('nlroom-node') }
-        'client' { @('nlroom-cli','nlroom-service') }
+        'client' { @('nlroom-cli','nlroom-service','nlroom-update') }
       }
       foreach ($command in $commands) {
         $filename = $command
         if ($env:GOOS -eq 'windows') { $filename += '.exe' }
-        Invoke-Go build -trimpath -buildvcs=false -ldflags '-s -w' -o (Join-Path $bundle $filename) "./cmd/$command"
+        Invoke-Go build -trimpath -buildvcs=false -ldflags $buildFlags -o (Join-Path $bundle $filename) "./cmd/$command"
       }
       $packagePaths = @($commands | ForEach-Object { "./cmd/$_" })
       $moduleList = Invoke-Go list -deps -f '{{if .Module}}{{if .Module.Replace}}{{.Module.Replace.Path}}|{{.Module.Replace.Version}}{{else}}{{.Module.Path}}|{{.Module.Version}}{{end}}|{{.Module.Dir}}{{end}}' @packagePaths | Where-Object { $_ -ne '' } | Sort-Object -Unique

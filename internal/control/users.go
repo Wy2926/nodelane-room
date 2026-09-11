@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -209,14 +210,20 @@ func (s *Server) adminUser(w http.ResponseWriter, r *http.Request, _ string) {
 		s.fail(w, noRows(err))
 		return
 	}
-	rows, err := tx.Query(ctx, `SELECT ud.device_id,d.name,ud.revoked,ud.last_seen,ud.expires_at FROM user_devices ud JOIN devices d ON d.id=ud.device_id WHERE user_id=$1 ORDER BY ud.device_id`, out.User.ID)
+	rows, err := tx.Query(ctx, `SELECT ud.device_id,d.name,ud.revoked,ud.last_seen,ud.expires_at,s.report,s.reported_at FROM user_devices ud JOIN devices d ON d.id=ud.device_id LEFT JOIN device_software s ON s.device_id=d.id WHERE user_id=$1 ORDER BY ud.device_id`, out.User.ID)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	out.Devices, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.UserDevice, error) {
 		var d model.UserDevice
-		e := row.Scan(&d.DeviceID, &d.Name, &d.Revoked, &d.LastSeen, &d.ExpiresAt)
+		var b []byte
+		var at *time.Time
+		e := row.Scan(&d.DeviceID, &d.Name, &d.Revoked, &d.LastSeen, &d.ExpiresAt, &b, &at)
+		if e == nil && at != nil {
+			d.Software = &model.DeviceSoftware{ReportedAt: *at}
+			e = json.Unmarshal(b, &d.Software.ClientReport)
+		}
 		return d, e
 	})
 	if err != nil {

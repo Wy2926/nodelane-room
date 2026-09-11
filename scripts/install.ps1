@@ -125,8 +125,30 @@ function Unregister-Application {
   if (Test-Path -LiteralPath $shortcut) { Remove-Item -LiteralPath $shortcut -Force }
 }
 
+# Persist the directory swap so a boot recovery can restore the old complete
+# bundle even if power was lost between the two renames.
+function Recover-Installation {
+  if (Test-Path -LiteralPath $journal) {
+    Assert-Tree $journal
+    $transaction = Get-Content -LiteralPath $journal -Raw | ConvertFrom-Json
+    if ($transaction.version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid interrupted installation record' }
+    Stop-Network
+    if (Test-Path -LiteralPath $previous) {
+      Remove-Bundle $target
+      Move-Bundle $previous $target
+    }
+    Remove-Bundle $pending
+    if (Get-Service -Name NodeLaneRoom -ErrorAction SilentlyContinue) { Start-Service -Name NodeLaneRoom }
+    Remove-Item -LiteralPath $journal -Force
+  }
+}
 Assert-Tree $source
 foreach ($path in @($target, $previous, $pending)) { Assert-Bundle $path }
+$journal = Join-Path $base 'NodeLaneRoom.install.json'
+if (-not $CheckOnly) {
+  $lock = [IO.File]::Open((Join-Path $base 'NodeLaneRoom.install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+  Recover-Installation
+}
 $build = Get-Content -LiteralPath (Join-Path $source 'BUILD.txt') -Raw
 if ($build -notmatch '(?m)^Target: windows/(amd64|arm64)\s*$') { throw 'Missing Windows package architecture' }
 $arch = $Matches[1]
@@ -134,7 +156,7 @@ if ($build -notmatch '(?m)^Version: (\d+\.\d+\.\d+)\s*$') { throw 'Invalid packa
 $version = $Matches[1]
 $nativeArch = switch (@(Get-CimInstance Win32_Processor -Property Architecture)[0].Architecture) { 9 { 'amd64' }; 12 { 'arm64' }; default { throw 'Unsupported native Windows architecture' } }
 if ($nativeArch -ne $arch) { throw "Use the $nativeArch package for this Windows installation" }
-$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt')
+$files = @('nlroom-cli.exe', 'nlroom-service.exe', 'nlroom-update.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt')
 $hasGUI = Test-Path -LiteralPath (Join-Path $source 'nlroom.exe') -PathType Leaf
 $managedGUI = $hasGUI -and (Test-Path -LiteralPath (Join-Path $source 'Uninstall.exe') -PathType Leaf)
 if (-not $hasGUI -and (Test-Path -LiteralPath (Join-Path $target 'nlroom.exe'))) { throw 'Use the complete desktop installer to update this GUI installation' }
@@ -189,13 +211,11 @@ if ($managedGUI) {
 }
 if ($CheckOnly) { Write-Output "Package $version verified. No installation changes made."; return }
 
-# The lock is in administrator-controlled Program Files, shared with uninstall.
-$lock = [IO.File]::Open((Join-Path $base 'NodeLaneRoom.install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+# The lock in administrator-controlled Program Files is shared with uninstall.
 $movedOld = $false; $movedNew = $false; $stopped = $false
 $createdTap = $null
 $wasRunning = $existing -and $existing.Status -eq 'Running'
 try {
-  if (-not (Test-Path -LiteralPath $target) -and (Test-Path -LiteralPath $previous)) { throw 'Interrupted installation: restore NodeLaneRoom.previous to NodeLaneRoom before retrying' }
   Remove-Bundle $pending
   New-Item -ItemType Directory -Path $pending | Out-Null
   Protect-Bundle $pending
@@ -243,6 +263,11 @@ try {
     $createdTap = Install-NodeLaneTap $tapDirectory
   }
   Remove-Bundle $previous
+  if ($oldVersion) {
+    $record = [Text.Encoding]::UTF8.GetBytes((@{version=$version} | ConvertTo-Json -Compress))
+    $recordStream = [IO.File]::Open($journal, 'CreateNew', 'Write', 'None')
+    try { $recordStream.Write($record, 0, $record.Length); $recordStream.Flush($true) } finally { $recordStream.Dispose() }
+  }
   if (Test-Path -LiteralPath $target) { Move-Bundle $target $previous; $movedOld = $true }
   Move-Bundle $pending $target
   $movedNew = $true
@@ -253,6 +278,7 @@ try {
   }
   Wait-Ready $version
   Register-Application $version
+  if (Test-Path -LiteralPath $journal) { Remove-Item -LiteralPath $journal -Force }
   if ($createdTap) {
     Assert-Tree (Split-Path $ownerFile -Parent) -Trusted
     Set-Content -LiteralPath (Join-Path (Split-Path $ownerFile -Parent) 'tap.guid') -Value $createdTap -Encoding ascii
@@ -282,6 +308,7 @@ try {
     Write-Output 'Previous networking service restored.'
   }
   if ($movedOld) { Register-Application $oldVersion }
+  if (Test-Path -LiteralPath $journal) { Remove-Item -LiteralPath $journal -Force }
   if ($tapCleanupError) { Write-InstallMessage ('The previous application was restored, but TAP cleanup needs attention: ' + $tapCleanupError.Exception.Message) }
   throw $failure
 } finally {

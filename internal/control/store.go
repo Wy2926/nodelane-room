@@ -19,7 +19,7 @@ import (
 //go:embed schema.sql
 var schema string
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 var (
 	ErrUnauthorized = errors.New("authentication required")
@@ -195,6 +195,9 @@ func revoke(ctx context.Context, tx pgx.Tx, room, device string) error {
 }
 func (s *Store) Sweep(ctx context.Context) error {
 	return s.Write(ctx, func(tx pgx.Tx) error {
+		if err := enforceUpdates(ctx, tx); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, "SELECT id FROM rooms WHERE NOT closed AND expires_at<=now()")
 		if err != nil {
 			return err

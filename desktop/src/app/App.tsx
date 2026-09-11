@@ -11,6 +11,7 @@ import { Empty } from "../shared/ui/Empty";
 import { Setup } from "../features/device/Setup";
 import { Account } from "../features/device/Account";
 import { Settings } from "../features/device/Settings";
+import { Updates } from "../features/device/Updates";
 import { Diagnostics } from "../features/diagnostics/Diagnostics";
 import { GameLibrary } from "../features/catalog/GameLibrary";
 import { useCatalog } from "../features/catalog/use-catalog";
@@ -41,6 +42,7 @@ function Client() {
   return (
     <Shell page={page} setPage={setPage} service={service}>
       <Feedback service={service} actions={actions} refreshAll={refreshAll} />
+      {service.status?.update?.required && page !== "settings" && page !== "doctor" && <Updates />}
       {!service.status && !service.error && page !== "settings" && page !== "doctor" && (
         <Empty title={t("app.connectingToTheLocalService")}>
           <p>{t("app.readingDeviceAndRoomStatus")}</p>
@@ -87,7 +89,7 @@ function Session({
 }) {
   const catalog = useCatalog(status.device_id, !!serviceError, reload);
   const view = useRoom(status, serviceError, reload);
-  const usable = !serviceError && !actions.busy;
+  const usable = !serviceError && !actions.busy && !status.update?.required && status.update?.state !== "installing";
   const joined = () => {
     view.setSelected("");
     setPage("rooms");

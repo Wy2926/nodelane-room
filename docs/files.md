@@ -12,6 +12,7 @@
 | 管理台、初始化、节点 | `internal/control/admin*`、`setup*`、`node*`；`internal/agent/node*` | [控制实例](architecture.md#控制实例与配置)、[节点协议](architecture.md#v2-管理与节点协议) |
 | LAN、授权、凭据到期 | `internal/lan/`、`internal/engine/`、`internal/agent/network.go`、`runtime*_test.go` | [数据面](architecture.md#数据面)、[游戏网络](game-network.md) |
 | 桌面界面、本机 IPC | `desktop/src/`、`desktop/src-tauri/src/ipc/`、`internal/agent/local*`、`images.go` | [界面](client.md#主机界面与设计令牌)、[桌面架构](client.md#桌面架构) |
+| 客户端更新、版本规则 | `internal/update/`、`internal/agent/updates.go`、`internal/control/updates*`、`scripts/updates/` | [更新与发布](updates.md) |
 | 安装、权限、系统服务 | `internal/platform/`、`internal/nodehost/`、`scripts/desktop/`、安装脚本 | [本机权限](architecture.md#本机权限)、[客户端安装](../README.md#windows-客户端) |
 | 监控、探测、GeoIP | `internal/probe/`、`internal/engine/telemetry.go`、`internal/agent/telemetry.go`、`traffic*`、`internal/control/telemetry*`、`geoip*` | [统计口径](architecture.md#监控)、[采集配置](deployment.md#监控与-ip-归属地) |
 | 构建、部署、验收 | `scripts/`、`deploy/`、`.github/workflows/` | [构建](../README.md#开发与构建)、[部署](deployment.md)、[当前验收](validation.md#当前源码与产物) |
@@ -31,6 +32,8 @@
 .local/ 本地临时文件与验收日志（不展开）
 AGENTS.md 开发约束与索引维护规则
 cmd/ 可执行程序入口
+  nlroom-update/ 特权更新助手入口
+    main.go 受保护任务校验、安装与恢复命令
   nlroom-node/ Linux lighthouse/relay 命令
     main.go 登记、运行、诊断与原生安装管理
   nlroom-cli/ Windows/Linux 开发与诊断 CLI
@@ -40,6 +43,8 @@ cmd/ 可执行程序入口
   nodelane-server/ Linux 控制面命令
     main.go 控制实例启动、隐藏入口查询、初始化码与管理员恢复
 deploy/ 部署模板与测试环境
+  nlroom-update.timer Linux 开机未完成更新恢复
+  nlroom-update.service 独立 root 更新单元与包管理器生命周期
   .env.example PostgreSQL 创建与 Caddy 域名配置示例
   .env.host.example 已有设施部署的可选绑定端口配置
   .env.node.example 独立节点配置示例
@@ -80,7 +85,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     test-setup.ts DOM 测试环境、滚动与对话框模拟
     app/ 应用编排与系统导航
       App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
-      App.test.tsx 房间流程、诊断实测与脱敏、离线设置和更新占位测试
+      App.test.tsx 房间流程、诊断实测与脱敏、离线设置和本机更新错误测试
       Shell.tsx 统一顶部导航、玩家入口与无边框窗口控制
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
@@ -134,9 +139,11 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
           Invitation.tsx 临时邀请码及复制
           Confirmation.tsx 权限操作和离房退出确认
       device/ 初始化与桌面偏好
+        Updates.tsx 本机更新状态、进度与安装确认
+        Updates.test.tsx 强制下载状态与安装确认边界测试
         Setup.tsx 默认线上控制端、访客昵称与首次使用
         Account.tsx 访客绑定、浏览器登录、设备切换与退出账号
-        Settings.tsx 分类偏好、设备信息、更新界面占位与退出
+        Settings.tsx 分类偏好、设备信息、本机更新入口与退出
         device.css 欢迎界面、分类设置与更新面板样式
       diagnostics/ 真实网络诊断
         Diagnostics.tsx 连接概览、系统检查、实测成员链路与脱敏摘要
@@ -161,6 +168,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
 dist/ 构建、安装包与镜像发布产物（不展开）
 Dockerfile 从源码构建控制面与节点镜像
 docs/ 协议、部署与验收说明
+  updates.md 更新信任、发布、多源、安装与强制规则操作
   architecture.md 包依赖、状态归属、权限、生命周期与监控口径
   client.md 当前桌面交互、GUI 决策、本机桥接与平台边界
   deployment.md V2 部署与维护步骤
@@ -173,7 +181,18 @@ docs/ 协议、部署与验收说明
 go.mod 模块依赖与 Nebula 补丁锁定
 go.sum 依赖校验和
 internal/ 产品内部实现
+  update/ 签名更新验证、下载与特权安装引擎
+    trust_test.go 签名篡改、过期与元数据回退测试
+    trust.go TUF 信任链、版本防回退与目标验证
+    install_windows.go Windows 提权、隔离运行器与开机恢复
+    install_other.go 其他平台拒绝系统安装
+    install_linux.go Linux root 更新、APT 锁与可信 deb 恢复
+    install.go 持久安装任务、二次校验与健康恢复
+    download_test.go HTTPS 恢复下载与错误响应验证
+    download.go 多镜像断点续传与完整包校验
   agent/ 玩家与节点后台状态协调
+    updates_test.go 无房间版本上报与 GUI 版本变化回归
+    updates.go 更新轮询、缓存策略、下载调度与设备版本上报
     account.go 受保护的登录事务、本机账号切换与退出
     health.go 存活与就绪检查
     images.go 受限控制端图片读取与本机图片响应
@@ -199,6 +218,10 @@ internal/ 产品内部实现
     api.go 控制面认证、幂等请求与 SSE 恢复
     enrollment.go 基础设施节点登记认证
   control/ 按调用方分文件的 HTTP API 与共享事务状态
+    updates_test.go 强制撤销、共享修订与存储凭据保护回归
+    updates_http.go 更新管理、包上传、公开检查与版本上报接口
+    updates.go 签名发布、版本规则与强制授权撤销事务
+    update_storage.go 加密凭据、R2/S3/HTTPS 源与副本校验
     admin_audit.go 管理事件持久化与失败写操作审计
     admin_auth.go 管理员密码、登录与会话事务
     admin_events_http.go 管理台总览与事件流接口
@@ -219,6 +242,8 @@ internal/ 产品内部实现
       tsconfig.json TypeScript 严格类型检查配置
       vite.config.ts Vite 同源资源构建与开发代理
       src/ 前端组件、数据处理与测试
+        updates.test.tsx 源配置编辑修订保持与凭据只写回归
+        updates.tsx 发布、存储源、强制规则和设备版本管理
         api.ts 管理员请求、CSRF 与认证失败处理
         auth.tsx 登录与创建或接入控制面的初始化表单
         auth.test.tsx 登录及接入已有控制面的交互测试
@@ -300,6 +325,7 @@ internal/ 产品内部实现
     client_unix_test.go Unix socket 请求、响应与错误兼容测试
     protocol.go 本机请求与节点日志响应类型
   model/ 共享协议类型
+    update.go 客户端版本、更新规则、发布与设备报告结构
     game.go 游戏目录、LAN 策略/心跳、端口区间与管理类型
     lan.go LAN 版本、MAC、完整端口区间校验与 IPv6 地址推导
     model.go 设备、房间、凭据与 LAN 客户端状态类型
@@ -329,6 +355,9 @@ internal/ 产品内部实现
     probe_test.go 探测成员授权与统计过期测试
 README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
+  updates/ 离线更新元数据签署工具
+    main_test.go 隔离密钥的完整签名及轮换回归
+    main.go 角色密钥、包签名、续签与根轮换
   __pycache__/ Python 字节码缓存（不展开）
   architecture/ 包依赖与文件索引检查
     boundaries_test.go 跨平台生产导入、数据库与数据面归属及客户端运行依赖边界

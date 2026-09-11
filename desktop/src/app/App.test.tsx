@@ -433,7 +433,8 @@ test.each([false, true])(
   },
 );
 
-test("offline startup keeps settings and the update placeholder reachable without network requests", async () => {
+test("offline startup keeps updates reachable and reports the local service failure", async () => {
+  vi.mocked(rpc).mockRejectedValue({code: "service_unavailable", error: "服务离线"});
   vi.mocked(useService).mockReturnValue({
     status: undefined,
     error: { code: "service_unavailable", error: "服务离线" },
@@ -445,11 +446,9 @@ test("offline startup keeps settings and the update placeholder reachable withou
   await user.click(screen.getByRole("button", { name: "设置" }));
   await user.click(screen.getByRole("button", { name: "版本与更新" }));
   await user.click(screen.getByRole("button", { name: "检查更新" }));
-  expect(screen.getByRole("status").textContent).toContain(
-    "在线更新服务尚未接入",
-  );
+  expect(screen.getAllByRole("alert").some(v => v.textContent?.includes("无法连接网络后台"))).toBe(true);
   expect(screen.queryByText("已是最新版")).toBeNull();
-  expect(rpc).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledWith({action: "update-check"});
   await user.click(screen.getByRole("button", { name: "网络诊断" }));
   expect(screen.getByText("等待本机服务")).toBeTruthy();
   expect(

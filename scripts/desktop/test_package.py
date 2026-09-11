@@ -24,7 +24,7 @@ class PackagingTests(unittest.TestCase):
             release.mkdir()
             stage.mkdir()
             (release / 'licenses').mkdir()
-            required = ['nlroom-cli.exe', 'nlroom-service.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt']
+            required = ['nlroom-cli.exe', 'nlroom-service.exe', 'nlroom-update.exe', 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt']
             for name in required + ['nlroom.exe']:
                 (release / name).write_bytes(b'fixture')
             with patch('package.collect'):
@@ -75,7 +75,7 @@ class PackagingTests(unittest.TestCase):
             header = bytearray(64)
             header[:6] = b'\x7fELF\x02\x01'
             struct.pack_into('<H', header, 18, 62)
-            for name in ('nlroom', 'nlroom-cli', 'nlroom-service'):
+            for name in ('nlroom', 'nlroom-cli', 'nlroom-service', 'nlroom-update'):
                 (root / name).write_bytes(header)
             (root / 'BUILD.txt').write_text('Component: client\nVersion: 0.2.0\nTarget: linux/amd64\n')
             verify_release(root, root / 'nlroom', 'linux', 'amd64', '0.2.0')
@@ -113,7 +113,7 @@ class DebianLifecycleTests(unittest.TestCase):
         self.log = self.root / 'calls'
         self.owner = self.root / 'owner.uid'
         self.env = dict(os.environ, PATH=str(self.root) + ':' + os.environ['PATH'], CALLS=str(self.log))
-        self.command('systemctl', 'echo "systemctl $*" >> "$CALLS"\ncase "$1" in\nstop) [ "${FAIL_STOP:-0}" = 0 ];;\nshow) echo "${SERVICE_PID:-0}";;\nis-enabled) [ "${ENABLED:-1}" = 1 ];;\nesac\n')
+        self.command('systemctl', 'echo "systemctl $*" >> "$CALLS"\ncase "$1" in\nstop) [ "${FAIL_STOP:-0}" = 0 ];;\nshow) echo "${SERVICE_PID:-0}";;\nis-enabled) [ "${ENABLED:-1}" = 1 ];;\nis-active) [ "${UPDATE_ACTIVE:-0}" = 1 ];;\nesac\n')
         self.command('nlroom-setup', 'echo "ready $*" >> "$CALLS"\n[ "${FAIL_READY:-0}" = 0 ]\n')
 
     def command(self, name, body):
@@ -168,6 +168,12 @@ class DebianLifecycleTests(unittest.TestCase):
         self.env['ENABLED'] = '0'
         self.assertEqual(self.execute('postinst', 'configure').returncode, 0)
         self.assertNotIn('systemctl start', self.calls())
+
+    def test_removal_during_update_does_not_stop_the_service(self):
+        self.env['UPDATE_ACTIVE'] = '1'
+        self.assertNotEqual(self.execute('prerm', 'remove').returncode, 0)
+        self.assertNotIn('systemctl stop', self.calls())
+        self.assertNotIn('disable', self.calls())
 
 
 if __name__ == '__main__': unittest.main()

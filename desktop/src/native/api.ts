@@ -39,6 +39,10 @@ const descriptions: Record<string, MessageKey> = {
   configured_ports: "api.configuredPorts",
   rate_limited: "api.rateLimited",
   timeout: "api.timeout",
+  update_required: "updates.required",
+  update_install_failed: "updates.installFailed",
+  update_not_ready: "updates.notReady",
+  update_install_unsupported: "updates.unsupported",
 };
 
 export function failure(value: unknown): Failure {

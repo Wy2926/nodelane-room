@@ -22,6 +22,16 @@ func (r *Runtime) step(ctx context.Context) error {
 	}
 	i := r.identity
 	if !i.Node {
+		r.reportVersion(ctx)
+		if requiredLocally(r.updateStatus().Policy) {
+			r.netMu.Lock()
+			r.stopNetworkLocked()
+			r.netMu.Unlock()
+			r.setError("update_required", nil)
+			return nil
+		}
+	}
+	if !i.Node {
 		user, err := r.api.RefreshAccount(ctx)
 		if err != nil {
 			if client.IsDenied(err) {

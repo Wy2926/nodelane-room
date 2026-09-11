@@ -44,5 +44,6 @@ chmod 0644 "$temp"
 mv -f -- "$temp" "$owner_file"
 systemctl daemon-reload
 systemctl enable --now nlroom-service.service
+systemctl enable --now nlroom-update.timer
 check_ready
 echo 'NodeLane Room is ready. Open the application as the selected player account.'

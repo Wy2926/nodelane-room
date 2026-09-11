@@ -56,6 +56,9 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 	if r.identity.Node {
 		return nil, localapi.Failure("forbidden", "infrastructure identity cannot operate player rooms")
 	}
+	if (action == "create" || action == "join") && (requiredLocally(r.updateStatus().Policy) || r.updateStatus().State == "installing") {
+		return nil, localapi.Failure("update_required", "client update required")
+	}
 	if room == "" {
 		room = r.identity.RoomID
 	}
@@ -65,6 +68,9 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 	}
 	if action == "join" {
 		path = "/v2/rooms/join"
+	}
+	if action == "create" || action == "join" {
+		r.reportVersion(ctx)
 	}
 	if room == "" && action != "create" && action != "join" {
 		return nil, localapi.Failure("no_room", "no selected room")

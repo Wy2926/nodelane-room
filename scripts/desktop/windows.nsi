@@ -2,6 +2,7 @@ Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
 !include "nsDialogs.nsh"
+!include "FileFunc.nsh"
 
 Name "NodeLane Room"
 OutFile "${OUTPUT}"
@@ -86,6 +87,12 @@ Function .onInit
   StrCpy $INSTDIR "$PROGRAMFILES64\NodeLaneRoom"
   StrCpy $PowerShell "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
   StrCpy $Operation "install"
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/ROLLBACK" $1
+  ${IfNot} ${Errors}
+    StrCpy $Operation "rollback"
+  ${EndIf}
   ReadRegStr $CurrentVersion HKLM "${UNINSTALL_KEY}" "DisplayVersion"
 FunctionEnd
 
@@ -136,6 +143,12 @@ Section "NodeLane Room"
   File /r "${PAYLOAD}\*"
   WriteUninstaller "$PLUGINSDIR\payload\Uninstall.exe"
   StrCpy $Arguments "-Quiet"
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/MANAGEDUPDATE" $1
+  ${IfNot} ${Errors}
+    StrCpy $Arguments "$Arguments -ManagedUpdate"
+  ${EndIf}
   ${If} $Operation == "rollback"
     StrCpy $Arguments "$Arguments -Rollback"
   ${EndIf}

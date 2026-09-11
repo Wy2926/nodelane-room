@@ -64,8 +64,8 @@ def main():
             if name.endswith(".zip"):
                 with zipfile.ZipFile(archive) as bundle:
                     files = {item.filename: bundle.read(item) for item in bundle.infolist() if not item.is_dir()}
-                required = ["nlroom-cli.exe", "nlroom-service.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLaneRoom.cmd"]
-                for binary in ("nlroom-cli.exe", "nlroom-service.exe"):
+                required = ["nlroom-cli.exe", "nlroom-service.exe", "nlroom-update.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLaneRoom.cmd"]
+                for binary in ("nlroom-cli.exe", "nlroom-service.exe", "nlroom-update.exe"):
                     data = files[binary]
                     offset = struct.unpack_from("<I", data, 0x3C)[0]
                     require(data[offset:offset + 4] == b"PE\0\0", f"invalid PE: {binary}")
@@ -81,9 +81,9 @@ def main():
                         if item.isfile():
                             relative = item.name.removeprefix(prefix)
                             files[relative] = bundle.extractfile(item).read()
-                            if relative in ("nlroom-cli", "nlroom-service", "nlroom-node", "nodelane-server"):
+                            if relative in ("nlroom-cli", "nlroom-service", "nlroom-update", "nlroom-node", "nodelane-server"):
                                 require(item.mode & 0o111 == 0o111, f"missing executable mode: {relative}")
-                binaries = {'control': ['nodelane-server'], 'node': ['nlroom-node'], 'client': ['nlroom-cli', 'nlroom-service']}[role]
+                binaries = {'control': ['nodelane-server'], 'node': ['nlroom-node'], 'client': ['nlroom-cli', 'nlroom-service', 'nlroom-update']}[role]
                 required = list(binaries)
                 if role == 'control':
                     required += ['Dockerfile', '.dockerignore', 'deploy/compose.yaml', 'deploy/compose.host.yaml', 'deploy/compose.node.yaml', 'deploy/Caddyfile', 'deploy/.env.example', 'deploy/.env.host.example', 'deploy/.env.node.example']
@@ -98,8 +98,8 @@ def main():
                     if entry.is_file(): require(files.get('releases/'+entry.name)==entry.read_bytes(),'embedded installer differs: '+entry.name)
             build = files['BUILD.txt'].decode('utf-8-sig').splitlines()
             require(f'Component: {role}' in build and f'Version: {version}' in build, 'component metadata mismatch')
-            allowed = {'control': {'nodelane-server'}, 'node': {'nlroom-node'}, 'client': {'nlroom-cli', 'nlroom-service'}}[role]
-            actual = {Path(path).stem for path in files if '/' not in path and Path(path).stem in {'nodelane-server','nlroom-node','nlroom-cli','nlroom-service'}}
+            allowed = {'control': {'nodelane-server'}, 'node': {'nlroom-node'}, 'client': {'nlroom-cli', 'nlroom-service', 'nlroom-update'}}[role]
+            actual = {Path(path).stem for path in files if '/' not in path and Path(path).stem in {'nodelane-server','nlroom-node','nlroom-cli','nlroom-service','nlroom-update'}}
             require(actual == allowed, 'component binary separation')
             required += ["BUILD.txt", "THIRD_PARTY_NOTICES.txt", "licenses/Go-LICENSE", "licenses/modules.txt"]
             for path in required:

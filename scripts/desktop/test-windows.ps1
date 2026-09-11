@@ -7,11 +7,11 @@ $tokens = $null; $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors) { throw $parseErrors[0] }
 $functions = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)
-$transaction = $text.Substring($text.IndexOf('# The lock is'))
+$transaction = $text.Substring($text.IndexOf('$movedOld ='))
 $testRoot = Join-Path $root ('.local/install-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
-  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback', 'registration-failure', 'tap-failure', 'tap-created', 'tap-created-start-failure', 'tap-cleanup-failure')) {
+  foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback', 'registration-failure', 'tap-failure', 'tap-created', 'tap-created-start-failure', 'tap-cleanup-failure', 'interrupted-before-swap', 'interrupted-after-swap')) {
     & {
       foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
       # Windows ACL/DPAPI and real SCM/driver acceptance are separate checks.
@@ -19,6 +19,7 @@ try {
       function Protect-Bundle { param($Path) }
       function Get-ChildItem { param($LiteralPath, [switch]$Recurse, [switch]$Force) @() }
       function Get-Process { param($Name, $ErrorAction) @() }
+      function Get-Service { param($Name, $ErrorAction) $null }
       function Stop-Network {
         if ($scenario -eq 'stop-failure') { throw 'simulated stop failure' }
       }
@@ -69,6 +70,19 @@ try {
       $script:tapRemoved = $false
       $tapDirectory = Join-Path $base 'tap'
       $oldVersion = '0.2.0'; $version = '0.2.1'
+      $journal = Join-Path $base 'NodeLaneRoom.install.json'
+      $lock = [IO.File]::Open((Join-Path $base 'NodeLaneRoom.install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+      if ($scenario -like 'interrupted-*') {
+        Set-Content -LiteralPath $journal -Value '{"version":"0.2.1"}'
+        if ($scenario -eq 'interrupted-after-swap') {
+          Move-Bundle $target $previous
+          New-Item -ItemType Directory -Path $target | Out-Null
+          Set-Content -LiteralPath (Join-Path $target 'BUILD.txt') -Value 'broken'
+        }
+        Recover-Installation
+        if ((Get-Content -LiteralPath (Join-Path $target 'BUILD.txt')) -ne 'old') { throw 'Recovery did not restore the old program' }
+        if (Test-Path -LiteralPath $journal) { throw 'Recovery left a completed journal' }
+      }
       if ($scenario -eq 'rollback') {
         Move-Item -LiteralPath $source -Destination $previous
         $source = $previous

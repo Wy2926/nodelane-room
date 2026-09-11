@@ -34,7 +34,7 @@ def verify_release(release, gui, platform, arch, version):
     if not re.search(rf'(?m)^Target: {platform}/{arch}\s*$', build): raise SystemExit('Release architecture mismatch')
     if not re.search(rf'(?m)^Version: {re.escape(version)}\s*$', build): raise SystemExit('Release version mismatch')
     extension = '.exe' if platform == 'windows' else ''
-    for binary in [gui, release / ('nlroom-cli' + extension), release / ('nlroom-service' + extension)]:
+    for binary in [gui, release / ('nlroom-cli' + extension), release / ('nlroom-service' + extension), release / ('nlroom-update' + extension)]:
         verify_binary(binary, platform, arch)
 
 
@@ -90,7 +90,7 @@ def main():
     temp_root.mkdir(exist_ok=True)
     version = source_version()
     extension = '.exe' if args.platform == 'windows' else ''
-    required = ['nlroom-cli' + extension, 'nlroom-service' + extension, 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt']
+    required = ['nlroom-cli' + extension, 'nlroom-service' + extension, 'nlroom-update' + extension, 'BUILD.txt', 'THIRD_PARTY_NOTICES.txt']
     for name in required:
         if not (args.release / name).is_file(): raise SystemExit(f'Missing release file: {name}')
     verify_release(args.release, args.gui, args.platform, args.arch, version)
@@ -135,6 +135,9 @@ def main():
             copy(args.gui, 'usr/bin/nlroom', 0o755)
             copy(args.release / 'nlroom-cli', 'usr/bin/nlroom-cli', 0o755)
             copy(args.release / 'nlroom-service', 'usr/lib/nlroom/nlroom-service', 0o755)
+            copy(args.release / 'nlroom-update', 'usr/lib/nlroom/nlroom-update', 0o755)
+            copy(ROOT / 'deploy/nlroom-update.service', 'lib/systemd/system/nlroom-update.service')
+            copy(ROOT / 'deploy/nlroom-update.timer', 'lib/systemd/system/nlroom-update.timer')
             copy(ROOT / 'deploy/nlroom-service.service', 'lib/systemd/system/nlroom-service.service')
             copy(ROOT / 'scripts/desktop/linux-setup.sh', 'usr/sbin/nlroom-setup', 0o755)
             copy(ROOT / 'desktop/src-tauri/icons/icon.png', 'usr/share/icons/hicolor/128x128/apps/net.nodelane.room.png')

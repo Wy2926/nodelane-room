@@ -16,7 +16,7 @@ export function makeAPI(csrf: string, onUnauthorized: () => void): API {
     signal?: AbortSignal,
   ): Promise<T> => {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
+      "Content-Type": body instanceof Blob ? "application/octet-stream" : "application/json",
     };
     if (method !== "GET") {
       headers["X-CSRF-Token"] = csrf;
@@ -25,7 +25,7 @@ export function makeAPI(csrf: string, onUnauthorized: () => void): API {
     const res = await fetch("/v2/admin" + path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : body instanceof Blob ? body : JSON.stringify(body),
       signal,
     });
     const data = await res.json().catch(() => {

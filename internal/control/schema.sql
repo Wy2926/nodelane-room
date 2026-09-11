@@ -123,4 +123,32 @@ CREATE TABLE idempotency (
  expires_at timestamptz NOT NULL, PRIMARY KEY(device_id,key)
 );
 CREATE TABLE rate_limits (key text PRIMARY KEY, count integer NOT NULL, window_start timestamptz NOT NULL);
-INSERT INTO schema_version(version) VALUES (5);
+CREATE TABLE update_sources (
+ id text PRIMARY KEY, config jsonb NOT NULL, secret bytea NOT NULL DEFAULT '', revision bigint NOT NULL
+);
+CREATE TABLE update_repository (
+ id integer PRIMARY KEY CHECK(id=1), metadata jsonb NOT NULL, revision bigint NOT NULL
+);
+CREATE TABLE update_releases (
+ id text PRIMARY KEY, version text NOT NULL, os text NOT NULL, arch text NOT NULL,
+ artifact jsonb NOT NULL, notes text NOT NULL DEFAULT '', state text NOT NULL CHECK(state IN ('draft','published','paused','withdrawn')),
+ revision bigint NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(version,os,arch)
+);
+CREATE TABLE update_replicas (
+ release_id text NOT NULL REFERENCES update_releases(id), source_id text NOT NULL REFERENCES update_sources(id),
+ verified_at timestamptz NOT NULL, source_revision bigint NOT NULL, PRIMARY KEY(release_id,source_id)
+);
+CREATE TABLE update_policies (
+ os text NOT NULL, arch text NOT NULL, release_id text REFERENCES update_releases(id),
+ minimum_version text NOT NULL DEFAULT '', effective_at timestamptz, revision bigint NOT NULL DEFAULT 1, PRIMARY KEY(os,arch)
+);
+CREATE TABLE device_software (
+ device_id text PRIMARY KEY REFERENCES user_devices(device_id), report jsonb NOT NULL,
+ reported_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE update_attempts (
+ device_id text NOT NULL REFERENCES user_devices(device_id), release_id text NOT NULL REFERENCES update_releases(id),
+ state text NOT NULL, error_code text NOT NULL DEFAULT '', updated_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(device_id,release_id)
+);
+INSERT INTO schema_version(version) VALUES (6);

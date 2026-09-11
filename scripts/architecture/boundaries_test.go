@@ -43,11 +43,13 @@ func TestPackageBoundaries(t *testing.T) {
 	allowed := map[string][]string{
 		"cmd/nlroom-cli":      {"internal/localapi", "internal/model", "internal/platform"},
 		"cmd/nlroom-service":  {"internal/agent", "internal/model", "internal/platform"},
+		"cmd/nlroom-update":   {"internal/platform", "internal/update"},
 		"cmd/nlroom-node":     {"internal/agent", "internal/localapi", "internal/model", "internal/nodehost"},
 		"cmd/nodelane-server": {"internal/control", "internal/model", "internal/platform"},
-		"internal/agent":      {"internal/client", "internal/device", "internal/engine", "internal/localapi", "internal/model", "internal/pki", "internal/platform", "internal/probe"},
+		"internal/agent":      {"internal/client", "internal/device", "internal/engine", "internal/localapi", "internal/model", "internal/pki", "internal/platform", "internal/probe", "internal/update"},
 		"internal/client":     {"internal/device", "internal/model"},
-		"internal/control":    {"internal/device", "internal/model", "internal/pki", "internal/platform"},
+		"internal/control":    {"internal/device", "internal/model", "internal/pki", "internal/platform", "internal/update"},
+		"internal/update":     {"internal/model", "internal/platform", "internal/localapi"},
 		"internal/device":     {"internal/model"},
 		"internal/engine":     {"internal/model", "internal/pki", "internal/lan"},
 		"internal/lan":        {"internal/model"},
@@ -96,6 +98,12 @@ func TestPackageBoundaries(t *testing.T) {
 				}
 				if strings.HasPrefix(imp, module) && !slices.Contains(deps, strings.TrimPrefix(imp, module)) {
 					t.Errorf("%s: forbidden dependency on %s", rel, imp)
+				}
+				if strings.HasPrefix(imp, "github.com/aws/aws-sdk-go-v2/") && pkg != "internal/control" {
+					t.Errorf("%s: object storage belongs to control", rel)
+				}
+				if strings.HasPrefix(imp, "github.com/theupdateframework/go-tuf/") && pkg != "internal/update" {
+					t.Errorf("%s: TUF verification belongs to update", rel)
 				}
 				if (pkg == "internal/model" || pkg == "internal/device") && !strings.HasPrefix(imp, module) && strings.Contains(strings.Split(imp, "/")[0], ".") {
 					t.Errorf("%s: shared data must not depend on third-party implementations: %s", rel, imp)

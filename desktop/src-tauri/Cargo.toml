@@ -1,6 +1,6 @@
 [package]
 name = "nlroom"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.95"
 description = "NodeLane Room desktop client"
@@ -23,7 +23,7 @@ http-body-util = "=0.1.5"
 base64 = "=0.22.1"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "=0.61.2", features = ["Win32_UI_Shell"] }
+windows-sys = { version = "=0.61.2", features = ["Win32_UI_Shell", "Win32_System_Com"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "=0.2.189"

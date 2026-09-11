@@ -138,6 +138,54 @@ components:
                 - name
                 - public_key
             type: object
+        ClientReport:
+            properties:
+                arch:
+                    type: string
+                error_code:
+                    type: string
+                gui_version:
+                    type: string
+                os:
+                    type: string
+                release_id:
+                    type: string
+                state:
+                    type: string
+                version:
+                    type: string
+            required:
+                - version
+                - os
+                - arch
+                - state
+            type: object
+        DeviceSoftware:
+            properties:
+                arch:
+                    type: string
+                error_code:
+                    type: string
+                gui_version:
+                    type: string
+                os:
+                    type: string
+                release_id:
+                    type: string
+                reported_at:
+                    format: date-time
+                    type: string
+                state:
+                    type: string
+                version:
+                    type: string
+            required:
+                - version
+                - os
+                - arch
+                - state
+                - reported_at
+            type: object
         Empty:
             additionalProperties: false
             properties: {}
@@ -935,6 +983,8 @@ components:
                 snapshot_at:
                     format: date-time
                     type: string
+                update:
+                    $ref: '#/components/schemas/UpdateStatus'
                 user:
                     $ref: '#/components/schemas/User'
                 version:
@@ -1010,6 +1060,255 @@ components:
                 - download_bytes
                 - scope
             type: object
+        UpdateAttempt:
+            properties:
+                device_id:
+                    type: string
+                error_code:
+                    type: string
+                release_id:
+                    type: string
+                state:
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            required:
+                - device_id
+                - release_id
+                - state
+                - updated_at
+            type: object
+        UpdateCheck:
+            properties:
+                policy:
+                    $ref: '#/components/schemas/UpdatePolicy'
+                release:
+                    $ref: '#/components/schemas/UpdateRelease'
+                repository:
+                    $ref: '#/components/schemas/UpdateRepository'
+                required:
+                    type: boolean
+                server_time:
+                    format: date-time
+                    type: string
+                urls:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - server_time
+                - required
+                - urls
+            type: object
+        UpdateDevice:
+            properties:
+                device_id:
+                    type: string
+                name:
+                    type: string
+                software:
+                    $ref: '#/components/schemas/DeviceSoftware'
+                user_id:
+                    type: string
+            required:
+                - device_id
+                - user_id
+                - name
+                - software
+            type: object
+        UpdateOverview:
+            properties:
+                attempts:
+                    items:
+                        $ref: '#/components/schemas/UpdateAttempt'
+                    type: array
+                devices:
+                    items:
+                        $ref: '#/components/schemas/UpdateDevice'
+                    type: array
+                next:
+                    type: string
+                policies:
+                    items:
+                        $ref: '#/components/schemas/UpdatePolicy'
+                    type: array
+                releases:
+                    items:
+                        $ref: '#/components/schemas/UpdateRelease'
+                    type: array
+                repository_revision:
+                    format: int64
+                    type: integer
+                sources:
+                    items:
+                        $ref: '#/components/schemas/UpdateSource'
+                    type: array
+                versions:
+                    items:
+                        $ref: '#/components/schemas/VersionCount'
+                    type: array
+            required:
+                - sources
+                - releases
+                - policies
+                - repository_revision
+                - devices
+                - versions
+                - attempts
+            type: object
+        UpdatePolicy:
+            description: At the deadline, below-minimum or unreported devices lose existing network grants and create/join/lease/heartbeat return update_required before idempotency replay. Update check, report, diagnostics and account management remain available. Versions are authenticated self-reports, not remote attestation.
+            properties:
+                arch:
+                    type: string
+                effective_at:
+                    format: date-time
+                    type: string
+                minimum_version:
+                    type: string
+                os:
+                    type: string
+                release_id:
+                    type: string
+                revision:
+                    format: int64
+                    type: integer
+            required:
+                - os
+                - arch
+                - release_id
+                - revision
+            type: object
+        UpdateRelease:
+            properties:
+                arch:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                notes:
+                    type: string
+                os:
+                    type: string
+                revision:
+                    format: int64
+                    type: integer
+                sha256:
+                    type: string
+                size:
+                    format: int64
+                    type: integer
+                sources:
+                    items:
+                        type: string
+                    type: array
+                state:
+                    type: string
+                target:
+                    type: string
+                version:
+                    type: string
+            required:
+                - version
+                - os
+                - arch
+                - target
+                - sha256
+                - size
+                - id
+                - notes
+                - state
+                - revision
+                - sources
+                - created_at
+            type: object
+        UpdateRepository:
+            properties:
+                metadata:
+                    additionalProperties:
+                        additionalProperties: true
+                        type: object
+                    type: object
+                revision:
+                    format: int64
+                    type: integer
+            required:
+                - revision
+                - metadata
+            type: object
+        UpdateSource:
+            properties:
+                access_key:
+                    type: string
+                    writeOnly: true
+                bucket:
+                    type: string
+                enabled:
+                    type: boolean
+                endpoint:
+                    type: string
+                has_credentials:
+                    type: boolean
+                id:
+                    type: string
+                kind:
+                    type: string
+                name:
+                    type: string
+                path_style:
+                    type: boolean
+                prefix:
+                    type: string
+                priority:
+                    format: int64
+                    type: integer
+                public_url:
+                    type: string
+                region:
+                    type: string
+                revision:
+                    format: int64
+                    type: integer
+                secret_key:
+                    type: string
+                    writeOnly: true
+            required:
+                - id
+                - name
+                - kind
+                - path_style
+                - enabled
+                - priority
+                - revision
+                - has_credentials
+            type: object
+        UpdateStatus:
+            properties:
+                checked_at:
+                    format: date-time
+                    type: string
+                downloaded:
+                    format: int64
+                    type: integer
+                error_code:
+                    type: string
+                policy:
+                    $ref: '#/components/schemas/UpdatePolicy'
+                release:
+                    $ref: '#/components/schemas/UpdateRelease'
+                required:
+                    type: boolean
+                state:
+                    type: string
+            required:
+                - state
+                - downloaded
+                - checked_at
+                - required
+            type: object
         User:
             properties:
                 created_at:
@@ -1078,6 +1377,8 @@ components:
                     type: string
                 revoked:
                     type: boolean
+                software:
+                    $ref: '#/components/schemas/DeviceSoftware'
             required:
                 - device_id
                 - name
@@ -1120,6 +1421,27 @@ components:
                 - id
                 - signature
             type: object
+        VersionCount:
+            properties:
+                arch:
+                    type: string
+                devices:
+                    format: int64
+                    type: integer
+                fresh:
+                    format: int64
+                    type: integer
+                os:
+                    type: string
+                version:
+                    type: string
+            required:
+                - os
+                - arch
+                - version
+                - devices
+                - fresh
+            type: object
     securitySchemes:
         AdminCookie:
             description: 12 hour random session; 30 minute idle timeout. Secure, HttpOnly, SameSite=Strict. All admin writes also require exact Origin and X-CSRF-Token.
@@ -1135,9 +1457,9 @@ components:
             scheme: bearer
             type: http
 info:
-    description: 'Fresh database schema version 5 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
+    description: 'Fresh database schema version 6 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
     title: NodeLane Room V2
-    version: 0.2.2
+    version: 0.3.0
 openapi: 3.0.3
 paths:
     /healthz:
@@ -1279,7 +1601,7 @@ paths:
                 - Admin
     /v2/admin/games/{game}:
         put:
-            description: TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 5; no schema migration. Disabling withdraws game authorization.
+            description: TCP/UDP port intervals cover 1–65535 with no port-count limit; overlapping intervals are rejected. network.version=1 is required for all games, including custom; Ethernet LAN with broadcast/multicast and explicit extra non-IP EtherTypes (0 for IEEE 802.3/LLC). Enabled games require ports or non-IP rules. Policy, revision and room/admin events update transactionally in database schema 6; no schema migration. Disabling withdraws game authorization.
             parameters:
                 - in: path
                   name: game
@@ -2073,7 +2395,7 @@ paths:
             tags:
                 - Admin
         post:
-            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 5), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
+            description: Available before the database is configured. Requires the same browser Origin and the current instance console code. create atomically initializes an empty or unused current schema (version 6), configuration, CA and administrator; existing deployments and older schemas are rejected without modification. upload requires exactly one matching CA certificate and private key; generate rejects supplied CA material. connect authenticates an existing administrator, rate limited to 8/minute across the shared database, and loads stored configuration without changing it. Only the database locator is persisted privately on each instance for restart; all shared configuration and CA are in PostgreSQL. Maximum JSON body 65536 bytes. Success precedes asynchronous instance readiness; poll GET setup or /readyz.
             parameters:
                 - in: header
                   name: Origin
@@ -2241,6 +2563,426 @@ paths:
             security:
                 - AdminCookie: []
             summary: 'Current instance memory only: 60-second observations, stale after 15 seconds; no durable cursor'
+            tags:
+                - Admin
+    /v2/admin/updates:
+        get:
+            parameters:
+                - in: query
+                  name: after
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdateOverview'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Update sources, latest 200 releases, policies, version distribution, latest 100 device/release results and 100 devices
+            tags:
+                - Admin
+    /v2/admin/updates/policies:
+        put:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdatePolicy'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdatePolicy'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Set recommendation and optional minimum version/deadline per platform with original revision; empty release_id clears policy and preserves revision
+            tags:
+                - Admin
+    /v2/admin/updates/releases:
+        put:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateRelease'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdateRelease'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Create immutable signed target draft or change notes/state with original revision; publication requires a verified enabled source
+            tags:
+                - Admin
+    /v2/admin/updates/releases/{release}/sources/{source}:
+        post:
+            parameters:
+                - in: path
+                  name: release
+                  required: true
+                  schema:
+                    type: string
+                - in: path
+                  name: source
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties: {}
+                            required: []
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Verify the complete signed size and SHA256 of an existing object before recording a replica
+            tags:
+                - Admin
+        put:
+            parameters:
+                - in: path
+                  name: release
+                  required: true
+                  schema:
+                    type: string
+                - in: path
+                  name: source
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+            requestBody:
+                content:
+                    application/octet-stream:
+                        schema:
+                            format: binary
+                            type: string
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Upload immutable full package to R2/S3 and verify download; maximum signed size 2 GiB; repeat verifies existing object
+            tags:
+                - Admin
+    /v2/admin/updates/repository:
+        put:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateRepository'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    revision:
+                                        format: int64
+                                        type: integer
+                                required:
+                                    - revision
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Import at most 3 MiB signed TUF metadata with original revision; signature, expiry and monotonic trusted versions required
+            tags:
+                - Admin
+    /v2/admin/updates/sources:
+        put:
+            parameters:
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateSource'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdateSource'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Save R2/S3/HTTPS configuration with original revision; secrets are encrypted and write-only
+            tags:
+                - Admin
+    /v2/admin/updates/sources/{source}/test:
+        post:
+            parameters:
+                - in: path
+                  name: source
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: Origin
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-CSRF-Token
+                  required: true
+                  schema:
+                    maxLength: 64
+                    minLength: 64
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties: {}
+                            required: []
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - AdminCookie: []
+            summary: Test stored source connectivity; does not verify a package or modify publication
             tags:
                 - Admin
     /v2/admin/users:
@@ -2653,6 +3395,52 @@ paths:
                     $ref: '#/components/responses/Error'
             security: []
             summary: Verify player-scoped device proof against active user and nonrevoked device grant
+            tags:
+                - Player
+    /v2/client/report:
+        post:
+            parameters:
+                - in: header
+                  name: Idempotency-Key
+                  required: true
+                  schema:
+                    maxLength: 128
+                    minLength: 16
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ClientReport'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    ok:
+                                        enum:
+                                            - true
+                                        type: boolean
+                                required:
+                                    - ok
+                                type: object
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security:
+                - Bearer: []
+            summary: Authenticated device service/GUI version and update result; independent of room membership
             tags:
                 - Player
     /v2/games:
@@ -3563,6 +4351,58 @@ paths:
             summary: Join with an unexpired invitation
             tags:
                 - Player
+    /v2/updates/check:
+        get:
+            parameters:
+                - in: query
+                  name: version
+                  required: true
+                  schema:
+                    type: string
+                - in: query
+                  name: os
+                  required: true
+                  schema:
+                    enum:
+                        - windows
+                        - linux
+                    type: string
+                - in: query
+                  name: arch
+                  required: true
+                  schema:
+                    enum:
+                        - amd64
+                        - arm64
+                    type: string
+                - description: Retrieve the exact installed release for a verified Linux rollback package; includes published and paused releases.
+                  in: query
+                  name: installed
+                  schema:
+                    enum:
+                        - "1"
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UpdateCheck'
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Public update policy, signed TUF metadata and ordered HTTPS package URLs; no-store, 120/IP/minute
+            tags:
+                - Player
 security:
     - Bearer: []
 servers:
@@ -3610,6 +4450,9 @@ x-local-api:
                         - account-cancel
                         - account-logout
                         - account-takeover
+                        - update-status
+                        - update-check
+                        - update-install
                         - status
                         - games
                         - rooms
@@ -3653,4 +4496,16 @@ x-local-api:
                 type: array
             status:
                 $ref: '#/components/schemas/Status'
+            update-check:
+                $ref: '#/components/schemas/UpdateStatus'
+            update-install:
+                additionalProperties: false
+                properties:
+                    elevate:
+                        type: boolean
+                required:
+                    - elevate
+                type: object
+            update-status:
+                $ref: '#/components/schemas/UpdateStatus'
     transport: HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener

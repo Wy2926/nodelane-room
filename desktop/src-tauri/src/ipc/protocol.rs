@@ -20,6 +20,9 @@ impl Failure {
 #[serde(rename_all = "kebab-case")]
 pub enum Action {
     Status,
+    UpdateStatus,
+    UpdateCheck,
+    UpdateInstall,
     AccountLogin,
     AccountLink,
     AccountPoll,

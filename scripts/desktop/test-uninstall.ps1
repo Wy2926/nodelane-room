@@ -12,6 +12,7 @@ try {
   foreach ($scenario in @('preserve', 'purge', 'autostart', 'stop-failure', 'live-process', 'remove-failure', 'unsafe-backup', 'foreign-service')) {
     & {
       foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
+      function Disable-UpdateRecovery { param($State) $null }
       $base = Join-Path $testRoot $scenario
       $programFiles = Join-Path $base 'programs'
       $target = Join-Path $programFiles 'NodeLaneRoom'

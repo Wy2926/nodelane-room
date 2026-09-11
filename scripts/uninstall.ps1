@@ -33,6 +33,18 @@ function Assert-RemovalTree([string]$Path, [string]$Parent) {
   }
 }
 
+function Disable-UpdateRecovery([string]$State) {
+  if (-not (Test-Path -LiteralPath $State)) { return $null }
+  $guard = [IO.File]::Open((Join-Path $State 'update.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+  try {
+    $task = Get-ScheduledTask -TaskName 'NodeLaneRoomUpdateRecovery' -ErrorAction SilentlyContinue
+    if ($task) { Unregister-ScheduledTask -InputObject $task -Confirm:$false }
+    $job = Join-Path $State 'update-job.bin'
+    if (Test-Path -LiteralPath $job) { Remove-Item -LiteralPath $job -Force }
+  } catch { $guard.Dispose(); throw }
+  return $guard
+}
+
 function Remove-Application {
   $bundles = @($target, (Join-Path $programFiles 'NodeLaneRoom.previous'), (Join-Path $programFiles 'NodeLaneRoom.pending'))
   # Validate every tree before stopping services or removing any files.
@@ -72,6 +84,7 @@ function Remove-Application {
     & $servicePath service uninstall
     if ($LASTEXITCODE -ne 0) { throw 'Service removal failed; installation retained' }
   }
+  $script:updateGuard = Disable-UpdateRecovery $state
   # Remove this install's autostart from the bound player's loaded hive, even
   # when UAC was approved with a different administrator account.
   $ownerFile = Join-Path $state 'owner.sid'
@@ -92,6 +105,7 @@ function Remove-Application {
     }
   }
   # Keep the current uninstaller available until optional data and backups are removed.
+  if ($script:updateGuard) { $script:updateGuard.Dispose(); $script:updateGuard = $null }
   if ($PurgeState -and (Test-Path -LiteralPath $state)) { Remove-Item -LiteralPath $state -Recurse -Force }
   foreach ($bundle in @($bundles[1], $bundles[2], $target)) {
     Assert-RemovalTree $bundle $programFiles
@@ -107,4 +121,4 @@ $lock = [IO.File]::Open((Join-Path $programFiles 'NodeLaneRoom.install.lock'), '
 try {
   Remove-Application
   Write-Output 'Uninstalled. Identity is preserved unless -PurgeState was supplied.'
-} finally { $lock.Dispose() }
+} finally { if ($script:updateGuard) { $script:updateGuard.Dispose() }; $lock.Dispose() }

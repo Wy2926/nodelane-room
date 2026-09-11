@@ -1,0 +1,9 @@
+[Unit]
+Description=Recover interrupted NodeLane Room updates after boot
+
+[Timer]
+OnBootSec=90s
+Unit=nlroom-update.service
+
+[Install]
+WantedBy=timers.target

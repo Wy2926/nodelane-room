@@ -8,6 +8,8 @@ NodeLane Room links Nebula (MIT), based on official `github.com/slackhq/nebula v
 
 The Windows adapter uses the public [TAP-Windows6 IOCTL ABI](https://github.com/OpenVPN/tap-windows6/blob/master/src/tap-windows.h), whose header is available under MIT (Copyright OpenVPN Technologies, Inc.). The complete Windows desktop installer bundles unmodified, signed [TAP-Windows6 9.27.0](https://github.com/OpenVPN/tap-windows6/releases/tag/9.27.0) and the separate `tapctl` utility from OpenVPN 2.6.22, under GPL-2.0. Their complete corresponding source archives, original license texts, source URLs and download hashes are included in `licenses/tap-windows6/`. It does not install the OpenVPN client or service. CLI-only archives require a separately prepared TAP adapter. Linux uses the kernel TUN/TAP API through the existing netlink dependency. Existing go-winio, x/sys and winipcfg dependencies provide platform calls; no new VPN or cryptographic library was added.
 
+The update engine uses `github.com/theupdateframework/go-tuf/v2` (Apache-2.0) and its signing dependencies, including Sigstore (Apache-2.0). Object storage uses `github.com/aws/aws-sdk-go-v2` and Smithy Go (Apache-2.0). Exact versions and transitive notices are captured by the Go module and release license manifests. These dependencies serve software distribution and do not replace Nebula's tunnel cryptography.
+
 ## React and React DOM license
 
 MIT License

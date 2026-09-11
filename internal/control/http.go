@@ -18,18 +18,19 @@ import (
 )
 
 type Server struct {
-	telemetry  telemetryMemory
-	GeoIP      *GeoIP
-	AdminPath  string
-	Store      *Store
-	CA         *pki.Authority
-	Log        *slog.Logger
-	PublicURL  string
-	Registry   string
-	ReleaseDir string
-	requests   atomic.Uint64
-	failures   atomic.Uint64
-	streams    atomic.Int64
+	telemetry       telemetryMemory
+	GeoIP           *GeoIP
+	AdminPath       string
+	Store           *Store
+	CA              *pki.Authority
+	Log             *slog.Logger
+	PublicURL       string
+	Registry        string
+	ReleaseDir      string
+	requests        atomic.Uint64
+	failures        atomic.Uint64
+	streams         atomic.Int64
+	updateTransfers atomic.Int64
 }
 
 func (s *Server) Handler() http.Handler {
@@ -44,6 +45,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerAdmin(mux)
 	s.registerAdminWeb(mux)
 	s.registerInstall(mux)
+	s.registerUpdates(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.requests.Add(1)
 		w.Header().Set("Cache-Control", "no-store")
@@ -114,6 +116,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status = 401
 		code = "unauthorized"
 		message = err.Error()
+	case errors.Is(err, ErrUpdateRequired):
+		status, code, message = 403, "update_required", "client update required"
 	case errors.Is(err, ErrForbidden):
 		status = 403
 		code = "forbidden"

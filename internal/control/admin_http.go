@@ -41,7 +41,11 @@ func (s *Server) adminWrite(next func(http.ResponseWriter, *http.Request, string
 
 func (s *Server) adminMutation(next func(*http.Request, pgx.Tx, string, []byte) (any, error)) func(http.ResponseWriter, *http.Request, string) {
 	return func(w http.ResponseWriter, r *http.Request, actor string) {
-		r.Body = http.MaxBytesReader(w, r.Body, 65536)
+		limit := int64(65536)
+		if r.URL.Path == "/v2/admin/updates/repository" {
+			limit = 3 << 20
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		var raw json.RawMessage
 		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 			s.fail(w, ErrInvalid)

@@ -18,6 +18,7 @@ func (w *adminResponse) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
 }
+func (w *adminResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // Only authenticated failed writes need this fallback event: successful writes
 // already record their concrete changes atomically. Never retain request bodies.
