@@ -25,7 +25,8 @@ export function App() {
   useEffect(() => {
     if (!language) return;
     document.documentElement.lang = language;
-    if (isTauri()) void invoke("set_language", { language }).catch(() => undefined);
+    if (isTauri())
+      void invoke("set_language", { language }).catch(() => undefined);
   }, [language]);
   return language ? <Client /> : <LanguageSelection />;
 }
@@ -38,34 +39,66 @@ function Client() {
     service.refresh();
     setReload((n) => n + 1);
   };
-  const actions = useActions(refreshAll);
+  const actions = useActions(refreshAll, service.status?.service_instance_id);
   return (
     <Shell page={page} setPage={setPage} service={service}>
       <Feedback service={service} actions={actions} refreshAll={refreshAll} />
-      {service.status?.update?.required && page !== "settings" && page !== "doctor" && <Updates />}
-      {!service.status && !service.error && page !== "settings" && page !== "doctor" && (
-        <Empty title={t("app.connectingToTheLocalService")}>
-          <p>{t("app.readingDeviceAndRoomStatus")}</p>
-        </Empty>
-      )}
-      {service.status && !service.status.device_id && !service.error && page !== "settings" && page !== "doctor" && (
-        <Setup actions={actions} />
-      )}
-      {page === "settings" && <Settings status={service.status} actions={actions} usable={!!service.status && !service.error && !actions.busy} />}
-      {page === "doctor" && <Diagnostics status={service.status} actions={actions} usable={!!service.status && !service.error && !actions.busy} serviceError={service.error} />}
-      {service.status && !service.status.device_id && <RoomDialogs actions={actions} status={service.status} serviceError={service.error} onJoined={() => setPage("rooms")} />}
-      {service.status?.control === "signed_out" && page !== "settings" && page !== "doctor" && <Account status={service.status} actions={actions} />}
-      {service.status?.device_id && service.status.control !== "signed_out" && (
-        <Session
+      {service.status?.update?.required &&
+        page !== "settings" &&
+        page !== "doctor" && <Updates />}
+      {!service.status &&
+        !service.error &&
+        page !== "settings" &&
+        page !== "doctor" && (
+          <Empty title={t("app.connectingToTheLocalService")}>
+            <p>{t("app.readingDeviceAndRoomStatus")}</p>
+          </Empty>
+        )}
+      {service.status &&
+        !service.status.device_id &&
+        !service.error &&
+        page !== "settings" &&
+        page !== "doctor" && <Setup actions={actions} />}
+      {page === "settings" && (
+        <Settings
           status={service.status}
-          serviceError={service.error}
-          page={page}
-          setPage={setPage}
           actions={actions}
-          reload={reload}
-          refreshAll={refreshAll}
+          usable={!!service.status && !service.error && !actions.busy}
         />
       )}
+      {page === "doctor" && (
+        <Diagnostics
+          status={service.status}
+          actions={actions}
+          usable={!!service.status && !service.error && !actions.busy}
+          serviceError={service.error}
+        />
+      )}
+      {service.status && !service.status.device_id && (
+        <RoomDialogs
+          actions={actions}
+          status={service.status}
+          serviceError={service.error}
+          onJoined={() => setPage("rooms")}
+        />
+      )}
+      {service.status?.identity === "signed_out" &&
+        page !== "settings" &&
+        page !== "doctor" && (
+          <Account status={service.status} actions={actions} />
+        )}
+      {service.status?.device_id &&
+        service.status.identity !== "signed_out" && (
+          <Session
+            status={service.status}
+            serviceError={service.error}
+            page={page}
+            setPage={setPage}
+            actions={actions}
+            reload={reload}
+            refreshAll={refreshAll}
+          />
+        )}
     </Shell>
   );
 }
@@ -87,9 +120,22 @@ function Session({
   reload: number;
   refreshAll: () => void;
 }) {
-  const catalog = useCatalog(status.device_id, !!serviceError, reload);
+  const catalog = useCatalog(
+    status.device_id,
+    !!serviceError,
+    reload,
+    status.service_instance_id,
+  );
   const view = useRoom(status, serviceError, reload);
-  const usable = !serviceError && !actions.busy && !status.update?.required && status.update?.state !== "installing";
+  const usable =
+    !serviceError &&
+    !actions.busy &&
+    !actions.pending &&
+    !status.pending_operations?.some((op) =>
+      ["submitting", "pending", "reconciling"].includes(op.state),
+    ) &&
+    !status.update?.required &&
+    status.update?.state !== "installing";
   const joined = () => {
     view.setSelected("");
     setPage("rooms");

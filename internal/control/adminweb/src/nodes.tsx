@@ -12,6 +12,7 @@ import {
   rate,
 } from "./components";
 import { Monitor } from "./monitor";
+import { businessMessage } from "./api";
 import { latest, quality, traffic } from "./metrics";
 import type { API, InfraNode, NodeConfig, Telemetry } from "./types";
 
@@ -82,7 +83,9 @@ export function NodeTable({
                   : "控制离线"}
               </Badge>
               {n.report.error && (
-                <small className="error">{n.report.error}</small>
+                <small className="error">
+                  {businessMessage(n.report.error)}
+                </small>
               )}
               <small>
                 配置 {n.report.applied_revision || 0} / {n.revision}
@@ -231,6 +234,7 @@ export function NodePanel({
   const [view, setView] = useState("monitor"),
     [confirm, setConfirm] = useState(""),
     [key, setKey] = useState("");
+  const [expectedRevision, setExpectedRevision] = useState(node.revision);
   const actions: Record<string, [string, string][]> = {
     active: [
       ["drain", "停止分配"],
@@ -331,6 +335,7 @@ export function NodePanel({
                 className={a === "revoke" ? "danger" : ""}
                 onClick={() => {
                   setConfirm(a);
+                  setExpectedRevision(node.revision);
                   setKey("");
                 }}
               >
@@ -353,6 +358,7 @@ export function NodePanel({
                   className="danger"
                   run={async () => {
                     await api("/nodes/" + node.id + "/actions", {
+                      expected_revision: expectedRevision,
                       action: confirm,
                     });
                     await refresh();

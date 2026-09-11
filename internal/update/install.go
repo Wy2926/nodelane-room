@@ -66,7 +66,7 @@ func VerifyPrepared(dir string, p Prepared) error {
 	}
 	a, err := Artifact(u, p.Release.Target)
 	if err != nil || a != p.Release.UpdateArtifact || a.OS != runtime.GOOS || a.Arch != runtime.GOARCH {
-		return errors.New("update_package_invalid")
+		return model.Failure("local_update_package_invalid")
 	}
 	return VerifyFile(PackagePath(dir, a), a)
 }
@@ -89,7 +89,7 @@ func WaitReady(ctx context.Context, dir, version string) error {
 			return ctx.Err()
 		case <-deadline.C:
 			t.Stop()
-			return errors.New("update_health_failed")
+			return model.Failure("local_update_health_failed")
 		case <-t.C:
 		}
 	}
@@ -120,20 +120,20 @@ func Apply(ctx context.Context, dir string) error {
 		if e := SaveJob(dir, j); e != nil {
 			return e
 		}
-		return errors.New(code)
+		return model.Failure(code)
 	}
 	if !model.ValidVersion(j.From) || model.CompareVersion(j.Release.Version, j.From) <= 0 {
-		return fail("update_downgrade_rejected")
+		return fail("local_update_downgrade_rejected")
 	}
 	if err = VerifyPrepared(dir, j.Prepared); err != nil {
-		return fail("update_package_invalid")
+		return fail("local_update_package_invalid")
 	}
 	if j.Previous != nil {
 		if j.Previous.Release.Version != j.From {
-			return fail("update_rollback_invalid")
+			return fail("local_update_rollback_invalid")
 		}
 		if err = VerifyPrepared(dir, *j.Previous); err != nil {
-			return fail("update_rollback_invalid")
+			return fail("local_update_rollback_invalid")
 		}
 	}
 	j.State = "installing"
@@ -146,9 +146,10 @@ func Apply(ctx context.Context, dir string) error {
 		err = WaitReady(ctx, dir, j.Release.Version)
 	}
 	if err != nil {
-		j.State, j.ErrorCode = "failed", "update_install_failed"
+		j.State, j.ErrorCode = "failed", "local_update_recovery_failed"
 		if rollbackPackage(ctx, dir, j) == nil && WaitReady(ctx, dir, j.From) == nil {
 			j.State = "rolled_back"
+			j.ErrorCode = "local_update_rolled_back"
 		}
 	} else {
 		j.State, j.ErrorCode = "succeeded", ""

@@ -28,10 +28,12 @@ type LANStatus struct {
 
 // RoomManagement contains player-visible management data, never tunnel authority.
 type RoomManagement struct {
-	Room       Room      `json:"room"`
-	Game       Game      `json:"game"`
-	Members    []Member  `json:"members"`
-	ServerTime time.Time `json:"server_time"`
+	Permissions Permissions `json:"permissions"`
+	Invitation  InviteInfo  `json:"invitation"`
+	Room        Room        `json:"room"`
+	Game        Game        `json:"game"`
+	Members     []Member    `json:"members"`
+	ServerTime  time.Time   `json:"server_time"`
 }
 
 // Game ports are compact authorized intervals. PortEnd=0 means a single port.

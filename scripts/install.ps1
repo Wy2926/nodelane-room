@@ -78,20 +78,47 @@ function Stop-Network {
     if ($process.Path -eq (Join-Path $target 'nlroom-service.exe') -and -not $process.WaitForExit(10000)) { throw 'Networking process has not exited' }
   }
 }
+function Read-LocalStatus([string]$CLI) {
+  $start = [Diagnostics.ProcessStartInfo]::new($CLI, 'status --json')
+  $start.UseShellExecute = $false
+  $start.CreateNoWindow = $true
+  $start.RedirectStandardOutput = $true
+  $start.RedirectStandardError = $true
+  # Elevated Windows PowerShell may use an OEM code page; IPC JSON is UTF-8.
+  $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false, $true)
+  $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $start
+  try {
+    if (-not $process.Start()) { throw 'Local status process did not start' }
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+    if (-not $process.WaitForExit(5000)) {
+      $process.Kill()
+      $process.WaitForExit()
+      throw 'Local status request timed out'
+    }
+    $null = $stderr.GetAwaiter().GetResult()
+    if ($process.ExitCode -ne 0) { throw "Local status request failed (exit $($process.ExitCode))" }
+    try { return ($stdout.GetAwaiter().GetResult() | ConvertFrom-Json) }
+    catch { throw 'Local status returned invalid UTF-8 JSON' }
+  } finally { $process.Dispose() }
+}
 function Wait-Ready([string]$Version) {
   $service = Get-Service -Name NodeLaneRoom
   $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
+  $lastFailure = 'No successful local status response'
   for ($attempt = 0; $attempt -lt 30; $attempt++) {
     try {
-      $json = & (Join-Path $target 'nlroom-cli.exe') status --json 2>$null
-      if ($LASTEXITCODE -eq 0) {
-        $status = $json | ConvertFrom-Json
-        if ($status.version -eq $Version -and $status.protocol_version -eq 2) { return }
-      }
-    } catch { Write-Verbose 'Waiting for the local service.' }
+      $reply = Read-LocalStatus (Join-Path $target 'nlroom-cli.exe')
+      if ($reply.contract -ne 'interaction-1' -or $reply.code -ne 'ok') { throw 'Local status did not return the expected contract' }
+      $status = $reply.data
+      if ($status.version -eq $Version -and $status.protocol_version -eq 3) { return }
+      $lastFailure = 'Local service version or IPC protocol does not match the package'
+    } catch { $lastFailure = $_.Exception.Message }
     Start-Sleep -Milliseconds 300
   }
-  throw 'The installed service did not become ready with the expected version'
+  throw "The installed service did not become ready with the expected version: $lastFailure"
 }
 
 function Register-Application([string]$Version) {

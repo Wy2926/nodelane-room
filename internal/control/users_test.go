@@ -244,16 +244,16 @@ func TestGuestUpgradePreservesUserRoomAndRejectsMerge(t *testing.T) {
 		t.Fatal("upgrade lost room")
 	}
 	_, err = a.ClaimLogin(context.Background(), attempt.ID, proof)
-	statusError(t, err, 403)
+	statusError(t, err, 410)
 	proof = randomID() + randomID()
 	attempt, err = b.BeginLogin(context.Background(), proof, true)
 	must(t, err)
-	if confirmLogin(t, server, attempt) != 200 {
+	if confirmLogin(t, server, attempt) != 409 {
 		t.Fatal("conflict confirmation failed")
 	}
 	result, err = b.ClaimLogin(context.Background(), attempt.ID, proof)
 	must(t, err)
-	if result.State != "conflict" {
+	if result.State != "failed" || result.Code != "account_identity_conflict" {
 		t.Fatal("existing OIDC identity merged accounts")
 	}
 	u, err := s.Account(context.Background(), b.Identity.ID())
@@ -313,7 +313,7 @@ func TestAccountDeviceLoginOwnershipBanAndLogout(t *testing.T) {
 	must(t, second.Call(ctx, "GET", "/v2/rooms/"+room.Room.ID+"/manage", nil, &management))
 	statusError(t, second.Call(ctx, "POST", "/v2/rooms/join", model.JoinRequest{Code: room.Invitation.Code}, nil), 409)
 	old := lease(t, a, room.Room.ID)
-	must(t, second.Call(ctx, "POST", "/v2/me/takeover", struct{}{}, nil))
+	must(t, second.Call(ctx, "POST", "/v2/me/takeover", model.TakeoverRequest{RoomID: room.Room.ID, DeviceID: a.Identity.ID(), ExpectedRevision: roomRevision(t, s, room.Room.ID)}, nil))
 	var revoked bool
 	must(t, s.Pool.QueryRow(ctx, `SELECT revoked FROM certificates WHERE fingerprint=$1`, old.Fingerprint).Scan(&revoked))
 	if !revoked {
@@ -324,7 +324,7 @@ func TestAccountDeviceLoginOwnershipBanAndLogout(t *testing.T) {
 	otherRoom := create(t, other)
 	must(t, second.Call(ctx, "POST", "/v2/rooms/"+room.Room.ID+"/leave", model.MemberRequest{}, nil))
 	join(t, second, otherRoom)
-	must(t, other.Call(ctx, "POST", "/v2/rooms/"+otherRoom.Room.ID+"/kick", model.MemberRequest{DeviceID: second.Identity.ID()}, nil))
+	must(t, other.Call(ctx, "POST", "/v2/rooms/"+otherRoom.Room.ID+"/kick", model.MemberRequest{ExpectedRevision: roomRevision(t, s, otherRoom.Room.ID), DeviceID: second.Identity.ID()}, nil))
 	statusError(t, a.Call(ctx, "POST", "/v2/rooms/join", model.JoinRequest{Code: otherRoom.Invitation.Code}, nil), 403)
 	must(t, second.Call(ctx, "POST", "/v2/me/logout", struct{}{}, nil))
 	statusError(t, client.NewAPI(i).Authenticate(ctx), 403)
@@ -352,7 +352,7 @@ func TestAdminUserRevocationAndOIDCSecretBoundary(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("disable: %d", code)
 	}
-	statusError(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{Name: "blocked", Game: "custom"}, nil), 403)
+	statusError(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "blocked", Game: "custom"}, nil), 403)
 	var closed, revoked bool
 	must(t, s.Pool.QueryRow(context.Background(), `SELECT r.closed,c.revoked FROM rooms r JOIN certificates c ON c.room_id=r.id WHERE c.fingerprint=$1`, cert.Fingerprint).Scan(&closed, &revoked))
 	if !closed || !revoked {
@@ -383,7 +383,7 @@ func TestIdempotencyChecksRevocationInsideTransaction(t *testing.T) {
 		return e
 	}))
 	_, err = s.mutateChecked(ctx, id, key, "request", check, func(tx pgx.Tx) (any, error) { t.Fatal("replayed operation ran"); return nil, nil })
-	if err != ErrForbidden {
+	if !model.IsCode(err, "account_disabled") {
 		t.Fatalf("cached response bypassed authorization: %v", err)
 	}
 }
@@ -404,11 +404,14 @@ func TestCachedPlayerLeaseCannotRestoreRevokedMembership(t *testing.T) {
 	body, err := json.Marshal(model.LeaseRequest{PublicKey: tunnel})
 	must(t, err)
 	key := randomID()
+	deadline := time.Now().UTC().Add(50 * time.Minute)
 	request := func() int {
 		req, err := http.NewRequest("POST", server.URL+"/v2/rooms/"+room.Room.ID+"/lease", bytes.NewReader(body))
 		must(t, err)
 		req.Header.Set("Authorization", "Bearer "+session.Token)
 		req.Header.Set("Idempotency-Key", key)
+		req.Header.Set(model.ContractHeader, model.Contract)
+		req.Header.Set(model.DeadlineHeader, deadline.Format(time.RFC3339Nano))
 		resp, err := server.Client().Do(req)
 		must(t, err)
 		resp.Body.Close()
@@ -435,9 +438,9 @@ func TestOIDCClaimRequiresOriginalProofAndDevice(t *testing.T) {
 	must(t, err)
 	b := user(t, server, "other device")
 	_, err = b.ClaimLogin(context.Background(), attempt.ID, proof)
-	statusError(t, err, 403)
+	statusError(t, err, 401)
 	_, err = a.ClaimLogin(context.Background(), attempt.ID, randomID()+randomID())
-	statusError(t, err, 403)
+	statusError(t, err, 401)
 	result, err := a.ClaimLogin(context.Background(), attempt.ID, proof)
 	must(t, err)
 	if result.State != "pending" || result.Session != nil {

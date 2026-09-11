@@ -5,9 +5,9 @@ package localapi
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 
+	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/nodelane/nodelane-room/internal/platform"
 )
 
@@ -18,9 +18,9 @@ func TestCallOverLocalSocket(t *testing.T) {
 		body   string
 		err    string
 	}{
-		{"success", 200, `{"engine":"running"}`, ""},
-		{"service error", 400, `{"error":"unsupported node operation"}`, "unsupported node operation"},
-		{"plain error", 400, "invalid RPC request\n", "invalid RPC request\n"},
+		{"success", 200, `{"contract":"interaction-1","request_id":"test","code":"ok","data":{"engine":"running"}}`, ""},
+		{"service error", 403, `{"contract":"interaction-1","request_id":"test","code":"room_owner_required","message":"role required"}`, "room_owner_required"},
+		{"plain error", 400, "invalid RPC request\n", "local_ipc_response_invalid"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -36,7 +36,7 @@ func TestCallOverLocalSocket(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					t.Error(err)
 				}
-				if req.Action != "status" || req.Room != "room-id" || string(req.Body) != `{"revision":2}` {
+				if req.Contract != model.Contract || len(req.CommandID) < 16 || req.Action != "status" || req.Room != "room-id" || string(req.Body) != `{"revision":2}` {
 					t.Error("local request fields changed")
 				}
 				w.WriteHeader(test.status)
@@ -50,7 +50,7 @@ func TestCallOverLocalSocket(t *testing.T) {
 			}
 			err = Call(t.Context(), dir, Request{Action: "status", Room: "room-id", Body: json.RawMessage(`{"revision":2}`)}, &out)
 			if test.err != "" {
-				if err == nil || err.Error() != test.err {
+				if err == nil || model.Code(err) != test.err {
 					t.Fatalf("want %q, got %v", test.err, err)
 				}
 			} else if err != nil || out.Engine != "running" {
@@ -62,7 +62,7 @@ func TestCallOverLocalSocket(t *testing.T) {
 
 func TestCallUnavailable(t *testing.T) {
 	err := Call(t.Context(), t.TempDir(), Request{Action: "status"}, nil)
-	if err == nil || !strings.Contains(err.Error(), "cannot reach NodeLane service") {
+	if !model.IsCode(err, "local_service_unavailable") {
 		t.Fatalf("missing service diagnostic: %v", err)
 	}
 }

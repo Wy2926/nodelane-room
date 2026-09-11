@@ -23,7 +23,7 @@ func (r *Runtime) HealthHandler() http.Handler {
 		if s.Engine == "running" {
 			running = 1
 		}
-		if s.Control == "connected" {
+		if s.Control == "online" {
 			control = 1
 		}
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")

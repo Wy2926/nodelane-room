@@ -26,9 +26,14 @@ const controlLabels: Record<string, MessageKey> = {
   idle: "diagnostics.idle",
   connecting: "diagnostics.connecting",
 };
-const controlLabel = (value?: string) => t(controlLabels[value || ""] || "diagnostics.unknown");
+const controlLabel = (value?: string) =>
+  t(controlLabels[value || ""] || "diagnostics.unknown");
 const engineLabel = (value?: string) =>
-  value === "running" ? t("diagnostics.running") : value === "stopped" ? t("diagnostics.stopped") : t("diagnostics.unknown");
+  value === "running"
+    ? t("diagnostics.running")
+    : value === "stopped"
+      ? t("diagnostics.stopped")
+      : t("diagnostics.unknown");
 const measurement = (value?: number) =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 
@@ -82,11 +87,11 @@ export function Diagnostics({
     platform?.os === "windows"
       ? platform.tap_interface_present
       : platform?.tun_device_present;
-  const connected = available && status.control === "connected";
+  const connected = available && status.control === "online";
   const needsAttention =
     !!serviceError ||
     (available &&
-      (status.control === "unreachable" ||
+      (status.control === "offline" ||
         !!status.error ||
         (!!status.selected_room && (!running || !leaseValid))));
   const summary = !available
@@ -100,7 +105,7 @@ export function Diagnostics({
     ? t("diagnostics.serviceHelp")
     : !status
       ? t("diagnostics.readingLocalConnectionStatus")
-      : status.control === "unreachable"
+      : status.control === "offline"
         ? t("diagnostics.controlHelp")
         : status.selected_room && (!running || !leaseValid)
           ? t("diagnostics.roomNotReadyHelp")
@@ -108,8 +113,10 @@ export function Diagnostics({
             ? t("diagnostics.runningHelp")
             : t("diagnostics.joinRoomHelp");
   const run = () =>
-    void perform<Diagnostic>(t("diagnostics.runDiagnostics"), { action: "doctor" }, (value) =>
-      setReport({ data: value, at: Date.now() }),
+    void perform<Diagnostic>(
+      t("diagnostics.runDiagnostics"),
+      { action: "doctor" },
+      (value) => setReport({ data: value, at: Date.now() }),
     );
   const copyReport = () => {
     if (!data || !report) return;
@@ -117,12 +124,31 @@ export function Diagnostics({
     void copy(
       [
         t("diagnostics.reportTitle"),
-        t("diagnostics.checkedAt", { time: formatTime(new Date(report.at).toISOString()) }),
+        t("diagnostics.checkedAt", {
+          time: formatTime(new Date(report.at).toISOString()),
+        }),
         t("diagnostics.controlService", { 0: controlLabel(data.control) }),
         t("diagnostics.gameNetwork", { 0: engineLabel(data.engine) }),
-        t("diagnostics.tunnelComponent", { 0: driver === undefined ? t("diagnostics.unknown") : driver ? t("diagnostics.found") : t("diagnostics.notFound") }),
-        t("diagnostics.networkInterfaces", { 0: platform?.interface_error ? t("diagnostics.failed") : platform?.interfaces ? t("diagnostics.complete") : t("diagnostics.unknown") }),
-        t("diagnostics.serviceErrors", { 0: data.error ? t("diagnostics.anErrorWasReportedViewItInThe") : t("diagnostics.noneReported") }),
+        t("diagnostics.tunnelComponent", {
+          0:
+            driver === undefined
+              ? t("diagnostics.unknown")
+              : driver
+                ? t("diagnostics.found")
+                : t("diagnostics.notFound"),
+        }),
+        t("diagnostics.networkInterfaces", {
+          0: platform?.interface_error
+            ? t("diagnostics.failed")
+            : platform?.interfaces
+              ? t("diagnostics.complete")
+              : t("diagnostics.unknown"),
+        }),
+        t("diagnostics.serviceErrors", {
+          0: data.error
+            ? t("diagnostics.anErrorWasReportedViewItInThe")
+            : t("diagnostics.noneReported"),
+        }),
         t("diagnostics.reportOmissions"),
       ].join("\n"),
     );
@@ -131,17 +157,23 @@ export function Diagnostics({
     <div className="diagnostics-page">
       <div className="page-intro section-head">
         <div>
-          <span className="eyebrow">{t("diagnostics.understandEveryConnection")}</span>
+          <span className="eyebrow">
+            {t("diagnostics.understandEveryConnection")}
+          </span>
           <h2>{t("navigation.diagnostics")}</h2>
           <p>{t("diagnostics.intro")}</p>
         </div>
         <button className="primary" disabled={!usable} onClick={run}>
           <ArrowClockwise
             size={21}
-            className={busy === t("diagnostics.runDiagnostics") ? "spinning" : undefined}
+            className={
+              busy === t("diagnostics.runDiagnostics") ? "spinning" : undefined
+            }
             aria-hidden="true"
           />
-          {busy === t("diagnostics.runDiagnostics") ? t("diagnostics.checking") : t("diagnostics.runDiagnostics")}
+          {busy === t("diagnostics.runDiagnostics")
+            ? t("diagnostics.checking")
+            : t("diagnostics.runDiagnostics")}
         </button>
       </div>
       <section
@@ -158,14 +190,21 @@ export function Diagnostics({
             <p>{guidance}</p>
           </div>
         </div>
-        <div className="network-path" aria-label={t("diagnostics.connectionStatus")}>
+        <div
+          className="network-path"
+          aria-label={t("diagnostics.connectionStatus")}
+        >
           <div>
             <Desktop size={25} aria-hidden="true" />
             <span>{t("diagnostics.localService")}</span>
             <CheckState
               tone={available ? "ok" : serviceError ? "warning" : "neutral"}
             >
-              {available ? t("diagnostics.connected") : serviceError ? t("diagnostics.unavailable") : t("diagnostics.loading")}
+              {available
+                ? t("diagnostics.connected")
+                : serviceError
+                  ? t("diagnostics.unavailable")
+                  : t("diagnostics.loading")}
             </CheckState>
           </div>
           <ArrowRight className="path-arrow" size={22} aria-hidden="true" />
@@ -178,12 +217,14 @@ export function Diagnostics({
                   ? "neutral"
                   : connected
                     ? "ok"
-                    : status.control === "unreachable"
+                    : status.control === "offline"
                       ? "warning"
                       : "neutral"
               }
             >
-              {available ? controlLabel(status.control) : t("diagnostics.unknown")}
+              {available
+                ? controlLabel(status.control)
+                : t("diagnostics.unknown")}
             </CheckState>
           </div>
           <ArrowRight className="path-arrow" size={22} aria-hidden="true" />
@@ -199,7 +240,9 @@ export function Diagnostics({
                     : "neutral"
               }
             >
-              {available ? engineLabel(status.engine) : t("diagnostics.unknown")}
+              {available
+                ? engineLabel(status.engine)
+                : t("diagnostics.unknown")}
             </CheckState>
           </div>
         </div>
@@ -219,12 +262,16 @@ export function Diagnostics({
             {!available || !Number.isFinite(expiry)
               ? t("diagnostics.noAuthorization")
               : leaseValid
-                ? t("diagnostics.minRemaining", { 0: Math.ceil((expiry - now) / 60000) })
+                ? t("diagnostics.minRemaining", {
+                    0: Math.ceil((expiry - now) / 60000),
+                  })
                 : t("diagnostics.authorizationExpired")}
           </strong>
           <small>
             {available && Number.isFinite(expiry)
-              ? t("diagnostics.expires", { 0: formatTime(status.lease_expires_at) })
+              ? t("diagnostics.expires", {
+                  0: formatTime(status.lease_expires_at),
+                })
               : t("diagnostics.availableAfterJoiningARoom")}
           </small>
         </div>
@@ -233,7 +280,11 @@ export function Diagnostics({
           <span>{t("diagnostics.memberConnections")}</span>
           <strong>
             {measured
-              ? t("diagnostics.established", { 0: peers.filter((p) => p.mode === "direct" || p.mode === "relay").length })
+              ? t("diagnostics.established", {
+                  0: peers.filter(
+                    (p) => p.mode === "direct" || p.mode === "relay",
+                  ).length,
+                })
               : t("diagnostics.waitingForConnection")}
           </strong>
           <small>{t("diagnostics.basedOnActualTunnelState")}</small>
@@ -248,7 +299,12 @@ export function Diagnostics({
             <h3 id="system-check-title">{t("diagnostics.systemChecks")}</h3>
             {report && (
               <span className="hint">
-                {t("diagnostics.checkedAt", { time: new Date(report.at).toLocaleTimeString(getLanguage(), { hour12: false }) })}</span>
+                {t("diagnostics.checkedAt", {
+                  time: new Date(report.at).toLocaleTimeString(getLanguage(), {
+                    hour12: false,
+                  }),
+                })}
+              </span>
             )}
           </div>
           {!report ? (
@@ -277,7 +333,9 @@ export function Diagnostics({
                 </div>
                 <div>
                   <dt>
-                    {platform?.os === "windows" ? t("diagnostics.lanAdapter") : t("diagnostics.tunTapDevice")}
+                    {platform?.os === "windows"
+                      ? t("diagnostics.lanAdapter")
+                      : t("diagnostics.tunTapDevice")}
                   </dt>
                   <dd>
                     <CheckState
@@ -299,7 +357,9 @@ export function Diagnostics({
                 </div>
                 <div>
                   <dt>{t("diagnostics.nebulaVersion")}</dt>
-                  <dd className="mono">{data?.nebula_version || t("diagnostics.unknown")}</dd>
+                  <dd className="mono">
+                    {data?.nebula_version || t("diagnostics.unknown")}
+                  </dd>
                 </div>
                 <div>
                   <dt>{t("diagnostics.networkInterfacesLabel")}</dt>
@@ -316,7 +376,10 @@ export function Diagnostics({
                       {platform?.interface_error
                         ? t("diagnostics.readFailed")
                         : platform?.interfaces
-                          ? t("diagnostics.enabled", { 0: platform.interfaces.filter((i) => i.up).length, 1: platform.interfaces.length })
+                          ? t("diagnostics.enabled", {
+                              0: platform.interfaces.filter((i) => i.up).length,
+                              1: platform.interfaces.length,
+                            })
                           : t("diagnostics.notAvailable")}
                     </CheckState>
                   </dd>
@@ -324,10 +387,14 @@ export function Diagnostics({
               </dl>
               {driver === false && (
                 <p className="diagnostic-warning">
-                  {t("diagnostics.tunnelMissingHelp")}</p>
+                  {t("diagnostics.tunnelMissingHelp")}
+                </p>
               )}
               {data?.error && (
-                <p className="diagnostic-warning">{t("diagnostics.serviceReport")}{data.error}</p>
+                <p className="diagnostic-warning">
+                  {t("diagnostics.serviceReport")}
+                  {data.error}
+                </p>
               )}
               {!!platform?.interfaces?.length && (
                 <details className="interface-details">
@@ -340,11 +407,14 @@ export function Diagnostics({
                       <div>
                         <strong>{item.name}</strong>
                         <CheckState tone={item.up ? "ok" : "neutral"}>
-                          {item.up ? t("diagnostics.enabledLabel") : t("diagnostics.disabled")}
+                          {item.up
+                            ? t("diagnostics.enabledLabel")
+                            : t("diagnostics.disabled")}
                         </CheckState>
                       </div>
                       <p className="mono selectable">
-                        {item.addresses?.join(" · ") || t("diagnostics.noAddresses")}
+                        {item.addresses?.join(" · ") ||
+                          t("diagnostics.noAddresses")}
                       </p>
                       <small>MTU {item.mtu}</small>
                     </div>
@@ -354,7 +424,8 @@ export function Diagnostics({
               <div className="diagnostic-copy">
                 <button disabled={!!busy} onClick={copyReport}>
                   <Copy size={18} aria-hidden="true" />
-                  {t("diagnostics.copyRedactedDiagnostics")}</button>
+                  {t("diagnostics.copyRedactedDiagnostics")}
+                </button>
                 <p className="hint">{t("diagnostics.copyHelp")}</p>
               </div>
             </>
@@ -369,14 +440,15 @@ export function Diagnostics({
             <span className="hint">{t("diagnostics.latencyPacketLoss")}</span>
           </div>
           {!measured && peers.length > 0 && (
-            <p className="diagnostic-warning">
-              {t("diagnostics.staleHelp")}</p>
+            <p className="diagnostic-warning">{t("diagnostics.staleHelp")}</p>
           )}
           {!peers.length ? (
             <div className="diagnostic-empty">
               <Network size={34} weight="light" aria-hidden="true" />
               <h4>
-                {status?.selected_room ? t("diagnostics.waitingForFriends") : t("diagnostics.noMemberConnectionsYet")}
+                {status?.selected_room
+                  ? t("diagnostics.waitingForFriends")
+                  : t("diagnostics.noMemberConnectionsYet")}
               </h4>
               <p>{t("diagnostics.peersHelp")}</p>
             </div>
@@ -415,18 +487,24 @@ export function Diagnostics({
                     <div>
                       <small>{t("diagnostics.roundTripLatency")}</small>
                       <strong>
-                        {rtt === undefined ? t("diagnostics.notMeasured") : `${rtt.toFixed(1)} ms`}
+                        {rtt === undefined
+                          ? t("diagnostics.notMeasured")
+                          : `${rtt.toFixed(1)} ms`}
                       </strong>
                     </div>
                     <div>
                       <small>{t("diagnostics.packetLoss")}</small>
                       <strong>
-                        {loss === undefined ? t("diagnostics.notMeasured") : `${loss.toFixed(0)}%`}
+                        {loss === undefined
+                          ? t("diagnostics.notMeasured")
+                          : `${loss.toFixed(0)}%`}
                       </strong>
                     </div>
                     <button
                       className="icon-button"
-                      aria-label={t("diagnostics.measureLatencyTo", { 0: peer.name })}
+                      aria-label={t("diagnostics.measureLatencyTo", {
+                        0: peer.name,
+                      })}
                       title={t("diagnostics.measureLatency")}
                       disabled={!usable || !measured}
                       onClick={() =>
@@ -444,15 +522,16 @@ export function Diagnostics({
                       min={0}
                       max={100}
                       value={loss}
-                      aria-label={t("diagnostics.packetLossFor", { 0: peer.name })}
+                      aria-label={t("diagnostics.packetLossFor", {
+                        0: peer.name,
+                      })}
                     />
                   )}
                 </article>
               );
             })
           )}
-          <p className="hint peer-note">
-            {t("diagnostics.measurementsHelp")}</p>
+          <p className="hint peer-note">{t("diagnostics.measurementsHelp")}</p>
         </section>
       </div>
     </div>

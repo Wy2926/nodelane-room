@@ -14,7 +14,7 @@ func (r *Runtime) Init(ctx context.Context, server, name string) (string, error)
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.api != nil && !r.identity.PendingGuest {
-		return "", localapi.Failure("already_initialized", "device is already initialized")
+		return "", localapi.Failure("local_already_initialized", "device is already initialized")
 	}
 	i, err := device.NewIdentity(server, name)
 	if r.identity.PendingGuest && r.identity.Server == server && r.identity.Name == name {
@@ -22,7 +22,7 @@ func (r *Runtime) Init(ctx context.Context, server, name string) (string, error)
 		err = nil
 	}
 	if err != nil {
-		return "", localapi.Failure("invalid_request", err.Error())
+		return "", err
 	}
 	if err = r.clearLogin(); err != nil {
 		return "", err
@@ -51,13 +51,13 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.api == nil {
-		return nil, localapi.Failure("unconfigured", "run nlroom-cli init first")
+		return nil, localapi.Failure("local_unconfigured", "run nlroom-cli init first")
 	}
 	if r.identity.Node {
-		return nil, localapi.Failure("forbidden", "infrastructure identity cannot operate player rooms")
+		return nil, localapi.Failure("resource_not_found", "infrastructure identity cannot operate player rooms")
 	}
-	if (action == "create" || action == "join") && (requiredLocally(r.updateStatus().Policy) || r.updateStatus().State == "installing") {
-		return nil, localapi.Failure("update_required", "client update required")
+	if (action == "create" || action == "join" || action == "owner-join") && (requiredLocally(r.updateStatus().Policy) || r.updateStatus().State == "installing") {
+		return nil, localapi.Failure("client_update_required", "client update required")
 	}
 	if room == "" {
 		room = r.identity.RoomID
@@ -69,41 +69,54 @@ func (r *Runtime) Action(ctx context.Context, action, room string, body json.Raw
 	if action == "join" {
 		path = "/v2/rooms/join"
 	}
-	if action == "create" || action == "join" {
+	if action == "owner-join" {
+		path = "/v2/rooms/" + room + "/join"
+	}
+	if action == "invite-revoke" {
+		path = "/v2/rooms/" + room + "/invite/revoke"
+	}
+	if action == "create" || action == "join" || action == "owner-join" {
 		r.reportVersion(ctx)
 	}
 	if room == "" && action != "create" && action != "join" {
-		return nil, localapi.Failure("no_room", "no selected room")
+		return nil, localapi.Failure("local_no_room", "no selected room")
 	}
-	var out json.RawMessage
-	if err := r.api.Call(ctx, "POST", path, body, &out); err != nil {
+	result, err := r.api.CallResult(ctx, "POST", path, body)
+	if err != nil {
 		return nil, err
 	}
-	i := r.identity
-	if action == "create" || action == "join" {
-		var result model.RoomResult
-		if err := json.Unmarshal(out, &result); err != nil {
-			return nil, err
-		}
-		i.RoomID = result.Room.ID
-		if err := r.persist(i); err != nil {
-			return nil, err
-		}
-		r.netMu.Lock()
-		r.stopNetworkLocked()
-		r.netMu.Unlock()
-	}
-	if (action == "leave" || action == "close") && room == i.RoomID {
-		r.netMu.Lock()
-		r.stopNetworkLocked()
-		r.netMu.Unlock()
-		i.RoomID = ""
-		if err := r.persist(i); err != nil {
-			return nil, err
-		}
+	if err := r.applyActionResult(ctx, action, path, result.Data); err != nil {
+		return nil, &model.BusinessError{Code: model.Code(err), Details: model.Details{KnownCommit: true}}
 	}
 	r.Wake()
-	return out, nil
+	return result, nil
+}
+
+func (r *Runtime) applyActionResult(ctx context.Context, action, path string, data json.RawMessage) error {
+	switch action {
+	case "create", "join", "owner-join", "leave", "close":
+	default:
+		return nil
+	}
+	var me model.AccountStatus
+	if err := r.api.Call(ctx, "GET", "/v2/me", nil, &me); err != nil {
+		return err
+	}
+	i := r.identity
+	i.RoomID = ""
+	if me.Membership.State == "active" {
+		i.RoomID = me.Membership.RoomID
+	}
+	if i.RoomID != r.identity.RoomID {
+		r.netMu.Lock()
+		r.stopNetworkLocked()
+		r.snapshot = model.Snapshot{Self: me.Membership}
+		r.netMu.Unlock()
+		if err := r.persist(i); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Runtime) Members(ctx context.Context, room string) (model.Snapshot, error) {
@@ -111,13 +124,13 @@ func (r *Runtime) Members(ctx context.Context, room string) (model.Snapshot, err
 	defer r.op.Unlock()
 	var s model.Snapshot
 	if r.api == nil {
-		return s, localapi.Failure("unconfigured", "run init first")
+		return s, localapi.Failure("local_unconfigured", "run init first")
 	}
 	if room == "" {
 		room = r.identity.RoomID
 	}
 	if room == "" {
-		return s, localapi.Failure("no_room", "no selected room")
+		return s, localapi.Failure("local_no_room", "no selected room")
 	}
 	err := r.api.Call(ctx, "GET", "/v2/rooms/"+room, nil, &s)
 	return s, err
@@ -127,21 +140,21 @@ func (r *Runtime) Games(ctx context.Context) ([]model.Game, error) {
 	r.op.Lock()
 	defer r.op.Unlock()
 	if r.api == nil {
-		return nil, localapi.Failure("unconfigured", "run init first")
+		return nil, localapi.Failure("local_unconfigured", "run init first")
 	}
 	var out []model.Game
 	err := r.api.Call(ctx, "GET", "/v2/games", nil, &out)
 	return out, err
 }
 
-func (r *Runtime) OwnedRooms(ctx context.Context) ([]model.Room, error) {
+func (r *Runtime) OwnedRooms(ctx context.Context) (model.RoomPage, error) {
 	r.op.Lock()
 	api := r.api
 	r.op.Unlock()
 	if api == nil {
-		return nil, localapi.Failure("unconfigured", "请先初始化设备")
+		return model.RoomPage{}, localapi.Failure("local_unconfigured", "请先初始化设备")
 	}
-	var out []model.Room
+	var out model.RoomPage
 	err := api.Call(ctx, "GET", "/v2/rooms", nil, &out)
 	return out, err
 }
@@ -149,13 +162,13 @@ func (r *Runtime) OwnedRooms(ctx context.Context) ([]model.Room, error) {
 func (r *Runtime) ManageRoom(ctx context.Context, room string) (model.RoomManagement, error) {
 	var out model.RoomManagement
 	if !validLocalID(room, false) {
-		return out, localapi.Failure("invalid_request", "invalid room ID")
+		return out, localapi.Failure("request_validation_failed", "invalid room ID")
 	}
 	r.op.Lock()
 	api := r.api
 	r.op.Unlock()
 	if api == nil {
-		return out, localapi.Failure("unconfigured", "请先初始化设备")
+		return out, localapi.Failure("local_unconfigured", "请先初始化设备")
 	}
 	err := api.Call(ctx, "GET", "/v2/rooms/"+room+"/manage", nil, &out)
 	return out, err

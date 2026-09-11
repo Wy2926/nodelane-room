@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -121,7 +120,7 @@ func (r *Runtime) EnrollNode(ctx context.Context, key string) (model.NodeLocalSt
 	api := client.NewAPI(i)
 	// Authentication recovers a registration committed before the final local write.
 	if err := api.Authenticate(ctx); err != nil {
-		if i.NodeID != "" {
+		if i.NodeID != "" || !model.IsCode(err, "node_not_authorized") {
 			return r.nodeStatusLocked(), err
 		}
 		if len(key) != 64 {
@@ -131,8 +130,17 @@ func (r *Runtime) EnrollNode(ctx context.Context, key string) (model.NodeLocalSt
 			return r.nodeStatusLocked(), err
 		}
 	}
+	nodeID, generation := api.NodeBinding()
+	if nodeID == "" || generation < 1 {
+		return r.nodeStatusLocked(), model.Failure("local_control_response_invalid")
+	}
+	i.NodeID, i.Generation = nodeID, generation
+	if err := r.persist(i); err != nil {
+		return r.nodeStatusLocked(), err
+	}
+	r.api = api
 	var sync model.NodeSync
-	if err := api.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, &sync); err != nil {
+	if err := api.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: generation, Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, &sync); err != nil {
 		return r.nodeStatusLocked(), err
 	}
 	i.NodeID = sync.Node.ID
@@ -178,7 +186,7 @@ func (r *Runtime) ApplyNodeConfig(revision int64) error {
 		return err
 	}
 	if os.Getenv("NLROOM_DEPLOYMENT") == "container" && os.Getenv("NLROOM_MAPPED_PORT") != p {
-		return fmt.Errorf("update Compose UDP mapping and NLROOM_MAPPED_PORT to %s, recreate the container, then apply configuration", p)
+		return model.Failure("node_apply_required")
 	}
 	r.nodeState.ApprovedRevision = revision
 	r.nodeState.ListenPort = port
@@ -212,7 +220,7 @@ func (r *Runtime) prepareNode(ctx context.Context) (model.Snapshot, bool, error)
 		}
 	}
 	if err := r.api.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: r.identity.Generation, Report: r.nodeReport(), Results: results}, &out); err != nil {
-		if client.IsDenied(err) {
+		if client.NodeAuthorizationEnded(err) || client.IdentityEnded(err) {
 			r.netMu.Lock()
 			r.stopNetworkLocked()
 			r.netMu.Unlock()
@@ -220,12 +228,12 @@ func (r *Runtime) prepareNode(ctx context.Context) (model.Snapshot, bool, error)
 		return out.Snapshot, false, err
 	}
 	if delta := time.Since(out.Snapshot.ServerTime); delta > 30*time.Second || delta < -30*time.Second {
-		return out.Snapshot, false, errors.New("system clock differs from control server by more than 30 seconds")
+		return out.Snapshot, false, model.Failure("local_clock_skew")
 	}
 	r.nodeControlOK = true
 	n := out.Node
-	if r.identity.Generation != 0 && (r.identity.Generation != n.Generation || r.identity.NodeID != n.ID) {
-		return out.Snapshot, false, errors.New("node identity generation changed")
+	if r.identity.Generation != n.Generation || r.identity.NodeID != n.ID {
+		return out.Snapshot, false, model.Failure("node_generation_stale")
 	}
 	changed := r.nodeState.Desired == nil || r.nodeState.Desired.Revision != n.Revision || r.nodeState.Desired.State != n.State
 	// The committed response acknowledges terminal results. Keep running checkpoints
@@ -258,7 +266,7 @@ func (r *Runtime) prepareNode(ctx context.Context) (model.Snapshot, bool, error)
 		portApproval = oldPort != portText && r.nodeState.ApprovedRevision != n.Revision
 	}
 	if r.nodeState.ListenPort != port || portApproval {
-		r.nodePending = fmt.Sprintf("configuration v%d awaits local UDP port %d; run nlroom-node config apply %d after updating the deployment", n.Revision, port, n.Revision)
+		r.nodePending = "node_apply_required"
 		if old := r.nodeState.Applied; old != nil {
 			selected.Name = old.Name
 			selected.Region = old.Region
@@ -271,7 +279,7 @@ func (r *Runtime) prepareNode(ctx context.Context) (model.Snapshot, bool, error)
 			if err = r.saveNodeState(); err != nil {
 				return out.Snapshot, false, err
 			}
-			return out.Snapshot, false, errors.New(r.nodePending)
+			return out.Snapshot, false, model.Failure(r.nodePending)
 		}
 	}
 	r.nodeSelected = &selected
@@ -317,7 +325,7 @@ func (r *Runtime) prepareNode(ctx context.Context) (model.Snapshot, bool, error)
 		return out.Snapshot, false, nil
 	}
 	if n.State != "active" && n.State != "draining" {
-		return out.Snapshot, false, errors.New("node is not authorized to run")
+		return out.Snapshot, false, model.Failure("node_not_authorized")
 	}
 	return out.Snapshot, true, nil
 }

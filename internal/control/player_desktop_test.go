@@ -18,8 +18,10 @@ func TestOwnerManagementAfterLeaving(t *testing.T) {
 	join(t, guest, room)
 	path := "/v2/rooms/" + room.Room.ID
 	must(t, owner.Call(ctx, "POST", path+"/leave", struct{}{}, nil))
+	var page model.RoomPage
 	var list []model.Room
-	must(t, owner.Call(ctx, "GET", "/v2/rooms", nil, &list))
+	must(t, owner.Call(ctx, "GET", "/v2/rooms", nil, &page))
+	list = page.Rooms
 	if len(list) != 1 || list[0].ID != room.Room.ID {
 		t.Fatal("left room not available for its owner")
 	}
@@ -28,7 +30,7 @@ func TestOwnerManagementAfterLeaving(t *testing.T) {
 	if len(view.Members) != 1 || view.Members[0].DeviceID != guest.Identity.ID() || view.Game.ID != "custom" {
 		t.Fatal("incorrect management view")
 	}
-	statusError(t, stranger.Call(ctx, "GET", path+"/manage", nil, &view), 403)
+	statusError(t, stranger.Call(ctx, "GET", path+"/manage", nil, &view), 404)
 	statusError(t, guest.Call(ctx, "GET", path+"/manage", nil, &view), 403)
 	_, pub, err := pki.TunnelKey()
 	must(t, err)
@@ -38,18 +40,21 @@ func TestOwnerManagementAfterLeaving(t *testing.T) {
 	if len(snap.Members) != 0 {
 		t.Fatal("management granted network authority")
 	}
-	must(t, owner.Call(ctx, "POST", path+"/transfer", model.MemberRequest{DeviceID: guest.Identity.ID()}, nil))
+	must(t, owner.Call(ctx, "POST", path+"/transfer", model.MemberRequest{ExpectedRevision: roomRevision(t, s, room.Room.ID), DeviceID: guest.Identity.ID()}, nil))
 	statusError(t, owner.Call(ctx, "GET", path+"/manage", nil, &view), 403)
-	must(t, owner.Call(ctx, "GET", "/v2/rooms", nil, &list))
+	must(t, owner.Call(ctx, "GET", "/v2/rooms", nil, &page))
+	list = page.Rooms
 	if len(list) != 0 {
 		t.Fatal("former owner still lists room")
 	}
-	must(t, guest.Call(ctx, "GET", "/v2/rooms", nil, &list))
+	must(t, guest.Call(ctx, "GET", "/v2/rooms", nil, &page))
+	list = page.Rooms
 	if len(list) != 1 {
 		t.Fatal("new owner cannot list room")
 	}
-	must(t, guest.Call(ctx, "POST", path+"/close", struct{}{}, nil))
-	must(t, guest.Call(ctx, "GET", "/v2/rooms", nil, &list))
+	must(t, guest.Call(ctx, "POST", path+"/close", model.MemberRequest{ExpectedRevision: roomRevision(t, s, room.Room.ID)}, nil))
+	must(t, guest.Call(ctx, "GET", "/v2/rooms", nil, &page))
+	list = page.Rooms
 	if len(list) != 0 {
 		t.Fatal("closed room still listed")
 	}

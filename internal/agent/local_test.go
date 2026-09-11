@@ -23,19 +23,23 @@ func TestPlayerRPCBoundary(t *testing.T) {
 	}
 	for _, tc := range []struct{ body, code string }{
 		{`{"action":"status"}`, ""},
-		{`{"action":"status"} {}`, "invalid_request"},
-		{`{"action":"status","room":"../admin"}`, "invalid_request"},
-		{`{"action":"status","extra":true}`, "invalid_request"},
-		{`{"action":"service-install"}`, "unknown_action"},
-		{`{"action":"port","body":{"protocol":"udp","port":7000}}`, "unknown_action"},
-		{`{"action":"remove-port","body":{"protocol":"udp","port":7000}}`, "unknown_action"},
-		{`{"action":"games"}`, "unconfigured"},
+		{`{"action":"status"} {}`, "request_malformed"},
+		{`{"action":"status","room":"../admin"}`, "request_malformed"},
+		{`{"action":"status","extra":true}`, "request_malformed"},
+		{`{"action":"service-install"}`, "request_method_unsupported"},
+		{`{"action":"port","body":{"protocol":"udp","port":7000}}`, "request_method_unsupported"},
+		{`{"action":"remove-port","body":{"protocol":"udp","port":7000}}`, "request_method_unsupported"},
+		{`{"action":"games"}`, "local_unconfigured"},
 	} {
 		w := httptest.NewRecorder()
-		r.localHandler().ServeHTTP(w, httptest.NewRequest("POST", "/rpc", strings.NewReader(tc.body)))
+		r.localHandler().ServeHTTP(w, httptest.NewRequest("POST", "/rpc", strings.NewReader(strings.Replace(tc.body, `{"action":`, `{"contract":"interaction-1","action":`, 1))))
 		if tc.code == "" {
 			var s model.Status
-			if err := json.Unmarshal(w.Body.Bytes(), &s); err != nil || s.ProtocolVersion != localapi.ProtocolVersion {
+			var envelope model.Result
+			if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(envelope.Data, &s); err != nil || s.ProtocolVersion != localapi.ProtocolVersion {
 				t.Fatal("missing local version")
 			}
 			for _, field := range []string{"private_key", "certificate", "token"} {

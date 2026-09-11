@@ -2,6 +2,9 @@ package control
 
 import (
 	"crypto/subtle"
+	"errors"
+	"github.com/jackc/pgx/v5"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"net/http"
 	"strings"
 	"time"
@@ -21,18 +24,26 @@ func (s *Server) checkOrigin(r *http.Request) bool {
 func (s *Server) adminAuth(w http.ResponseWriter, r *http.Request) (string, bool) {
 	c, err := r.Cookie(adminCookie)
 	if err != nil || len(c.Value) != 64 {
-		s.fail(w, ErrUnauthorized)
+		s.fail(w, model.Failure("admin_session_required"))
 		return "", false
 	}
 	var actor, csrf string
 	err = s.Store.Pool.QueryRow(r.Context(), `SELECT a.username,s.csrf_hash FROM admin_sessions s CROSS JOIN administrator a WHERE s.token_hash=$1 AND s.expires_at>now() AND s.last_seen>now()-interval '30 minutes'`, hash(c.Value)).Scan(&actor, &csrf)
 	if err != nil {
-		s.fail(w, ErrUnauthorized)
+		if !errors.Is(err, pgx.ErrNoRows) {
+			s.fail(w, err)
+			return "", false
+		}
+		s.fail(w, model.Failure("admin_session_required"))
 		return "", false
 	}
 	if r.Method != "GET" && r.Method != "HEAD" {
-		if !s.checkOrigin(r) || len(r.Header.Get("X-CSRF-Token")) != 64 || subtle.ConstantTimeCompare([]byte(hash(r.Header.Get("X-CSRF-Token"))), []byte(csrf)) != 1 {
-			s.fail(w, ErrForbidden)
+		if !s.checkOrigin(r) {
+			s.fail(w, model.Failure("request_origin_rejected"))
+			return "", false
+		}
+		if len(r.Header.Get("X-CSRF-Token")) != 64 || subtle.ConstantTimeCompare([]byte(hash(r.Header.Get("X-CSRF-Token"))), []byte(csrf)) != 1 {
+			s.fail(w, model.Failure("request_csrf_rejected"))
 			return "", false
 		}
 	}
@@ -46,7 +57,7 @@ func (s *Server) adminAuth(w http.ResponseWriter, r *http.Request) (string, bool
 func (s *Server) adminIdentity(next func(http.ResponseWriter, *http.Request, adminCredentials)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.checkOrigin(r) {
-			s.fail(w, ErrForbidden)
+			s.fail(w, model.Failure("request_origin_rejected"))
 			return
 		}
 		if err := s.Store.Rate(r.Context(), "admin-login:"+requestIP(r), 8, time.Minute); err != nil {
@@ -104,5 +115,5 @@ func (s *Server) adminPassword(w http.ResponseWriter, r *http.Request, actor str
 	}
 	cookie, _ := r.Cookie(adminCookie)
 	err := s.Store.changeAdminPassword(r.Context(), actor, hash(cookie.Value), in.Current, in.Password)
-	s.result(w, map[string]bool{"ok": err == nil}, err)
+	s.result(w, model.NewResult("admin_password_changed", "control", "", nil), err)
 }

@@ -25,6 +25,15 @@ export function CreateRoom({
       onSubmit={(e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
+        if (
+          new TextEncoder().encode(String(f.get("name")).trim()).length > 120
+        ) {
+          actions.setError({
+            code: "request_validation_failed",
+            error: t("interaction.byteLimit"),
+          });
+          return;
+        }
         void perform<RoomResult>(
           t("gameLibrary.createRoom"),
           {
@@ -32,6 +41,7 @@ export function CreateRoom({
             body: {
               name: String(f.get("name")).trim(),
               game: dialog.game.id,
+              expected_game_revision: dialog.game.revision,
             },
           },
           (out) => {
@@ -49,22 +59,25 @@ export function CreateRoom({
     >
       <p className="muted">{dialog.game.name}</p>
       <label>
-        {t("createRoom.roomName")}<input
+        {t("createRoom.roomName")}
+        <input
           autoFocus
           name="name"
-          maxLength={40}
+          maxLength={120}
           required
           placeholder={t("createRoom.giveThisSessionAName")}
         />
       </label>
       <PortList ports={dialog.game.ports} />
-      <p className="hint">
-        {t("createRoom.limitsHelp")}</p>
+      <p className="hint">{t("createRoom.limitsHelp")}</p>
       <button
         className="primary"
-        disabled={!!busy || !!serviceError || !!gamesError || !!status?.selected_room}
+        disabled={
+          !!busy || !!serviceError || !!gamesError || !!status?.selected_room
+        }
       >
-        {t("createRoom.createAndConnect")}</button>
+        {t("createRoom.createAndConnect")}
+      </button>
     </form>
   );
 }

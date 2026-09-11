@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"slices"
 	"time"
@@ -51,7 +50,7 @@ func saveRepository(ctx context.Context, tx pgx.Tx, actor string, in model.Updat
 	}
 	u, err := update.VerifyAdvance(root, old.Metadata, in.Metadata)
 	if err != nil {
-		return nil, fmt.Errorf("%w: signed repository rejected", ErrInvalid)
+		return nil, model.Failure("update_metadata_rejected")
 	}
 	// Metadata renewal must retain every published or policy-referenced target.
 	rows, err := tx.Query(ctx, "SELECT artifact FROM update_releases WHERE state IN ('published','paused') OR id IN (SELECT release_id FROM update_policies)")
@@ -73,7 +72,7 @@ func saveRepository(ctx context.Context, tx pgx.Tx, actor string, in model.Updat
 	for _, a := range artifacts {
 		got, e := update.Artifact(u, a.Target)
 		if e != nil || got != a {
-			return nil, fmt.Errorf("%w: retain active release targets", ErrConflict)
+			return nil, model.Failure("update_targets_in_use")
 		}
 	}
 	in.Revision++
@@ -127,6 +126,13 @@ func saveRelease(ctx context.Context, tx pgx.Tx, actor string, in model.UpdateRe
 		if err != nil {
 			return nil, ErrInvalid
 		}
+		var duplicate bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM update_releases WHERE version=$1 AND os=$2 AND arch=$3)", a.Version, a.OS, a.Arch).Scan(&duplicate); err != nil {
+			return nil, err
+		}
+		if duplicate {
+			return nil, model.Failure("update_release_duplicate")
+		}
 		in.ID = randomID()
 		in.UpdateArtifact = a
 		in.Revision = 1
@@ -139,25 +145,28 @@ func saveRelease(ctx context.Context, tx pgx.Tx, actor string, in model.UpdateRe
 		if err != nil {
 			return nil, err
 		}
-		if old.Revision != in.Revision || old.UpdateArtifact != in.UpdateArtifact {
-			return nil, ErrConflict
+		if old.Revision != in.Revision {
+			return nil, model.RevisionError(in.Revision, old.Revision)
+		}
+		if old.UpdateArtifact != in.UpdateArtifact {
+			return nil, model.Failure("update_release_immutable")
 		}
 		var referenced bool
 		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM update_policies WHERE release_id=$1)", in.ID).Scan(&referenced); err != nil {
 			return nil, err
 		}
 		if referenced && in.State != "published" {
-			return nil, fmt.Errorf("%w: switch or remove the policy before pausing this release", ErrConflict)
+			return nil, model.Failure("update_release_referenced")
 		}
 		if old.State == "withdrawn" && in.State != "withdrawn" {
-			return nil, ErrConflict
+			return nil, model.Failure("update_release_immutable")
 		}
 		if in.State == "published" {
 			if err = verifyReleaseMetadata(ctx, tx, old); err != nil {
 				return nil, err
 			}
 			if len(old.Sources) == 0 {
-				return nil, fmt.Errorf("%w: verify at least one source first", ErrConflict)
+				return nil, model.Failure("update_source_required")
 			}
 			if _, err = releaseURLs(ctx, tx, old); err != nil {
 				return nil, err
@@ -175,7 +184,7 @@ func saveRelease(ctx context.Context, tx pgx.Tx, actor string, in model.UpdateRe
 
 func savePolicy(ctx context.Context, tx pgx.Tx, actor string, p model.UpdatePolicy) (any, error) {
 	if !model.ValidUpdatePlatform(p.OS, p.Arch) || (p.MinimumVersion != "" && (!model.ValidVersion(p.MinimumVersion) || p.EffectiveAt == nil)) {
-		return nil, ErrInvalid
+		return nil, model.Failure("update_policy_invalid")
 	}
 	var rev int64
 	err := tx.QueryRow(ctx, "SELECT revision FROM update_policies WHERE os=$1 AND arch=$2", p.OS, p.Arch).Scan(&rev)
@@ -199,7 +208,7 @@ func savePolicy(ctx context.Context, tx pgx.Tx, actor string, p model.UpdatePoli
 			return nil, e
 		}
 		if r.State != "published" || r.OS != p.OS || r.Arch != p.Arch || (p.MinimumVersion != "" && model.CompareVersion(p.MinimumVersion, r.Version) > 0) {
-			return nil, ErrInvalid
+			return nil, model.Failure("update_policy_invalid")
 		}
 		if _, err = releaseURLs(ctx, tx, r); err != nil {
 			return nil, err
@@ -237,7 +246,7 @@ func releaseURLs(ctx context.Context, tx pgx.Tx, r model.UpdateRelease) ([]strin
 		urls = append(urls, address)
 	}
 	if len(urls) == 0 {
-		return nil, fmt.Errorf("%w: no verified enabled update source", ErrConflict)
+		return nil, model.Failure("update_source_required")
 	}
 	return urls, nil
 }
@@ -253,7 +262,7 @@ func verifyReleaseMetadata(ctx context.Context, tx pgx.Tx, r model.UpdateRelease
 	}
 	u, err := update.VerifyRepository(root, repo.Metadata, "")
 	if err != nil {
-		return fmt.Errorf("%w: renew valid signed metadata before publication", ErrConflict)
+		return model.Failure("update_metadata_rejected")
 	}
 	a, err := update.Artifact(u, r.Target)
 	if err != nil || a != r.UpdateArtifact {
@@ -369,4 +378,12 @@ func reportClient(ctx context.Context, tx pgx.Tx, id string, in model.ClientRepo
 		_, err = tx.Exec(ctx, `INSERT INTO update_attempts(device_id,release_id,state,error_code) VALUES($1,$2,$3,$4) ON CONFLICT(device_id,release_id) DO UPDATE SET state=$3,error_code=$4,updated_at=now() WHERE update_attempts.state<>$3 OR update_attempts.error_code<>$4`, id, in.ReleaseID, in.State, in.ErrorCode)
 	}
 	return err
+}
+
+func reportClientUpdate(ctx context.Context, tx pgx.Tx, id string, in model.ClientReport) (any, error) {
+	err := reportClient(ctx, tx, id, in)
+	if err == nil {
+		err = enforceUpdates(ctx, tx)
+	}
+	return map[string]bool{"ok": true}, err
 }

@@ -3,7 +3,7 @@
 package engine
 
 import (
-	"fmt"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/vishvananda/netlink"
 	"net/netip"
 )
@@ -29,7 +29,7 @@ func checkRoutes(network netip.Prefix, ownInterface string) error {
 			return err
 		}
 		if i.Attrs().Name != ownInterface {
-			return fmt.Errorf("overlay %s overlaps route %s via %s", network, p, i.Attrs().Name)
+			return model.Failure("local_route_conflict")
 		}
 	}
 	return nil

@@ -3,9 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"strings"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,20 +14,36 @@ const activeUserDevice = `SELECT u.id,u.name,u.kind,u.state,u.created_at FROM us
 
 func playerUser(ctx context.Context, tx pgx.Tx, device string) (model.User, error) {
 	var u model.User
-	err := tx.QueryRow(ctx, activeUserDevice, device).Scan(&u.ID, &u.Name, &u.Kind, &u.State, &u.CreatedAt)
-	if err == pgx.ErrNoRows {
-		return u, ErrForbidden
+	var revoked, expired bool
+	err := tx.QueryRow(ctx, `SELECT u.id,u.name,u.kind,u.state,u.created_at,d.revoked,d.expires_at IS NOT NULL AND d.expires_at<=now() FROM users u JOIN user_devices d ON d.user_id=u.id WHERE d.device_id=$1`, device).Scan(&u.ID, &u.Name, &u.Kind, &u.State, &u.CreatedAt, &revoked, &expired)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return u, model.Failure("auth_device_unregistered")
 	}
-	return u, err
+	if err != nil {
+		return u, err
+	}
+	if u.State == "disabled" {
+		return u, model.Failure("account_disabled")
+	}
+	if u.State == "deleted" {
+		return u, model.Failure("account_deleted")
+	}
+	if revoked {
+		return u, model.Failure("auth_device_revoked")
+	}
+	if expired {
+		return u, model.Failure("auth_device_expired")
+	}
+	return u, nil
 }
 
 func (s *Store) Account(ctx context.Context, device string) (model.User, error) {
-	var u model.User
-	err := s.Pool.QueryRow(ctx, activeUserDevice, device).Scan(&u.ID, &u.Name, &u.Kind, &u.State, &u.CreatedAt)
-	if err == pgx.ErrNoRows {
-		return u, ErrForbidden
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return model.User{}, err
 	}
-	return u, err
+	defer tx.Rollback(ctx)
+	return playerUser(ctx, tx, device)
 }
 
 func validPlayerSession(ctx context.Context, tx pgx.Tx, device, tokenHash string) error {
@@ -113,75 +127,93 @@ func banMember(ctx context.Context, tx pgx.Tx, room, device string) error {
 	return err
 }
 
-func (s *Server) registerUsers(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v2/me", s.playerAuth(func(w http.ResponseWriter, r *http.Request, id string) {
-		out, err := s.Store.Account(r.Context(), id)
-		s.result(w, out, err)
-	}))
-	mux.HandleFunc("POST /v2/me/logout", s.playerMutation(func(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
-		var in struct{}
-		if err := decodeBytes(b, &in); err != nil {
-			return nil, err
-		}
-		u, err := playerUser(r.Context(), tx, id)
-		if err != nil {
-			return nil, err
-		}
-		if u.Kind == "guest" {
-			return nil, fmt.Errorf("%w: bind an account before signing out", ErrConflict)
-		}
-		if _, err = tx.Exec(r.Context(), `UPDATE user_devices SET revoked=true WHERE device_id=$1`, id); err == nil {
-			err = revokeUserConnections(r.Context(), tx, u.ID, id, false)
-		}
-		return map[string]bool{"ok": err == nil}, err
-	}))
-	mux.HandleFunc("POST /v2/me/takeover", s.playerMutation(func(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
-		var in struct{}
-		if err := decodeBytes(b, &in); err != nil {
-			return nil, err
-		}
-		u, err := playerUser(r.Context(), tx, id)
-		if err != nil {
-			return nil, err
-		}
-		rows, err := tx.Query(r.Context(), `SELECT room_id,device_id FROM members WHERE user_id=$1 AND active AND device_id<>$2`, u.ID, id)
-		if err != nil {
-			return nil, err
-		}
-		type member struct{ room, device string }
-		all, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (member, error) {
-			var m member
-			e := row.Scan(&m.room, &m.device)
-			return m, e
-		})
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range all {
-			if err = revoke(r.Context(), tx, m.room, m.device); err != nil {
-				return nil, err
-			}
-			if err = bump(r.Context(), tx, m.room, "device_takeover"); err != nil {
-				return nil, err
-			}
-		}
-		return map[string]bool{"ok": true}, nil
-	}))
-	mux.HandleFunc("GET /v2/admin/users", s.adminHandler(s.adminUsers))
-	mux.HandleFunc("GET /v2/admin/users/{user}", s.adminHandler(s.adminUser))
-	mux.HandleFunc("POST /v2/admin/users/{user}/actions", s.adminWrite(s.adminMutation(s.adminUserAction)))
+func revokePlayerDevice(ctx context.Context, tx pgx.Tx, id string, target string) (any, error) {
+	u, err := playerUser(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if u.Kind != "registered" {
+		return nil, model.Failure("account_guest_logout_forbidden")
+	}
+	if target == id {
+		return nil, model.Failure("member_target_self")
+	}
+	var revoked bool
+	err = tx.QueryRow(ctx, "SELECT revoked FROM user_devices WHERE device_id=$1 AND user_id=$2", target, u.ID).Scan(&revoked)
+	if err != nil {
+		return nil, noRows(err)
+	}
+	if revoked {
+		return model.NewResult("operation_noop", "control", "", nil), nil
+	}
+	if _, err = tx.Exec(ctx, "UPDATE user_devices SET revoked=true WHERE device_id=$1", target); err == nil {
+		err = revokeUserConnections(ctx, tx, u.ID, target, false)
+	}
+	return map[string]bool{"revoked": err == nil}, err
 }
 
-func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request, _ string) {
-	q, after := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.Query().Get("after")
-	if len(q) > 80 || len(after) > 64 {
-		s.fail(w, ErrInvalid)
-		return
-	}
-	rows, err := s.Store.Pool.Query(r.Context(), `SELECT id,name,kind,state,created_at FROM users WHERE id>$1 AND ($2='' OR strpos(lower(name),lower($2))>0 OR id=$2) ORDER BY id LIMIT 51`, after, q)
+func logoutPlayer(ctx context.Context, tx pgx.Tx, id string) (any, error) {
+	u, err := playerUser(ctx, tx, id)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return nil, err
+	}
+	if u.Kind == "guest" {
+		return nil, model.Failure("account_guest_logout_forbidden")
+	}
+	if _, err = tx.Exec(ctx, `UPDATE user_devices SET revoked=true WHERE device_id=$1`, id); err == nil {
+		err = revokeUserConnections(ctx, tx, u.ID, id, false)
+	}
+	return map[string]bool{"ok": err == nil}, err
+}
+
+func takeoverPlayer(ctx context.Context, tx pgx.Tx, id string, in model.TakeoverRequest) (any, error) {
+	u, err := playerUser(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	var actualRoom, actualDevice string
+	var actualRevision int64
+	err = tx.QueryRow(ctx, `SELECT m.room_id,m.device_id,r.revision FROM members m JOIN rooms r ON r.id=m.room_id WHERE m.user_id=$1 AND m.active AND m.device_id<>$2`, u.ID, id).Scan(&actualRoom, &actualDevice, &actualRevision)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, model.Failure("request_state_stale")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if in.RoomID != actualRoom || in.DeviceID != actualDevice || in.ExpectedRevision != actualRevision {
+		return nil, model.RevisionError(in.ExpectedRevision, actualRevision)
+	}
+	rows, err := tx.Query(ctx, `SELECT room_id,device_id FROM members WHERE user_id=$1 AND active AND device_id<>$2`, u.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	type member struct{ room, device string }
+	all, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (member, error) {
+		var m member
+		e := row.Scan(&m.room, &m.device)
+		return m, e
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range all {
+		if err = revoke(ctx, tx, m.room, m.device, "member_taken_over"); err != nil {
+			return nil, err
+		}
+		if err = bump(ctx, tx, m.room, "device_takeover"); err != nil {
+			return nil, err
+		}
+	}
+	return map[string]bool{"ok": true}, nil
+}
+
+func (s *Store) listUsers(ctx context.Context, q, after string) (model.UserPage, error) {
+	if len(q) > 80 || len(after) > 64 {
+		return model.UserPage{}, ErrInvalid
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT id,name,kind,state,created_at FROM users WHERE id>$1 AND ($2='' OR strpos(lower(name),lower($2))>0 OR id=$2) ORDER BY id LIMIT 51`, after, q)
+	if err != nil {
+		return model.UserPage{}, err
 	}
 	list, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.User, error) {
 		var u model.User
@@ -193,27 +225,23 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request, _ string) {
 		out.Users = list[:50]
 		out.Next = list[49].ID
 	}
-	s.result(w, out, err)
+	return out, err
 }
 
-func (s *Server) adminUser(w http.ResponseWriter, r *http.Request, _ string) {
-	ctx := r.Context()
-	tx, err := s.Store.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+func (s *Store) userDetail(ctx context.Context, id string) (model.UserDetail, error) {
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		s.fail(w, err)
-		return
+		return model.UserDetail{}, err
 	}
 	defer tx.Rollback(ctx)
 	out := model.UserDetail{Devices: []model.UserDevice{}, Rooms: []model.Room{}, Sessions: []model.UserSession{}}
-	err = tx.QueryRow(ctx, `SELECT id,name,kind,state,created_at FROM users WHERE id=$1`, r.PathValue("user")).Scan(&out.User.ID, &out.User.Name, &out.User.Kind, &out.User.State, &out.User.CreatedAt)
+	err = tx.QueryRow(ctx, `SELECT id,name,kind,state,created_at FROM users WHERE id=$1`, id).Scan(&out.User.ID, &out.User.Name, &out.User.Kind, &out.User.State, &out.User.CreatedAt)
 	if err != nil {
-		s.fail(w, noRows(err))
-		return
+		return model.UserDetail{}, noRows(err)
 	}
 	rows, err := tx.Query(ctx, `SELECT ud.device_id,d.name,ud.revoked,ud.last_seen,ud.expires_at,s.report,s.reported_at FROM user_devices ud JOIN devices d ON d.id=ud.device_id LEFT JOIN device_software s ON s.device_id=d.id WHERE user_id=$1 ORDER BY ud.device_id`, out.User.ID)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return model.UserDetail{}, err
 	}
 	out.Devices, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.UserDevice, error) {
 		var d model.UserDevice
@@ -227,55 +255,45 @@ func (s *Server) adminUser(w http.ResponseWriter, r *http.Request, _ string) {
 		return d, e
 	})
 	if err != nil {
-		s.fail(w, err)
-		return
+		return model.UserDetail{}, err
 	}
 	rows, err = tx.Query(ctx, `SELECT DISTINCT id FROM rooms WHERE owner_user_id=$1 OR id IN (SELECT room_id FROM members WHERE user_id=$1) ORDER BY id LIMIT 100`, out.User.ID)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return model.UserDetail{}, err
 	}
 	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
-		s.fail(w, err)
-		return
+		return model.UserDetail{}, err
 	}
 	for _, id := range ids {
 		room, e := readRoom(ctx, tx, id)
 		if e != nil {
-			s.fail(w, e)
-			return
+			return model.UserDetail{}, e
 		}
 		out.Rooms = append(out.Rooms, room)
 	}
 	rows, err = tx.Query(ctx, `SELECT s.device_id,s.expires_at FROM sessions s JOIN user_devices d ON d.device_id=s.device_id WHERE d.user_id=$1 AND s.scope='player' AND s.expires_at>now() ORDER BY s.expires_at DESC LIMIT 100`, out.User.ID)
 	if err != nil {
-		s.fail(w, err)
-		return
+		return model.UserDetail{}, err
 	}
 	out.Sessions, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.UserSession, error) {
 		var x model.UserSession
 		e := row.Scan(&x.DeviceID, &x.ExpiresAt)
 		return x, e
 	})
-	s.result(w, out, err)
+	return out, err
 }
 
-func (s *Server) adminUserAction(r *http.Request, tx pgx.Tx, actor string, b []byte) (any, error) {
-	var in model.UserAction
-	if err := decodeBytes(b, &in); err != nil {
-		return nil, err
-	}
+func userAction(ctx context.Context, tx pgx.Tx, actor, id string, in model.UserAction) (any, error) {
 	if !model.ValidLabel(in.Reason, 500) {
 		return nil, ErrInvalid
 	}
-	ctx, id := r.Context(), r.PathValue("user")
 	var state string
 	if err := tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1`, id).Scan(&state); err != nil {
 		return nil, noRows(err)
 	}
 	if state == "deleted" {
-		return nil, ErrConflict
+		return nil, model.Failure("admin_user_deleted")
 	}
 	switch in.Action {
 	case "enable":

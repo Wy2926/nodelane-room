@@ -31,13 +31,47 @@ const game: Game = {
   ports: [{ protocol: "tcp", port: 25565 }],
 };
 let status: Status;
+function defaultReply(request: { action: string }) {
+  if (request.action === "games") return [game];
+  if (request.action === "rooms") return { rooms: [], truncated: false };
+  if (request.action === "capabilities")
+    return { oidc_enabled: true, ready: true };
+  if (request.action === "invite-info")
+    return {
+      active: true,
+      revision: 1,
+      expires_at: new Date(Date.now() + 600000).toISOString(),
+    };
+  if (request.action === "account-poll") return { state: "none" };
+  return [];
+}
 beforeEach(() => {
   vi.clearAllMocks();
   setLanguage("zh-CN");
   status = {
-    user: {id: "owner", name: "玩家", kind: "guest", state: "active", created_at: new Date().toISOString()},
+    user: {
+      id: "owner",
+      name: "玩家",
+      kind: "guest",
+      state: "active",
+      created_at: new Date().toISOString(),
+    },
     version: "0.2.0",
-    protocol_version: 2,
+    protocol_version: 3,
+    service_instance_id: "test",
+    status_seq: 1,
+    service: "ready",
+    identity: "active",
+    operation: "idle",
+    membership: { state: "none", revision: 0 },
+    permissions: { manage: false, join: false, leave: false },
+    network: { state: "stopped", generation: 0, applied_game_revision: 0 },
+    freshness: {
+      observed_at: new Date().toISOString(),
+      snapshot_at: new Date().toISOString(),
+    },
+    issues: [],
+    pending_operations: [],
     lan_version: 1,
     server: "https://example.test",
     name: "玩家",
@@ -58,27 +92,32 @@ beforeEach(() => {
     updatedAt: Date.now(),
   }));
   vi.mocked(rpc).mockImplementation(
-    async (request) => (request.action === "games" ? [game] : []) as never,
+    async (request) => defaultReply(request) as never,
   );
 });
 
-test.each([null, "fr-FR", "invalid"])("language must be chosen before the client starts: %s", async (saved) => {
-  localStorage.removeItem(languageStorageKey);
-  if (saved) localStorage.setItem(languageStorageKey, saved);
-  const app = render(<App />);
-  expect(screen.getByRole("heading", { name: /Choose your language/ })).toBeTruthy();
-  expect(useService).not.toHaveBeenCalled();
-  expect(rpc).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("radio", { name: "English" }));
-  await userEvent.click(screen.getByRole("button", { name: "Continue" }));
-  expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
-  expect(document.documentElement.lang).toBe("en-US");
-  expect(localStorage.getItem(languageStorageKey)).toBe("en-US");
-  app.unmount();
-  render(<App />);
-  expect(screen.queryByRole("radio")).toBeNull();
-  expect(screen.getByRole("button", { name: "Game library" })).toBeTruthy();
-});
+test.each([null, "fr-FR", "invalid"])(
+  "language must be chosen before the client starts: %s",
+  async (saved) => {
+    localStorage.removeItem(languageStorageKey);
+    if (saved) localStorage.setItem(languageStorageKey, saved);
+    const app = render(<App />);
+    expect(
+      screen.getByRole("heading", { name: /Choose your language/ }),
+    ).toBeTruthy();
+    expect(useService).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("radio", { name: "English" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByRole("button", { name: "Settings" })).toBeTruthy();
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(localStorage.getItem(languageStorageKey)).toBe("en-US");
+    app.unmount();
+    render(<App />);
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByRole("button", { name: "Game library" })).toBeTruthy();
+  },
+);
 
 test("Chinese choice enters initialization and settings can switch to English", async () => {
   localStorage.removeItem(languageStorageKey);
@@ -89,21 +128,34 @@ test("Chinese choice enters initialization and settings can switch to English", 
   expect(screen.getByLabelText("设备昵称")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "设置" }));
   await user.selectOptions(screen.getByRole("combobox"), "en-US");
-  expect(screen.getByRole("button", { name: "Desktop preferences" })).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Desktop preferences" }),
+  ).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Device information" }));
   expect(screen.getByText("Device nickname")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "My rooms" }));
   await user.type(screen.getByLabelText("Device nickname"), "Traveler");
   await user.click(screen.getByRole("button", { name: "Start your journey" }));
-  expect(rpc).toHaveBeenCalledWith({ action: "init", server: "https://room.nodelane.net", name: "Traveler" });
+  expect(rpc).toHaveBeenCalledWith({
+    action: "init",
+    server: "https://room.nodelane.net",
+    name: "Traveler",
+  });
 });
 
 test("an existing offline error follows the selected language", async () => {
-  vi.mocked(useService).mockReturnValue({ status: undefined, error: { code: "service_unavailable", error: "服务离线" }, refresh: vi.fn(), updatedAt: 0 });
+  vi.mocked(useService).mockReturnValue({
+    status: undefined,
+    error: { code: "local_service_unavailable", error: "服务离线" },
+    refresh: vi.fn(),
+    updatedAt: 0,
+  });
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "设置" }));
   await userEvent.selectOptions(screen.getByRole("combobox"), "en-US");
-  expect(screen.getByRole("alert").textContent).toContain("The network service is unavailable");
+  expect(screen.getByRole("alert").textContent).toContain(
+    "The local service is unavailable",
+  );
   expect(screen.getByRole("alert").textContent).not.toMatch(/\p{Script=Han}/u);
   await userEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
   expect(screen.getByText("Waiting for the local service")).toBeTruthy();
@@ -113,8 +165,8 @@ test("an existing offline error follows the selected language", async () => {
 test("catalog failure remains a failure and cannot create from stale data", async () => {
   vi.mocked(rpc).mockImplementation(async (request) => {
     if (request.action === "games")
-      throw { code: "control_unavailable", error: "连接失败" };
-    return [] as never;
+      throw { code: "local_control_unreachable", error: "连接失败" };
+    return defaultReply(request) as never;
   });
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: /游戏库/ }));
@@ -130,7 +182,8 @@ test("console shelf reaches games beyond eight by keyboard and search resets to 
     name: `冒险 ${index}`,
   }));
   vi.mocked(rpc).mockImplementation(
-    async (request) => (request.action === "games" ? games : []) as never,
+    async (request) =>
+      (request.action === "games" ? games : defaultReply(request)) as never,
   );
   render(<App />);
   const user = userEvent.setup();
@@ -194,20 +247,27 @@ test("renewed invitation uses the actual standalone invitation response", async 
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
   status.game = game;
+  status.permissions = { manage: true, join: false, leave: true };
   vi.mocked(rpc).mockImplementation(async (request) => {
     if (request.action === "invite")
       return {
         code: "test-invitation",
+        revision: 1,
         expires_at: new Date(Date.now() + 600000).toISOString(),
       } as never;
-    return (request.action === "games" ? [game] : []) as never;
+    return defaultReply(request) as never;
   });
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "生成新邀请码" }));
   expect(await screen.findByRole("dialog")).toBeTruthy();
-  expect(screen.getByText("test-invitation")).toBeTruthy();
+  expect(await screen.findByText("test-invitation")).toBeTruthy();
   expect(screen.getByRole("button", { name: "复制邀请码" })).toBeTruthy();
-  expect(rpc).toHaveBeenCalledWith({ action: "invite", room: "room" });
+  expect(rpc).toHaveBeenCalledWith({
+    action: "invite",
+    room: "room",
+    body: { expected_revision: 1 },
+    command_id: expect.any(String),
+  });
 });
 
 test("an open join form stops accepting operations when the service disappears", async () => {
@@ -216,7 +276,7 @@ test("an open join form stops accepting operations when the service disappears",
   await userEvent.type(screen.getByLabelText("邀请码"), "test-code");
   vi.mocked(useService).mockReturnValue({
     status,
-    error: { code: "service_unavailable", error: "服务离线" },
+    error: { code: "local_service_unavailable", error: "服务离线" },
     refresh: vi.fn(),
     updatedAt: Date.now(),
   });
@@ -244,7 +304,7 @@ test("configured game ports are read-only and stop state is explicit", async () 
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
   status.game = { ...game, enabled: false };
-  status.control = "connected";
+  status.control = "online";
   status.engine = "running";
   render(<App />);
   expect(screen.getByText(/此游戏已被管理员停用/)).toBeTruthy();
@@ -256,8 +316,9 @@ test("configured game ports are read-only and stop state is explicit", async () 
 test("leave failure keeps the app running", async () => {
   status.selected_room = "room";
   vi.mocked(rpc).mockImplementation(async (request) => {
-    if (request.action === "leave") throw { code: "timeout", error: "timeout" };
-    return [] as never;
+    if (request.action === "leave")
+      throw { code: "local_rpc_timeout", error: "timeout" };
+    return defaultReply(request) as never;
   });
   render(<App />);
   const user = userEvent.setup();
@@ -265,7 +326,9 @@ test("leave failure keeps the app running", async () => {
   await user.click(screen.getByRole("button", { name: "退出与联机" }));
   await user.click(screen.getByRole("button", { name: "离房并退出" }));
   await user.click(screen.getByRole("button", { name: "确认离房并退出" }));
-  expect(await screen.findByText(/请求超时，操作结果尚未确认/)).toBeTruthy();
+  expect(
+    (await screen.findAllByText(/操作结果.*确认|操作结果待确认/)).length,
+  ).toBeGreaterThan(0);
   expect(exitApp).not.toHaveBeenCalled();
   expect(screen.getByRole("dialog")).toBeTruthy();
 });
@@ -277,7 +340,7 @@ test("creating a room submits the selected server game once and retains invitati
       return (await new Promise<unknown>((resolve) => {
         complete = resolve;
       })) as never;
-    return (request.action === "games" ? [game] : []) as never;
+    return defaultReply(request) as never;
   });
   render(<App />);
   const user = userEvent.setup();
@@ -291,11 +354,16 @@ test("creating a room submits the selected server game once and retains invitati
     .mocked(rpc)
     .mock.calls.filter(([r]) => r.action === "create");
   expect(creates).toHaveLength(1);
-  expect(creates[0][0].body).toEqual({ name: "周末世界", game: game.id });
+  expect(creates[0][0].body).toEqual({
+    name: "周末世界",
+    game: game.id,
+    expected_game_revision: 1,
+  });
   complete({
     room: { name: "周末世界", game_name: game.name },
     invitation: {
       code: "fixture-invitation",
+      revision: 1,
       expires_at: new Date(Date.now() + 100000).toISOString(),
     },
   });
@@ -322,17 +390,20 @@ function joinedParty() {
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
   status.game = game;
-  status.control = "connected";
+  status.permissions = { manage: true, join: false, leave: true };
+  status.control = "online";
   status.engine = "running";
   status.members = [
     {
-      device_id: "owner", user_id: "owner",
+      device_id: "owner",
+      user_id: "owner",
       name: "玩家",
       ip: "10.203.0.2",
       last_seen: new Date().toISOString(),
     },
     {
-      device_id: "guest", user_id: "guest",
+      device_id: "guest",
+      user_id: "guest",
       name: "远山",
       ip: "10.203.0.3",
       last_seen: new Date().toISOString(),
@@ -344,19 +415,32 @@ test("English room actions and copied diagnostics use complete translated messag
   setLanguage("en-US");
   joinedParty();
   vi.mocked(rpc).mockImplementation(async (request) => {
-    if (request.action === "doctor") return { control: "connected", engine: "running", platform: { os: "windows", tap_interface_present: true, interfaces: [] } } as never;
-    return (request.action === "games" ? [game] : []) as never;
+    if (request.action === "doctor")
+      return {
+        control: "connected",
+        engine: "running",
+        platform: {
+          os: "windows",
+          tap_interface_present: true,
+          interfaces: [],
+        },
+      } as never;
+    return defaultReply(request) as never;
   });
   render(<App />);
   const user = userEvent.setup();
   expect(screen.getByText("2 / 4 members")).toBeTruthy();
   expect(screen.getByText(/^Expires /)).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Leave room" }));
-  expect(screen.getByRole("button", { name: "Confirm: Leave room" })).toBeTruthy();
+  expect(
+    screen.getByRole("button", { name: "Confirm: Leave room" }),
+  ).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   await user.click(screen.getByRole("button", { name: "Diagnostics" }));
   await user.click(screen.getByRole("button", { name: "Run diagnostics" }));
-  await user.click(await screen.findByRole("button", { name: "Copy redacted diagnostics" }));
+  await user.click(
+    await screen.findByRole("button", { name: "Copy redacted diagnostics" }),
+  );
   const copied = vi.mocked(copyText).mock.calls[0][0];
   expect(copied).toContain("Control service: Connected");
   expect(copied).not.toMatch(/\p{Script=Han}|\{\w+\}/u);
@@ -393,7 +477,8 @@ test("party management disclosure supports Escape and retains confirmation befor
   expect(rpc).toHaveBeenCalledWith({
     action: "transfer",
     room: "room",
-    body: { device_id: "guest" },
+    body: { device_id: "guest", expected_revision: 1 },
+    command_id: expect.any(String),
   });
 });
 
@@ -407,6 +492,7 @@ test.each([false, true])(
         name: "远山",
         ip: "10.203.0.3",
         mode: "direct",
+        measured_at: new Date().toISOString(),
         rtt_ms: 0,
         loss_percent: 0,
       },
@@ -434,10 +520,13 @@ test.each([false, true])(
 );
 
 test("offline startup keeps updates reachable and reports the local service failure", async () => {
-  vi.mocked(rpc).mockRejectedValue({code: "service_unavailable", error: "服务离线"});
+  vi.mocked(rpc).mockRejectedValue({
+    code: "local_service_unavailable",
+    error: "服务离线",
+  });
   vi.mocked(useService).mockReturnValue({
     status: undefined,
-    error: { code: "service_unavailable", error: "服务离线" },
+    error: { code: "local_service_unavailable", error: "服务离线" },
     refresh: vi.fn(),
     updatedAt: 0,
   });
@@ -446,9 +535,13 @@ test("offline startup keeps updates reachable and reports the local service fail
   await user.click(screen.getByRole("button", { name: "设置" }));
   await user.click(screen.getByRole("button", { name: "版本与更新" }));
   await user.click(screen.getByRole("button", { name: "检查更新" }));
-  expect(screen.getAllByRole("alert").some(v => v.textContent?.includes("无法连接网络后台"))).toBe(true);
+  expect(
+    screen
+      .getAllByRole("alert")
+      .some((v) => v.textContent?.includes("无法连接网络后台")),
+  ).toBe(true);
   expect(screen.queryByText("已是最新版")).toBeNull();
-  expect(rpc).toHaveBeenCalledWith({action: "update-check"});
+  expect(rpc).toHaveBeenCalledWith({ action: "update-check" });
   await user.click(screen.getByRole("button", { name: "网络诊断" }));
   expect(screen.getByText("等待本机服务")).toBeTruthy();
   expect(
@@ -484,7 +577,7 @@ test("diagnostics visualizes the real report and copies only an explicit redacte
           ],
         },
       } as never;
-    return [] as never;
+    return defaultReply(request) as never;
   });
   render(<App />);
   const user = userEvent.setup();
@@ -524,7 +617,7 @@ test.each(["fresh", "stale", "expired", "offline", "unlinked", "unmeasured"])(
     if (state === "offline")
       vi.mocked(useService).mockReturnValue({
         status,
-        error: { code: "service_unavailable", error: "服务离线" },
+        error: { code: "local_service_unavailable", error: "服务离线" },
         refresh: vi.fn(),
         updatedAt: Date.now(),
       });
@@ -556,24 +649,43 @@ test("an idle device with a zero lease does not display an expired authorization
   expect(screen.queryByText("授权已到期")).toBeNull();
 });
 
-
 test("guest binding preserves the current account and does not offer logout", async () => {
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "设置" }));
   await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
   expect(screen.queryByRole("button", { name: "退出账号" })).toBeNull();
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "绑定账号" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
   await userEvent.click(screen.getByRole("button", { name: "绑定账号" }));
   expect(rpc).toHaveBeenCalledWith({ action: "account-link" });
-  expect(rpc).not.toHaveBeenCalledWith(expect.objectContaining({ action: "init" }));
+  expect(rpc).not.toHaveBeenCalledWith(
+    expect.objectContaining({ action: "init" }),
+  );
 });
 
 test("a signed out account exposes login without exposing room creation", async () => {
   status.control = "signed_out";
+  status.identity = "signed_out";
   status.user = undefined;
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "我的房间" }));
   expect(screen.getByRole("button", { name: "登录已有账号" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "创建房间" })).toBeNull();
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "登录已有账号",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false),
+  );
   await userEvent.click(screen.getByRole("button", { name: "登录已有账号" }));
-  expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ action: "account-login" }));
+  expect(rpc).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "account-login" }),
+  );
 });

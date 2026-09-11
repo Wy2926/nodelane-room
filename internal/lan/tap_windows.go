@@ -2,7 +2,7 @@ package lan
 
 import (
 	"encoding/binary"
-	"fmt"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"net"
 	"net/netip"
 	"strings"
@@ -15,10 +15,15 @@ import (
 
 // Open only the explicitly provisioned NodeLane TAP-Windows6 adapter. Runtime
 // code never downloads/installs a driver or reuses another VPN's adapter.
-func OpenTAP(name string, prefix netip.Prefix) (*TAP, error) {
+func OpenTAP(name string, prefix netip.Prefix) (tap *TAP, failure error) {
+	defer func() {
+		if failure != nil && model.Code(failure) == "system_internal_error" {
+			failure = model.Failure("local_tap_unavailable")
+		}
+	}()
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
-		return nil, fmt.Errorf("LAN 需要专用 TAP-Windows6 网卡 %s；请按 README 的 LAN 安装步骤准备: %w", name, err)
+		return nil, model.Failure("local_tap_missing")
 	}
 	luid, err := winipcfg.LUIDFromIndex(uint32(iface.Index))
 	if err != nil {
@@ -38,7 +43,7 @@ func OpenTAP(name string, prefix netip.Prefix) (*TAP, error) {
 		return nil, err
 	}
 	if !valid {
-		return nil, fmt.Errorf("%s is not a TAP-Windows6 adapter", name)
+		return nil, model.Failure("local_tap_invalid")
 	}
 	path, err := windows.UTF16PtrFromString(`\\.\Global\` + guid.String() + `.tap`)
 	if err != nil {
@@ -56,7 +61,7 @@ func OpenTAP(name string, prefix netip.Prefix) (*TAP, error) {
 	mtu := make([]byte, 4)
 	if err = tapIOCTL(handle, 3, nil, mtu); err != nil || binary.LittleEndian.Uint32(mtu) != 1500 {
 		windows.CloseHandle(handle)
-		return nil, fmt.Errorf("TAP driver MTU must be 1500: %v", err)
+		return nil, model.Failure("local_tap_invalid")
 	}
 	if err = tapIOCTL(handle, 6, []byte{1, 0, 0, 0}, nil); err != nil {
 		windows.CloseHandle(handle)

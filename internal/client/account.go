@@ -11,6 +11,15 @@ import (
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
+func (a *API) Capabilities(ctx context.Context) (model.Capabilities, error) {
+	var out model.Capabilities
+	err := a.request(ctx, "GET", "/v2/capabilities", nil, &out, "", "")
+	if err == nil && (out.Contract != model.Contract || out.LANVersion != model.LANVersion) {
+		err = model.Failure("api_contract_unsupported")
+	}
+	return out, err
+}
+
 func (a *API) BeginLogin(ctx context.Context, proof string, link bool) (model.LoginAttempt, error) {
 	pub := ed25519.PrivateKey(a.Identity.PrivateKey).Public().(ed25519.PublicKey)
 	h := sha256.Sum256([]byte(proof))
@@ -42,17 +51,19 @@ func (a *API) ClaimLogin(ctx context.Context, id, proof string) (model.LoginResu
 	if err == nil && out.Session != nil {
 		a.mu.Lock()
 		a.session = *out.Session
+		a.terminal = nil
 		a.mu.Unlock()
 	}
 	return out, err
 }
 
 func (a *API) RefreshAccount(ctx context.Context) (*model.User, error) {
-	var u model.User
-	if err := a.Call(ctx, "GET", "/v2/me", nil, &u); err != nil {
+	var me model.AccountStatus
+	if err := a.Call(ctx, "GET", "/v2/me", nil, &me); err != nil {
 		return nil, err
 	}
 	a.mu.Lock()
+	u := me.User
 	a.session.User = &u
 	a.mu.Unlock()
 	return &u, nil

@@ -2,6 +2,7 @@ package control
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -46,8 +47,13 @@ func (s *Server) adminUpdateGame(r *http.Request, tx pgx.Tx, actor string, b []b
 }
 
 func (s *Server) adminImportGame(w http.ResponseWriter, r *http.Request, actor string) {
+	var raw json.RawMessage
 	var in model.GameImportRequest
-	if err := decodeRequest(w, r, &in); err != nil {
+	if err := decodeRequest(w, r, &raw); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := decodeBytes(raw, &in); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -60,7 +66,7 @@ func (s *Server) adminImportGame(w http.ResponseWriter, r *http.Request, actor s
 	ctx := r.Context()
 	cookie, _ := r.Cookie(adminCookie)
 	check := func(tx pgx.Tx) error { return validAdminSession(ctx, tx, hash(cookie.Value)) }
-	requestHash := hash("game-import:" + id)
+	requestHash := hash(r.Method + ":" + r.URL.Path + ":" + string(raw))
 	// Recover completed imports without depending on Steam being available.
 	uncached := errors.New("import not cached")
 	cached, err := s.Store.mutateChecked(ctx, "admin:"+actor, key, requestHash, check, func(pgx.Tx) (any, error) { return nil, uncached })

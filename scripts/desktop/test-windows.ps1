@@ -11,6 +11,43 @@ $transaction = $text.Substring($text.IndexOf('$movedOld ='))
 $testRoot = Join-Path $root ('.local/install-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 try {
+  & {
+    foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }
+    $cli = Join-Path $testRoot 'status-fixture.exe'
+    Add-Type -OutputAssembly $cli -OutputType ConsoleApplication -TypeDefinition @'
+using System;
+using System.Text;
+public static class StatusFixture {
+  public static int Main() {
+    Console.OutputEncoding = new UTF8Encoding(false);
+    string mode = Environment.GetEnvironmentVariable("NODELANE_STATUS_FIXTURE");
+    if (mode == "exit") { Console.Error.Write("unavailable"); return 3; }
+    if (mode == "invalid") { Console.Write("not-json"); return 0; }
+    Console.Write("{\"contract\":\"interaction-1\",\"code\":\"ok\",\"message\":\"\u64cd\u4f5c\u5df2\u5b8c\u6210\",\"data\":{\"version\":\"0.3.0\",\"protocol_version\":3}}");
+    return 0;
+  }
+}
+'@
+    $oldEncoding = [Console]::OutputEncoding
+    $oldFixture = $env:NODELANE_STATUS_FIXTURE
+    try {
+      foreach ($page in @(936, 65001)) {
+        [Console]::OutputEncoding = [Text.Encoding]::GetEncoding($page)
+        $env:NODELANE_STATUS_FIXTURE = 'valid'
+        $reply = Read-LocalStatus $cli
+        $expected = -join @(0x64cd,0x4f5c,0x5df2,0x5b8c,0x6210 | ForEach-Object { [char]$_ })
+        if ($reply.message -ne $expected -or $reply.data.protocol_version -ne 3) { throw "Native UTF-8 status was corrupted under code page $page" }
+        Write-Output "PASS native UTF-8 status under code page $page"
+      }
+      foreach ($mode in @('exit','invalid')) {
+        $env:NODELANE_STATUS_FIXTURE = $mode
+        $failed = $false
+        try { $null = Read-LocalStatus $cli } catch { $failed = $true }
+        if (-not $failed) { throw "Invalid native status was accepted: $mode" }
+        Write-Output "PASS native status rejects $mode"
+      }
+    } finally { [Console]::OutputEncoding = $oldEncoding; $env:NODELANE_STATUS_FIXTURE = $oldFixture }
+  }
   foreach ($scenario in @('upgrade', 'start-failure', 'readiness-failure', 'stop-failure', 'rollback', 'registration-failure', 'tap-failure', 'tap-created', 'tap-created-start-failure', 'tap-cleanup-failure', 'interrupted-before-swap', 'interrupted-after-swap')) {
     & {
       foreach ($definition in $functions) { . ([scriptblock]::Create($definition.Extent.Text)) }

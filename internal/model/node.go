@@ -17,6 +17,7 @@ type EnrollmentChallengeRequest struct {
 }
 
 type NodeOperation struct {
+	Reason     string    `json:"reason,omitempty"`
 	ID         string    `json:"id"`
 	NodeID     string    `json:"node_id"`
 	Generation int64     `json:"generation"`

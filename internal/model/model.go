@@ -71,12 +71,14 @@ type Node struct {
 	LastSeen   time.Time  `json:"last_seen"`
 }
 type Snapshot struct {
-	Room       *Room     `json:"room,omitempty"`
-	Game       *Game     `json:"game,omitempty"`
-	Members    []Member  `json:"members"`
-	Nodes      []Node    `json:"nodes"`
-	Blocklist  []string  `json:"blocklist"`
-	ServerTime time.Time `json:"server_time"`
+	Self        MembershipSelf `json:"self"`
+	Permissions Permissions    `json:"permissions"`
+	Room        *Room          `json:"room,omitempty"`
+	Game        *Game          `json:"game,omitempty"`
+	Members     []Member       `json:"members"`
+	Nodes       []Node         `json:"nodes"`
+	Blocklist   []string       `json:"blocklist"`
+	ServerTime  time.Time      `json:"server_time"`
 }
 type Lease struct {
 	IP          string    `json:"ip"`
@@ -102,26 +104,31 @@ type VerifyRequest struct {
 	Signature []byte `json:"signature"`
 }
 type Session struct {
-	User      *User     `json:"user,omitempty"`
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	DeviceID  string    `json:"device_id"`
+	NodeID     string    `json:"node_id,omitempty"`
+	Generation int64     `json:"generation,omitempty"`
+	User       *User     `json:"user,omitempty"`
+	Token      string    `json:"token"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	DeviceID   string    `json:"device_id"`
 }
 type RoomRequest struct {
-	Name string `json:"name"`
-	Game string `json:"game"`
+	ExpectedGameRevision int64  `json:"expected_game_revision"`
+	Name                 string `json:"name"`
+	Game                 string `json:"game"`
 }
 type JoinRequest struct {
 	Code string `json:"code"`
 }
 type MemberRequest struct {
-	DeviceID string `json:"device_id"`
+	ExpectedRevision int64  `json:"expected_revision"`
+	DeviceID         string `json:"device_id"`
 }
 type LeaseRequest struct {
 	Revision  int64  `json:"revision,omitempty"`
 	PublicKey []byte `json:"public_key"`
 }
 type Invitation struct {
+	Revision  int64     `json:"revision"`
 	Code      string    `json:"code"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
@@ -131,33 +138,45 @@ type RoomResult struct {
 }
 
 type Peer struct {
-	DeviceID    string   `json:"device_id"`
-	Name        string   `json:"name"`
-	IP          string   `json:"ip"`
-	Mode        string   `json:"mode"`
-	RTTMillis   *float64 `json:"rtt_ms,omitempty"`
-	LossPercent *float64 `json:"loss_percent,omitempty"`
-	Error       string   `json:"error,omitempty"`
+	MeasuredAt  time.Time `json:"measured_at,omitzero"`
+	DeviceID    string    `json:"device_id"`
+	Name        string    `json:"name"`
+	IP          string    `json:"ip"`
+	Mode        string    `json:"mode"`
+	RTTMillis   *float64  `json:"rtt_ms,omitempty"`
+	LossPercent *float64  `json:"loss_percent,omitempty"`
+	Error       string    `json:"error,omitempty"`
 }
 type Status struct {
-	Update          *UpdateStatus `json:"update,omitempty"`
-	User            *User         `json:"user,omitempty"`
-	LAN             *LANStatus    `json:"lan,omitempty"`
-	LANVersion      int           `json:"lan_version"`
-	Version         string        `json:"version"`
-	ProtocolVersion int           `json:"protocol_version"`
-	Server          string        `json:"server"`
-	Name            string        `json:"name"`
-	SelectedRoom    string        `json:"selected_room"`
-	Game            *Game         `json:"game,omitempty"`
-	Members         []Member      `json:"members"`
-	SnapshotAt      time.Time     `json:"snapshot_at"`
-	DeviceID        string        `json:"device_id"`
-	Control         string        `json:"control"`
-	Engine          string        `json:"engine"`
-	Error           string        `json:"error,omitempty"`
-	Room            *Room         `json:"room,omitempty"`
-	LeaseExpiresAt  time.Time     `json:"lease_expires_at,omitempty"`
-	IP              string        `json:"ip,omitempty"`
-	Peers           []Peer        `json:"peers"`
+	ServiceInstanceID string         `json:"service_instance_id"`
+	StatusSeq         uint64         `json:"status_seq"`
+	Service           string         `json:"service"`
+	Identity          string         `json:"identity"`
+	Operation         string         `json:"operation"`
+	Membership        MembershipSelf `json:"membership"`
+	Permissions       Permissions    `json:"permissions"`
+	Network           NetworkState   `json:"network"`
+	Freshness         Freshness      `json:"freshness"`
+	Issues            []Issue        `json:"issues"`
+	PendingOperations []Operation    `json:"pending_operations"`
+	Update            *UpdateStatus  `json:"update,omitempty"`
+	User              *User          `json:"user,omitempty"`
+	LAN               *LANStatus     `json:"lan,omitempty"`
+	LANVersion        int            `json:"lan_version"`
+	Version           string         `json:"version"`
+	ProtocolVersion   int            `json:"protocol_version"`
+	Server            string         `json:"server"`
+	Name              string         `json:"name"`
+	SelectedRoom      string         `json:"selected_room"`
+	Game              *Game          `json:"game,omitempty"`
+	Members           []Member       `json:"members"`
+	SnapshotAt        time.Time      `json:"snapshot_at"`
+	DeviceID          string         `json:"device_id"`
+	Control           string         `json:"control"`
+	Engine            string         `json:"engine"`
+	Error             string         `json:"error,omitempty"`
+	Room              *Room          `json:"room,omitempty"`
+	LeaseExpiresAt    time.Time      `json:"lease_expires_at,omitempty"`
+	IP                string         `json:"ip,omitempty"`
+	Peers             []Peer         `json:"peers"`
 }

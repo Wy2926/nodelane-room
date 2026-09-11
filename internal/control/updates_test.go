@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/jackc/pgx/v5"
+	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/model"
 	"github.com/sigstore/sigstore/pkg/signature"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
@@ -117,7 +118,8 @@ func TestForcedUpdateRevokesExistingAuthorization(t *testing.T) {
 		}
 		return e
 	}))
-	must(t, a.Call(ctx, "POST", "/v2/rooms/"+room.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, nil))
+	heartbeatCtx := client.WithOperation(ctx, randomID(), time.Now().UTC().Add(50*time.Minute))
+	must(t, a.Call(heartbeatCtx, "POST", "/v2/rooms/"+room.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, nil))
 	past := time.Now().Add(-time.Minute)
 	p.EffectiveAt = &past
 	must(t, s.Write(ctx, func(tx pgx.Tx) error { _, e := savePolicy(ctx, tx, "admin", p); return e }))
@@ -127,8 +129,22 @@ func TestForcedUpdateRevokesExistingAuthorization(t *testing.T) {
 	if !revoked || active {
 		t.Fatal("old authorization survives mandatory update")
 	}
-	if e := a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "denied", Game: "custom"}, nil); e == nil {
-		t.Fatal("old client can create a room")
+	for _, tc := range []struct {
+		path string
+		body any
+	}{
+		{"/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "denied", Game: "custom"}},
+		{"/v2/rooms/join", model.JoinRequest{Code: room.Invitation.Code}},
+		{"/v2/rooms/" + room.Room.ID + "/join", model.MemberRequest{ExpectedRevision: room.Room.Revision}},
+		{"/v2/rooms/" + room.Room.ID + "/lease", model.LeaseRequest{}},
+		{"/v2/rooms/" + room.Room.ID + "/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}},
+	} {
+		if err := a.Call(ctx, "POST", tc.path, tc.body, nil); !model.IsCode(err, "client_update_required") {
+			t.Fatalf("%s bypassed version check: %v", tc.path, err)
+		}
+	}
+	if err := a.Call(heartbeatCtx, "POST", "/v2/rooms/"+room.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, nil); !model.IsCode(err, "client_update_required") {
+		t.Fatalf("cached heartbeat bypassed current version check: %v", err)
 	}
 	must(t, a.Call(ctx, "GET", "/v2/me", nil, &model.User{}))
 	report.Version = "9.0.0"
@@ -176,7 +192,7 @@ func TestUpdatePolicyRevisionAndSourceAvailability(t *testing.T) {
 		_, e = saveSource(ctx, tx, "admin", src)
 		return e
 	})
-	if !errors.Is(err, ErrConflict) {
+	if !model.IsCode(err, "update_last_source_required") {
 		t.Fatal("disabled last active source", err)
 	}
 	must(t, s.Write(ctx, func(tx pgx.Tx) error {
@@ -221,6 +237,23 @@ func TestUpdateManagementAuthenticationAndOverview(t *testing.T) {
 	}
 	if bytes.Contains(b, []byte("secret_key")) || bytes.Contains(b, []byte("access_key")) {
 		t.Fatal("overview included credentials")
+	}
+}
+
+func TestUpdateRepositoryRequestLimit(t *testing.T) {
+	_, a := newAdmin(t)
+	body := map[string]string{"unexpected": strings.Repeat("x", 70000)}
+	for _, tc := range []struct {
+		path   string
+		status int
+	}{
+		{"/updates/repository", http.StatusBadRequest},
+		{"/updates/sources", http.StatusRequestEntityTooLarge},
+	} {
+		status, _ := a.request("PUT", tc.path, body, true, true)
+		if status != tc.status {
+			t.Fatalf("%s: status %d, want %d", tc.path, status, tc.status)
+		}
 	}
 }
 

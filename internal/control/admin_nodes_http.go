@@ -20,6 +20,33 @@ func (s *Server) adminCreateNode(r *http.Request, tx pgx.Tx, actor string, raw [
 	return s.Store.createNode(r.Context(), tx, actor, c)
 }
 
+func (s *Server) adminNodeOperation(w http.ResponseWriter, r *http.Request, _ string) {
+	var op model.NodeOperation
+	var now time.Time
+	err := s.Store.Pool.QueryRow(r.Context(), `SELECT id,node_id,generation,revision,action,state,error,created_at,expires_at,now() FROM node_operations WHERE id=$1 AND node_id=$2`, r.PathValue("operation"), r.PathValue("node")).Scan(&op.ID, &op.NodeID, &op.Generation, &op.Revision, &op.Action, &op.State, &op.Error, &op.CreatedAt, &op.ExpiresAt, &now)
+	if err != nil {
+		s.fail(w, noRows(err))
+		return
+	}
+	if (op.State == "pending" || op.State == "running") && !op.ExpiresAt.After(now) {
+		op.State = "expired"
+	}
+	op.Reason = nodeOperationReason(op)
+	s.result(w, op, nil)
+}
+
+func nodeOperationReason(op model.NodeOperation) string {
+	switch op.State {
+	case "expired":
+		return "node_operation_expired"
+	case "superseded":
+		return "node_operation_superseded"
+	case "failed":
+		return safeNodeCode("failed", op.Error)
+	}
+	return ""
+}
+
 func (s *Server) adminUpdateNode(r *http.Request, tx pgx.Tx, actor string, raw []byte) (any, error) {
 	id := r.PathValue("node")
 	var in struct {
@@ -35,12 +62,30 @@ func (s *Server) adminUpdateNode(r *http.Request, tx pgx.Tx, actor string, raw [
 func (s *Server) adminNodeAction(r *http.Request, tx pgx.Tx, actor string, raw []byte) (any, error) {
 	id := r.PathValue("node")
 	var in struct {
-		Action string `json:"action"`
+		Action           string `json:"action"`
+		ExpectedRevision int64  `json:"expected_revision"`
 	}
 	if err := decodeBytes(raw, &in); err != nil {
 		return nil, err
 	}
-	return s.Store.nodeAction(r.Context(), tx, actor, id, in.Action)
+	n, err := readNode(r.Context(), tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if n.State == "revoked" {
+		return nil, model.Failure("node_revoked")
+	}
+	if n.Revision != in.ExpectedRevision {
+		return nil, model.RevisionError(in.ExpectedRevision, n.Revision)
+	}
+	op, err := s.Store.nodeAction(r.Context(), tx, actor, id, in.Action)
+	if err != nil {
+		return nil, err
+	}
+	if op.State == "pending" {
+		return model.NewResult("operation_pending", "control", "", op), nil
+	}
+	return op, nil
 }
 
 func (s *Server) adminNodeKey(w http.ResponseWriter, r *http.Request, actor string) {

@@ -104,7 +104,11 @@ export function RoomPanel({
   const [snapshot, setSnapshot] = useState<RoomSnapshot>(),
     [error, setError] = useState(""),
     [selected, setSelected] = useState(""),
-    [confirm, setConfirm] = useState<{ action: string; device: string }>();
+    [confirm, setConfirm] = useState<{
+      action: string;
+      device: string;
+      revision: number;
+    }>();
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -247,7 +251,11 @@ export function RoomPanel({
                       <button
                         className="danger"
                         onClick={() =>
-                          setConfirm({ action: "kick", device: m.device_id })
+                          setConfirm({
+                            action: "kick",
+                            device: m.device_id,
+                            revision: snapshot.room.revision,
+                          })
                         }
                       >
                         踢出
@@ -332,7 +340,13 @@ export function RoomPanel({
           {!room.closed && (
             <button
               className="danger"
-              onClick={() => setConfirm({ action: "close", device: "" })}
+              onClick={() =>
+                setConfirm({
+                  action: "close",
+                  device: "",
+                  revision: snapshot.room.revision,
+                })
+              }
             >
               关闭房间
             </button>
@@ -353,6 +367,7 @@ export function RoomPanel({
                     await api("/rooms/" + room.id + "/actions", {
                       action: confirm.action,
                       device_id: confirm.device,
+                      expected_revision: confirm.revision,
                     });
                     setConfirm(undefined);
                     await refresh();

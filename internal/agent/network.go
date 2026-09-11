@@ -17,6 +17,7 @@ import (
 )
 
 func (r *Runtime) step(ctx context.Context) error {
+	epoch := r.networkEpoch.Load()
 	if r.api == nil || (r.nodeMode && r.identity.NodeID == "") {
 		return nil
 	}
@@ -34,7 +35,7 @@ func (r *Runtime) step(ctx context.Context) error {
 	if !i.Node {
 		user, err := r.api.RefreshAccount(ctx)
 		if err != nil {
-			if client.IsDenied(err) {
+			if client.MembershipEnded(err) || client.IdentityEnded(err) {
 				r.netMu.Lock()
 				r.stopNetworkLocked()
 				r.snapshot = model.Snapshot{}
@@ -56,7 +57,11 @@ func (r *Runtime) step(ctx context.Context) error {
 	if i.RoomID == "" && !i.Node {
 		r.netMu.Lock()
 		r.stopNetworkLocked()
+		self := r.snapshot.Self
 		r.snapshot = model.Snapshot{}
+		if self.State == "ended" {
+			r.snapshot.Self = self
+		}
 		r.netMu.Unlock()
 		if r.watchCancel != nil {
 			r.watchCancel()
@@ -77,12 +82,25 @@ func (r *Runtime) step(ctx context.Context) error {
 		go func() {
 			var rev int64
 			for watchCtx.Err() == nil {
-				_ = api.Watch(watchCtx, room, rev, func(s model.Snapshot) {
+				err := api.Watch(watchCtx, room, rev, func(s model.Snapshot) {
+					rev = s.Self.Revision
 					if s.Room != nil {
 						rev = s.Room.Revision
 					}
 					r.Wake()
 				})
+				if watchCtx.Err() != nil {
+					return
+				}
+				if client.MembershipEnded(err) || client.IdentityEnded(err) {
+					r.netMu.Lock()
+					if r.snapshot.Self.RoomID == room {
+						r.stopNetworkLocked()
+					}
+					r.netMu.Unlock()
+					r.Wake()
+					return
+				}
 				timer := time.NewTimer(2 * time.Second)
 				select {
 				case <-watchCtx.Done():
@@ -108,13 +126,12 @@ func (r *Runtime) step(ctx context.Context) error {
 		}
 	} else {
 		if err := r.api.Call(ctx, "POST", prefix+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion, MAC: r.engine.LANMAC()}, nil); err != nil {
-			if client.IsDenied(err) {
+			if client.MembershipEnded(err) || client.IdentityEnded(err) {
 				r.netMu.Lock()
 				r.stopNetworkLocked()
-				r.snapshot = model.Snapshot{}
+				r.snapshot = model.Snapshot{Self: model.MembershipSelf{RoomID: i.RoomID, DeviceID: i.ID(), State: "ended", Reason: model.Code(err)}}
 				r.netMu.Unlock()
-				// A denied heartbeat is authoritative: the device no longer has
-				// room membership. Clear the local selection so it can join again.
+				// Only a specific terminal fact ends membership; unrelated denials do not.
 				i.RoomID = ""
 				if saveErr := r.persist(i); saveErr != nil {
 					return saveErr
@@ -127,13 +144,38 @@ func (r *Runtime) step(ctx context.Context) error {
 		if err := r.api.Call(ctx, "GET", prefix, nil, &snapshot); err != nil {
 			return err
 		}
+		if snapshot.Self.State == "ended" {
+			r.netMu.Lock()
+			r.stopNetworkLocked()
+			r.snapshot = snapshot
+			r.netMu.Unlock()
+			i.RoomID = ""
+			if err := r.persist(i); err != nil {
+				return err
+			}
+			return model.Failure(snapshot.Self.Reason)
+		}
+		if r.paused.Load() {
+			r.netMu.Lock()
+			r.snapshot = snapshot
+			r.netMu.Unlock()
+			r.setError("connected", nil)
+			return nil
+		}
 	}
 	if delta := time.Since(snapshot.ServerTime); delta > 30*time.Second || delta < -30*time.Second {
-		return errors.New("system clock differs from control server by more than 30 seconds")
+		r.netMu.Lock()
+		r.stopNetworkLocked()
+		r.netMu.Unlock()
+		return model.Failure("local_clock_skew")
 	}
 	// Apply revocations immediately, even when the following renewal request
 	// fails. A successful snapshot must not leave obsolete permissions active.
 	r.netMu.Lock()
+	if !i.Node && (r.paused.Load() || r.networkEpoch.Load() != epoch || requiredLocally(r.updateStatus().Policy)) {
+		r.netMu.Unlock()
+		return nil
+	}
 	if r.engine.Running() {
 		current := engine.Config{Lease: r.lease, Snapshot: snapshot, PrivateKey: r.key, DeviceID: i.ID(), Interface: "nodelane0", RelayIPs: r.selectRelaysLocked(snapshot.Nodes)}
 		if err := r.engine.Apply(current); err != nil {
@@ -164,7 +206,7 @@ func (r *Runtime) step(ctx context.Context) error {
 			}
 		}
 		if err := r.api.Call(ctx, "POST", prefix+"/lease", model.LeaseRequest{PublicKey: pub, Revision: r.nodeRevision()}, &lease); err != nil {
-			if client.IsDenied(err) {
+			if client.MembershipEnded(err) || client.IdentityEnded(err) || (i.Node && client.NodeAuthorizationEnded(err)) {
 				r.netMu.Lock()
 				r.stopNetworkLocked()
 				r.netMu.Unlock()
@@ -181,7 +223,7 @@ func (r *Runtime) step(ctx context.Context) error {
 		r.netMu.Lock()
 		r.stopNetworkLocked()
 		r.netMu.Unlock()
-		return err
+		return model.Failure("local_lease_invalid")
 	}
 	ca, _, err := cert.UnmarshalCertificateFromPEM([]byte(lease.CA))
 	if err != nil {
@@ -192,7 +234,10 @@ func (r *Runtime) step(ctx context.Context) error {
 		return err
 	}
 	if i.CAFingerprint != "" && i.CAFingerprint != fp {
-		return errors.New("control server changed the pinned Nebula CA")
+		r.netMu.Lock()
+		r.stopNetworkLocked()
+		r.netMu.Unlock()
+		return model.Failure("local_ca_changed")
 	}
 	if i.CAFingerprint == "" {
 		i.CAFingerprint = fp
@@ -201,6 +246,10 @@ func (r *Runtime) step(ctx context.Context) error {
 		}
 	}
 	r.netMu.Lock()
+	if !i.Node && (r.paused.Load() || r.networkEpoch.Load() != epoch || requiredLocally(r.updateStatus().Policy)) {
+		r.netMu.Unlock()
+		return nil
+	}
 	cfg.RelayIPs = r.selectRelaysLocked(snapshot.Nodes)
 	if err = r.engine.Apply(cfg); err != nil {
 		r.netMu.Unlock()
@@ -238,9 +287,8 @@ func (r *Runtime) step(ctx context.Context) error {
 			err = errors.New("LAN diagnostic channel unavailable")
 		}
 		if err != nil {
-			r.stopNetworkLocked()
 			r.netMu.Unlock()
-			return err
+			return model.Failure("local_probe_unavailable")
 		}
 	}
 	r.probe.Update(snapshot)
@@ -256,6 +304,12 @@ func (r *Runtime) step(ctx context.Context) error {
 	r.stateMu.Lock()
 	r.status.Control = "connected"
 	r.status.Error = r.nodePending
+	now := time.Now().UTC()
+	for j := range r.status.Issues {
+		if r.status.Issues[j].ResolvedAt == nil {
+			r.status.Issues[j].ResolvedAt = &now
+		}
+	}
 	r.stateMu.Unlock()
 	if r.probeBusy.CompareAndSwap(false, true) {
 		go func() {
@@ -349,6 +403,7 @@ func (r *Runtime) selectRelaysLocked(nodes []model.Node) []string {
 }
 
 func (r *Runtime) stopNetworkLocked() {
+	r.networkEpoch.Add(1)
 	r.engine.Stop()
 	r.closeAdaptersLocked()
 	r.lease = model.Lease{}

@@ -53,7 +53,7 @@ func TestPackageBoundaries(t *testing.T) {
 		"internal/device":     {"internal/model"},
 		"internal/engine":     {"internal/model", "internal/pki", "internal/lan"},
 		"internal/lan":        {"internal/model"},
-		"internal/localapi":   {"internal/platform"},
+		"internal/localapi":   {"internal/platform", "internal/model"},
 		"internal/model":      {},
 		"internal/nodehost":   {"internal/device", "internal/localapi", "internal/model"},
 		"internal/pki":        {},

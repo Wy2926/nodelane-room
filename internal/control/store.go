@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nodelane/nodelane-room/internal/model"
 )
 
 //go:embed schema.sql
@@ -75,7 +75,7 @@ func (s *Store) initializeSchema(ctx context.Context, tx pgx.Tx) error {
 			return err
 		}
 		if !valid {
-			return fmt.Errorf("database schema must be version %d; use an empty database for a new deployment", schemaVersion)
+			return model.Failure("setup_database_incompatible")
 		}
 	} else {
 		var count int
@@ -83,7 +83,7 @@ func (s *Store) initializeSchema(ctx context.Context, tx pgx.Tx) error {
 			return err
 		}
 		if count != 0 {
-			return fmt.Errorf("initialization requires an empty database schema")
+			return model.Failure("setup_database_incompatible")
 		}
 		if _, err := tx.Exec(ctx, schema); err != nil {
 			return err
@@ -97,7 +97,7 @@ func (s *Store) initializeSchema(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	if n != s.Network.String() {
-		return fmt.Errorf("configured network differs from database: %s", n)
+		return model.Failure("setup_database_incompatible")
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func (s *Store) allocate(ctx context.Context, tx pgx.Tx, holder string) (string,
 			return a.String(), err
 		}
 	}
-	return "", fmt.Errorf("%w: address pool exhausted", ErrConflict)
+	return "", model.Failure("network_address_exhausted")
 }
 func bump(ctx context.Context, tx pgx.Tx, room, kind string) error {
 	var rev int64
@@ -181,7 +181,14 @@ func bump(ctx context.Context, tx pgx.Tx, room, kind string) error {
 	_, err := tx.Exec(ctx, "INSERT INTO events(room_id,revision,kind) VALUES($1,$2,$3)", room, rev, kind)
 	return err
 }
-func revoke(ctx context.Context, tx pgx.Tx, room, device string) error {
+func revoke(ctx context.Context, tx pgx.Tx, room, device string, reasons ...string) error {
+	reason := "member_revoked"
+	if len(reasons) > 0 {
+		reason = reasons[0]
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO admin_events(actor,kind,target,detail) SELECT 'control','member.ended',m.room_id,jsonb_build_object('room_id',m.room_id,'device_id',m.device_id,'room_revision',r.revision+1,'reason_code',$3::text,'operation_id',$4::text) FROM members m JOIN rooms r ON r.id=m.room_id WHERE m.room_id=$1 AND m.active AND ($2='' OR m.device_id=$2)`, room, device, reason, operationID(ctx)); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, "UPDATE certificates SET revoked=true WHERE room_id=$1 AND ($2='' OR device_id=$2)", room, device); err != nil {
 		return err
 	}
@@ -249,41 +256,4 @@ func (s *Store) Rate(ctx context.Context, key string, limit int, window time.Dur
 
 func (s *Store) Mutate(ctx context.Context, device, key, requestHash string, fn func(pgx.Tx) (any, error)) ([]byte, error) {
 	return s.mutateChecked(ctx, device, key, requestHash, nil, fn)
-}
-
-// Check current authorization inside the same transaction, even for a cached response.
-func (s *Store) mutateChecked(ctx context.Context, device, key, requestHash string, check func(pgx.Tx) error, fn func(pgx.Tx) (any, error)) ([]byte, error) {
-	if len(key) < 16 || len(key) > 128 {
-		return nil, fmt.Errorf("%w: Idempotency-Key must be 16-128 characters", ErrInvalid)
-	}
-	var response []byte
-	err := s.Write(ctx, func(tx pgx.Tx) error {
-		if check != nil {
-			if err := check(tx); err != nil {
-				return err
-			}
-		}
-		var previous string
-		err := tx.QueryRow(ctx, "SELECT request_hash,response FROM idempotency WHERE device_id=$1 AND key=$2 AND expires_at>now()", device, key).Scan(&previous, &response)
-		if err == nil {
-			if previous != requestHash {
-				return ErrConflict
-			}
-			return nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return err
-		}
-		result, err := fn(tx)
-		if err != nil {
-			return err
-		}
-		response, err = json.Marshal(result)
-		if err != nil {
-			return err
-		}
-		_, err = tx.Exec(ctx, "INSERT INTO idempotency(device_id,key,request_hash,response,expires_at) VALUES($1,$2,$3,$4,now()+interval '1 hour') ON CONFLICT(device_id,key) DO UPDATE SET request_hash=EXCLUDED.request_hash,response=EXCLUDED.response,expires_at=EXCLUDED.expires_at", device, key, requestHash, response)
-		return err
-	})
-	return response, err
 }

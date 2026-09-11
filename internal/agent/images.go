@@ -17,19 +17,19 @@ import (
 // No session, arbitrary URL, redirect, or disk cache is exposed to the WebView.
 func (r *Runtime) gameImage(ctx context.Context, game, kind string) ([]byte, string, error) {
 	if !validLocalID(game, false) || (kind != "cover" && kind != "background") {
-		return nil, "", localapi.Failure("invalid_request", "invalid game image")
+		return nil, "", localapi.Failure("request_validation_failed", "invalid game image")
 	}
 	select {
 	case r.imageSlots <- struct{}{}:
 		defer func() { <-r.imageSlots }()
 	default:
-		return nil, "", localapi.Failure("busy", "图片请求繁忙，请稍后重试")
+		return nil, "", localapi.Failure("local_busy", "图片请求繁忙，请稍后重试")
 	}
 	r.stateMu.Lock()
 	server := r.status.Server
 	r.stateMu.Unlock()
 	if server == "" {
-		return nil, "", localapi.Failure("unconfigured", "请先初始化设备")
+		return nil, "", localapi.Failure("local_unconfigured", "请先初始化设备")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

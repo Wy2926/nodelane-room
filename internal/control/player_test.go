@@ -36,17 +36,15 @@ func TestRoomLifecycleAcrossReplicas(t *testing.T) {
 	if len(snap.Members) != 2 {
 		t.Fatalf("members: %+v", snap.Members)
 	}
-	must(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/transfer", model.MemberRequest{DeviceID: guest.Identity.ID()}, nil))
-	statusError(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{}, nil), 403)
-	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{}, nil))
+	must(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/transfer", model.MemberRequest{ExpectedRevision: roomRevision(t, s, r.Room.ID), DeviceID: guest.Identity.ID()}, nil))
+	statusError(t, ownerAPI.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{ExpectedRevision: roomRevision(t, s, r.Room.ID)}, nil), 403)
+	must(t, guest.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/close", model.MemberRequest{ExpectedRevision: roomRevision(t, s, r.Room.ID)}, nil))
 	must(t, ownerAPI.Call(ctx, "GET", "/v2/rooms/"+r.Room.ID, nil, &snap))
-	if !snap.Room.Closed || len(snap.Members) != 0 {
+	if snap.Room != nil || snap.Self.Reason != "room_closed" || len(snap.Members) != 0 || len(snap.Blocklist) != 0 {
 		t.Fatalf("not closed: %+v", snap)
 	}
-	found := false
-	for _, f := range snap.Blocklist {
-		found = found || f == l.Fingerprint
-	}
+	var found bool
+	must(t, s.Pool.QueryRow(ctx, "SELECT revoked FROM certificates WHERE fingerprint=$1", l.Fingerprint).Scan(&found))
 	if !found {
 		t.Fatal("closing did not revoke outstanding certificate")
 	}
@@ -95,7 +93,7 @@ func TestCapacityAndOneRoomUnderConcurrency(t *testing.T) {
 	if n != model.RoomCapacity {
 		t.Fatal("IP allocation collided")
 	}
-	statusError(t, host.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{Name: "second", Game: "custom"}, nil), 409)
+	statusError(t, host.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "second", Game: "custom"}, nil), 409)
 }
 func TestKickRevokesAllRotatedCertificatesAndInvitation(t *testing.T) {
 	s, ca := database(t)
@@ -107,7 +105,7 @@ func TestKickRevokesAllRotatedCertificatesAndInvitation(t *testing.T) {
 	_ = lease(t, guest, r.Room.ID)
 	_ = lease(t, guest, r.Room.ID)
 	ctx := context.Background()
-	must(t, host.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/kick", model.MemberRequest{DeviceID: guest.Identity.ID()}, nil))
+	must(t, host.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/kick", model.MemberRequest{ExpectedRevision: roomRevision(t, s, r.Room.ID), DeviceID: guest.Identity.ID()}, nil))
 	statusError(t, guest.Call(ctx, "POST", "/v2/rooms/join", model.JoinRequest{Code: r.Invitation.Code}, nil), 403)
 	_, pub, err := pki.TunnelKey()
 	must(t, err)
@@ -118,7 +116,7 @@ func TestKickRevokesAllRotatedCertificatesAndInvitation(t *testing.T) {
 		t.Fatalf("revoked %d certificates", n)
 	}
 	var inv model.Invitation
-	must(t, host.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/invite", model.MemberRequest{}, &inv))
+	must(t, host.Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/invite", model.MemberRequest{ExpectedRevision: roomRevision(t, s, r.Room.ID)}, &inv))
 	other := user(t, server, "other")
 	statusError(t, other.Call(ctx, "POST", "/v2/rooms/join", model.JoinRequest{Code: r.Invitation.Code}, nil), 403)
 }
@@ -138,7 +136,7 @@ func TestAuthenticationReplayAndIdentityBinding(t *testing.T) {
 		t.Fatal("identity mismatch")
 	}
 	_, err = s.Verify(ctx, model.VerifyRequest{ID: c.ID, Signature: sig})
-	if !errors.Is(err, ErrUnauthorized) {
+	if !model.IsCode(err, "auth_challenge_unusable") {
 		t.Fatal("replayed challenge accepted")
 	}
 	in.DeviceID = "someone-else"
@@ -149,7 +147,7 @@ func TestAuthenticationReplayAndIdentityBinding(t *testing.T) {
 	c, err = s.Challenge(ctx, model.ChallengeRequest{DeviceID: i.ID(), Name: i.Name, PublicKey: pub})
 	must(t, err)
 	_, err = s.Verify(ctx, model.VerifyRequest{ID: c.ID, Signature: make([]byte, 64)})
-	if !errors.Is(err, ErrUnauthorized) {
+	if !model.IsCode(err, "auth_proof_invalid") {
 		t.Fatal("forged signature accepted")
 	}
 }
@@ -161,7 +159,7 @@ func TestExpiryReclaimAndRoomAuthorization(t *testing.T) {
 	r := create(t, host)
 	ctx := context.Background()
 	path := "/v2/rooms/" + r.Room.ID
-	statusError(t, stranger.Call(ctx, "GET", path, nil, nil), 403)
+	statusError(t, stranger.Call(ctx, "GET", path, nil, nil), 404)
 	l := lease(t, host, r.Room.ID)
 	_, err := s.Pool.Exec(ctx, "UPDATE rooms SET expires_at=now()-interval '1 second' WHERE id=$1", r.Room.ID)
 	must(t, err)
@@ -195,26 +193,29 @@ func TestIdempotencyAndSSESnapshotRecovery(t *testing.T) {
 	must(t, err)
 	session, err := s.Verify(ctx, model.VerifyRequest{ID: challenge.ID, Signature: ed25519.Sign(a.Identity.PrivateKey, append([]byte("nodelane-auth-v2:player:"+challenge.ID+":"), challenge.Nonce...))})
 	must(t, err)
-	body := []byte(`{"name":"once","game":"custom"}`)
+	body := []byte(`{"name":"once","game":"custom","expected_game_revision":1}`)
 	key := randomID()
+	deadline := time.Now().UTC().Add(50 * time.Minute)
 	invoke := func(path string, body []byte) (int, []byte) {
 		req, e := http.NewRequest("POST", server.URL+path, bytes.NewReader(body))
 		must(t, e)
 		req.Header.Set("Authorization", "Bearer "+session.Token)
 		req.Header.Set("Idempotency-Key", key)
+		req.Header.Set(model.ContractHeader, model.Contract)
+		req.Header.Set(model.DeadlineHeader, deadline.Format(time.RFC3339Nano))
 		resp, e := http.DefaultClient.Do(req)
 		must(t, e)
 		defer resp.Body.Close()
 		b, e := io.ReadAll(resp.Body)
 		must(t, e)
-		return resp.StatusCode, b
+		return resp.StatusCode, responseData(t, b)
 	}
 	status, first := invoke("/v2/rooms", body)
-	if status != 200 {
+	if status != 201 {
 		t.Fatalf("%d: %s", status, first)
 	}
 	status, second := invoke("/v2/rooms", body)
-	if status != 200 {
+	if status != 201 {
 		t.Fatal(string(second))
 	}
 	var firstObject, secondObject any

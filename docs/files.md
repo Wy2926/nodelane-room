@@ -38,6 +38,7 @@ cmd/ 可执行程序入口
     main.go 登记、运行、诊断与原生安装管理
   nlroom-cli/ Windows/Linux 开发与诊断 CLI
     main.go 玩家命令、机器可读输出与本机服务调用
+    main_test.go 用户错误、系统不可达与结果未知的有限退出码测试
   nlroom-service/ Windows/Linux 玩家网络后台
     main.go 后台生命周期与 Windows 服务管理入口
   nodelane-server/ Linux 控制面命令
@@ -90,6 +91,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
       use-actions.ts 操作互斥、复制与确认管理
+      use-actions.test.ts 未决写互斥、接管子步骤与跨服务实例旧回复测试
     i18n/ 客户端语言选择与翻译
       index.ts 语言偏好持久化、订阅与字典插值
       LanguageSelection.tsx 进入客户端前的语言选择界面
@@ -191,6 +193,9 @@ internal/ 产品内部实现
     download_test.go HTTPS 恢复下载与错误响应验证
     download.go 多镜像断点续传与完整包校验
   agent/ 玩家与节点后台状态协调
+    interaction.go 独立暂停与恢复网络、账号和邀请只读查询
+    operations.go 受保护操作账本、同键重放与收据对账
+    operations_test.go 原始字节持久化、状态非阻塞与暂停恢复测试
     updates_test.go 无房间版本上报与 GUI 版本变化回归
     updates.go 更新轮询、缓存策略、下载调度与设备版本上报
     account.go 受保护的登录事务、本机账号切换与退出
@@ -214,14 +219,16 @@ internal/ 产品内部实现
     traffic_udp_linux_test.go 真实 UDP 双向字节计数与去重测试
     traffic_udp_other.go 非 Linux 平台 UDP 观察器占位
   client/ 控制面 API 客户端
+    api_test.go 同键重试、精确授权终态与快照整体替换测试
     account.go OIDC 登录发起、设备证明领取与账号状态读取
     api.go 控制面认证、幂等请求与 SSE 恢复
     enrollment.go 基础设施节点登记认证
   control/ 按调用方分文件的 HTTP API 与共享事务状态
     updates_test.go 强制撤销、共享修订与存储凭据保护回归
-    updates_http.go 更新管理、包上传、公开检查与版本上报接口
+    updates_http.go 更新管理、包上传、公开检查与版本上报的 HTTP 适配
     updates.go 签名发布、版本规则与强制授权撤销事务
-    update_storage.go 加密凭据、R2/S3/HTTPS 源与副本校验
+    update_storage.go 加密凭据、更新源连接、包上传与副本校验提交
+    update_snapshot.go 公开更新检查与管理更新总览的数据库查询
     admin_audit.go 管理事件持久化与失败写操作审计
     admin_auth.go 管理员密码、登录与会话事务
     admin_events_http.go 管理台总览与事件流接口
@@ -245,6 +252,7 @@ internal/ 产品内部实现
         updates.test.tsx 源配置编辑修订保持与凭据只写回归
         updates.tsx 发布、存储源、强制规则和设备版本管理
         api.ts 管理员请求、CSRF 与认证失败处理
+        operations.tsx 管理员未决收据查询与过期核对
         auth.tsx 登录与创建或接入控制面的初始化表单
         auth.test.tsx 登录及接入已有控制面的交互测试
         components.tsx 表格、指标、表单及可访问对话框
@@ -262,9 +270,13 @@ internal/ 产品内部实现
         users.tsx 用户分页、设备与会话管理和 OIDC 配置
         users.test.tsx 用户停用原因与 OIDC secret 清除交互测试
     auth.go 显式访客登记、设备挑战、会话与房间权限校验
-    users.go 用户查询、事务授权检查、管理操作与连接撤销
+    users.go 用户查询、事务授权检查、设备与管理操作及连接撤销
+    users_http.go 用户与设备路由、请求解码和 HTTP 响应
     users_test.go OIDC 完整流程、身份升级、冲突、跨设备封禁与撤销测试
-    oidc.go 单提供方 OIDC 配置、浏览器登录与设备授权领取
+    oidc.go OIDC 配置、登录状态、设备证明与身份绑定事务
+    oidc_http.go OIDC 路由、浏览器 Cookie、回调与确认页面
+    operations.go 事务收据、拒绝保存点、截止时间与重放权限
+    operations_test.go 跨副本收据、回滚、秘密可见性及契约拒绝测试
     deployment.go 数据库配置校验、控制面创建与独立实例接入事务
     game_import.go Steam 链接、资料及图片下载与来源和大小校验
     games.go 游戏目录、完整端口区间与 LAN 策略更新事务
@@ -274,7 +286,7 @@ internal/ 产品内部实现
     geoip_update.go GeoIP 自动下载、月度检查、缓存校验及原子更新
     geoip_test.go 下载失败保留缓存、月度回退及官方样本并发查询测试
     http.go 公共 HTTP 入口、运维探针与响应处理
-    http_test.go 路由白名单、OpenAPI 认证契约与会话边界测试
+    http_test.go 路由、认证契约、JSON 边界及 SSE 写入错误测试
     install_http.go 原生节点安装资源下载白名单
     lease.go 玩家与节点短期隧道凭据签发及节点幂等校验
     node_http.go 节点登记、认证、同步与领证接口
@@ -284,6 +296,8 @@ internal/ 产品内部实现
     player_events_http.go 玩家房间事件流与快照恢复
     player_http.go 玩家路由、认证、限速与幂等写入
     player_rooms_http.go 玩家房间查询、成员操作与领证接口
+    player_invites.go 邀请元信息、房主按房间重入与条件校验
+    player_self.go 当前账号占用、成员墓碑与自身设备查询
     player_test.go 房间、多副本、并发、授权与 SSE 测试
     rooms.go 房间、成员、心跳、邀请与 LAN 授权快照
     schema.sql 当前数据库表、共享配置、CA、索引与约束
@@ -322,9 +336,13 @@ internal/ 产品内部实现
     tap_other.go 未支持平台的明确错误
   localapi/ 本机服务协议与调用客户端
     client.go 经 Named Pipe/Unix socket 调用本机 RPC
-    client_unix_test.go Unix socket 请求、响应与错误兼容测试
+    client_unix_test.go Unix socket 契约外壳、关联标识与错误拒绝测试
     protocol.go 本机请求与节点日志响应类型
   model/ 共享协议类型
+    codes.go interaction-1 业务码、HTTP 状态与重试分类
+    interaction.go 自身成员、权限、操作收据与独立状态维度
+    result.go 统一响应、类型化业务错误与安全详情白名单
+    result_test.go 业务码本地化覆盖、权限终态与详情脱敏测试
     update.go 客户端版本、更新规则、发布与设备报告结构
     game.go 游戏目录、LAN 策略/心跳、端口区间与管理类型
     lan.go LAN 版本、MAC、完整端口区间校验与 IPv6 地址推导
@@ -382,7 +400,7 @@ scripts/ 构建、安装与验证工具
     linux-prerm.sh deb 更新或移除前停止并等待旧后台退出
     linux-postrm.sh deb 移除后重载，保留身份和用户绑定
     test_package.py 版本、二进制架构、内容摘要与 Debian 生命周期测试
-    test-windows.ps1 临时目录中的 GUI 文件替换、停止失败、登记失败和版本恢复测试
+    test-windows.ps1 原生 UTF-8 状态读取、GUI 文件替换、停止失败、登记失败和版本恢复测试
     test-uninstall.ps1 模拟 SCM 下的身份保留、显式清除、停止失败及卸载边界测试
     test-setup.ps1 Windows PowerShell 提权状态管道的输出与退出错误测试
     test-tap.ps1 模拟受限注册表、驱动暂存、专用网卡创建与按 GUID 清理的隔离测试

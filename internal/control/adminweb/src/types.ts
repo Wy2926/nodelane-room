@@ -1,4 +1,5 @@
 export interface Room {
+  revision: number;
   id: string;
   name: string;
   game: string;
@@ -56,6 +57,7 @@ export interface InfraNode extends NodeConfig {
   };
 }
 export interface Operation {
+  reason?: string;
   id: string;
   node_id: string;
   action: string;
@@ -72,6 +74,7 @@ export interface Audit {
   created_at: string;
 }
 export interface Snapshot {
+  truncated?: { rooms: boolean; operations: boolean; events: boolean };
   games: Game[];
   nodes: InfraNode[];
   rooms: Room[];
@@ -87,7 +90,13 @@ export interface Snapshot {
 }
 export interface RoomSnapshot {
   room: Room;
-  members: { user_id: string; device_id: string; name: string; ip: string; last_seen: string }[];
+  members: {
+    user_id: string;
+    device_id: string;
+    name: string;
+    ip: string;
+    last_seen: string;
+  }[];
   game: Game;
 }
 export interface Link {

@@ -2,9 +2,11 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"os"
@@ -71,7 +73,7 @@ func user(t *testing.T, server *httptest.Server, name string) *client.API {
 func create(t *testing.T, a *client.API) model.RoomResult {
 	t.Helper()
 	var r model.RoomResult
-	must(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{Name: "Test room", Game: "custom"}, &r))
+	must(t, a.Call(context.Background(), "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "Test room", Game: "custom"}, &r))
 	return r
 }
 func join(t *testing.T, a *client.API, r model.RoomResult) {
@@ -92,4 +94,34 @@ func statusError(t *testing.T, err error, status int) {
 	if !errors.As(err, &e) || e.Status != status {
 		t.Fatalf("want API status %d, got %v", status, err)
 	}
+}
+
+func contractRequest(method, path string, body io.Reader) *http.Request {
+	r := httptest.NewRequest(method, path, body)
+	r.Header.Set(model.ContractHeader, model.Contract)
+	return r
+}
+func responseData(t *testing.T, b []byte) []byte {
+	t.Helper()
+	var result model.Result
+	must(t, json.Unmarshal(b, &result))
+	if result.Contract != model.Contract || result.RequestID == "" {
+		t.Fatal("missing response contract")
+	}
+	if model.HTTPStatus(result.Code) >= 400 {
+		return b
+	}
+	return result.Data
+}
+func roomRevision(t *testing.T, s *Store, room string) int64 {
+	t.Helper()
+	var revision int64
+	must(t, s.Pool.QueryRow(context.Background(), "SELECT revision FROM rooms WHERE id=$1", room).Scan(&revision))
+	return revision
+}
+func receiptData(t *testing.T, b []byte) []byte {
+	t.Helper()
+	var receipt model.Receipt
+	must(t, json.Unmarshal(b, &receipt))
+	return receipt.Result.Data
 }

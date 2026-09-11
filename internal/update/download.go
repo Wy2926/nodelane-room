@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -31,7 +30,7 @@ var downloadTransport = &http.Transport{Proxy: http.ProxyFromEnvironment, DialCo
 func HTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Minute, Transport: downloadTransport, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) >= 4 || !ValidURL(r.URL.String()) {
-			return errors.New("update_redirect_rejected")
+			return model.Failure("local_update_download_failed")
 		}
 		return nil
 	}}
@@ -48,14 +47,14 @@ func VerifyFile(name string, artifact model.UpdateArtifact) error {
 		return err
 	}
 	if !s.Mode().IsRegular() || s.Size() != artifact.Size {
-		return errors.New("update_size_mismatch")
+		return model.Failure("local_update_package_invalid")
 	}
 	h := sha256.New()
 	if _, err = io.Copy(h, io.LimitReader(f, artifact.Size+1)); err != nil {
 		return err
 	}
 	if hex.EncodeToString(h.Sum(nil)) != artifact.SHA256 {
-		return errors.New("update_hash_mismatch")
+		return model.Failure("local_update_package_invalid")
 	}
 	return nil
 }
@@ -64,7 +63,7 @@ func VerifyFile(name string, artifact model.UpdateArtifact) error {
 // because the complete result must match the signed size and SHA256.
 func Download(ctx context.Context, client *http.Client, urls []string, file string, a model.UpdateArtifact, progress func(int64)) error {
 	if a.Size <= 0 || a.Size > MaxPackageSize || len(urls) == 0 || len(urls) > 16 {
-		return errors.New("update_download_unavailable")
+		return model.Failure("local_update_download_failed")
 	}
 	if VerifyFile(file, a) == nil {
 		progress(a.Size)
@@ -99,7 +98,7 @@ func Download(ctx context.Context, client *http.Client, urls []string, file stri
 		case <-t.C:
 		}
 	}
-	return errors.New("update_download_failed")
+	return model.Failure("local_update_download_failed")
 }
 
 func downloadOnce(ctx context.Context, client *http.Client, address, file string, size int64, progress func(int64)) error {
@@ -132,7 +131,7 @@ func downloadOnce(ctx context.Context, client *http.Client, address, file string
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		return errors.New("update_source_unavailable")
+		return model.Failure("local_update_download_failed")
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusOK {
@@ -143,18 +142,18 @@ func downloadOnce(ctx context.Context, client *http.Client, address, file string
 	} else if res.StatusCode == http.StatusPartialContent && offset > 0 {
 		want := fmt.Sprintf("bytes %d-%d/%d", offset, size-1, size)
 		if res.Header.Get("Content-Range") != want {
-			return errors.New("update_range_invalid")
+			return model.Failure("local_update_download_failed")
 		}
 	} else {
-		return errors.New("update_source_unavailable")
+		return model.Failure("local_update_download_failed")
 	}
 	if enc := res.Header.Get("Content-Encoding"); enc != "" && enc != "identity" {
-		return errors.New("update_encoding_invalid")
+		return model.Failure("local_update_download_failed")
 	}
 	if v := res.Header.Get("Content-Length"); v != "" {
 		n, e := strconv.ParseInt(v, 10, 64)
 		if e != nil || n != size-offset {
-			return errors.New("update_size_mismatch")
+			return model.Failure("local_update_package_invalid")
 		}
 	}
 	if _, err = f.Seek(offset, io.SeekStart); err != nil {
@@ -165,7 +164,7 @@ func downloadOnce(ctx context.Context, client *http.Client, address, file string
 	for {
 		n, e := r.Read(buf)
 		if offset+int64(n) > size {
-			return errors.New("update_size_mismatch")
+			return model.Failure("local_update_package_invalid")
 		}
 		if n > 0 {
 			written, werr := f.Write(buf[:n])

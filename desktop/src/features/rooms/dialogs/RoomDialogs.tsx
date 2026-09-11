@@ -38,6 +38,41 @@ export function RoomDialogs(props: {
       {error && (
         <div className="banner error" role="alert">
           {failure(error).error}
+          {error.request_id && (
+            <small className="selectable">{error.request_id}</small>
+          )}
+        </div>
+      )}
+      {actions.takeover && (
+        <div className="banner warning" role="alert">
+          <p>{t("interaction.takeoverHelp")}</p>
+          <small>{actions.takeover.device}</small>
+          <button
+            disabled={!!busy}
+            onClick={() => void actions.takeOverAndContinue()}
+          >
+            {t("interaction.takeover")}
+          </button>
+          <button onClick={actions.cancelTakeover}>
+            {t("account.cancel")}
+          </button>
+        </div>
+      )}
+      {actions.pending && (
+        <div className="banner warning" role="status">
+          <p>{t("interaction.pending")}</p>
+          <button onClick={() => void actions.checkOperation(actions.pending!)}>
+            {t("interaction.checkOperation")}
+          </button>
+          <button
+            onClick={() =>
+              void actions.perform(t("interaction.stopNetwork"), {
+                action: "network-stop",
+              })
+            }
+          >
+            {t("interaction.stopNetwork")}
+          </button>
         </div>
       )}
       {dialog.type === "create" && <CreateRoom {...props} dialog={dialog} />}

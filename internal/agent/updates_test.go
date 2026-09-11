@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,16 +18,20 @@ import (
 )
 
 func TestVersionReportWithoutRoomAndOnGUIChange(t *testing.T) {
+	i, e := device.NewIdentity("https://example.test", "player")
+	if e != nil {
+		t.Fatal(e)
+	}
 	reports := make(chan model.ClientReport, 4)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v2/auth/challenge":
-			_ = json.NewEncoder(w).Encode(model.Challenge{})
+			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", model.Challenge{ID: client.ID(), Nonce: make([]byte, 32)}))
 		case "/v2/auth/verify":
-			_ = json.NewEncoder(w).Encode(model.Session{Token: "test-session", ExpiresAt: time.Now().Add(time.Hour)})
+			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", model.Session{DeviceID: i.ID(), Token: strings.Repeat("t", 64), ExpiresAt: time.Now().Add(time.Hour)}))
 		case "/v2/client/report":
-			if r.Header.Get("Authorization") != "Bearer test-session" {
+			if r.Header.Get("Authorization") != "Bearer "+strings.Repeat("t", 64) {
 				t.Error("report is not authenticated")
 			}
 			var report model.ClientReport
@@ -34,9 +39,9 @@ func TestVersionReportWithoutRoomAndOnGUIChange(t *testing.T) {
 				t.Error(e)
 			}
 			reports <- report
-			_, _ = w.Write([]byte(`{"ok":true}`))
+			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", map[string]bool{"ok": true}))
 		case "/v2/me":
-			_ = json.NewEncoder(w).Encode(model.User{ID: "test-user", Name: "player"})
+			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", "trace", model.AccountStatus{User: model.User{ID: "test-user", Name: "player"}, Device: model.UserDevice{DeviceID: i.ID()}, Membership: model.MembershipSelf{State: "none"}}))
 		default:
 			t.Error("unexpected request", r.URL.Path)
 			w.WriteHeader(404)
@@ -47,10 +52,7 @@ func TestVersionReportWithoutRoomAndOnGUIChange(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	i, e := device.NewIdentity(srv.URL, "player")
-	if e != nil {
-		t.Fatal(e)
-	}
+	i.Server = srv.URL
 	r.identity = i
 	r.api = client.NewAPI(i)
 	for range 2 {

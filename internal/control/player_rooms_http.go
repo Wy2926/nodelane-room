@@ -1,7 +1,6 @@
 package control
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
@@ -10,7 +9,11 @@ import (
 
 func (s *Server) playerOwnedRooms(w http.ResponseWriter, r *http.Request, id string) {
 	out, err := s.Store.OwnedRooms(r.Context(), id)
-	s.result(w, out, err)
+	page := model.RoomPage{Rooms: out, Truncated: len(out) > 500}
+	if page.Truncated {
+		page.Rooms = out[:500]
+	}
+	s.result(w, page, err)
 }
 
 func (s *Server) playerRoomManagement(w http.ResponseWriter, r *http.Request, id string) {
@@ -52,36 +55,7 @@ func (s *Server) playerHeartbeat(r *http.Request, tx pgx.Tx, id string, b []byte
 	if err := decodeBytes(b, &in); err != nil {
 		return nil, err
 	}
-	ctx, room := r.Context(), r.PathValue("room")
-	if err := activeMember(ctx, tx, room, id); err != nil {
-		return nil, err
-	}
-	if in.LANVersion != model.LANVersion {
-		return nil, fmt.Errorf("%w: 此房间需要支持 Ethernet LAN v1 的客户端", ErrConflict)
-	}
-	if in.MAC != "" {
-		mac, err := model.ParseLANMAC(in.MAC)
-		if err != nil || in.LANVersion != model.LANVersion {
-			return nil, ErrInvalid
-		}
-		var duplicate bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM members WHERE room_id=$1 AND active AND device_id<>$2 AND mac=$3)`, room, id, mac.String()).Scan(&duplicate); err != nil {
-			return nil, err
-		}
-		if duplicate {
-			return nil, fmt.Errorf("%w: 房间内虚拟网卡 MAC 重复", ErrConflict)
-		}
-		result, err := tx.Exec(ctx, `UPDATE members SET mac=$3 WHERE room_id=$1 AND device_id=$2 AND mac<>$3`, room, id, mac.String())
-		if err != nil {
-			return nil, err
-		}
-		if result.RowsAffected() != 0 {
-			if err = bump(ctx, tx, room, "lan_mac"); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return s.Store.heartbeat(r.Context(), tx, r.PathValue("room"), id)
+	return s.Store.heartbeat(r.Context(), tx, r.PathValue("room"), id, in)
 }
 
 func (s *Server) playerInvite(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {

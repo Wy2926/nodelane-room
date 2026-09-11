@@ -13,7 +13,9 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.useRealTimers());
 const status = {
   version: clientVersion,
-  protocol_version: 2,
+  protocol_version: 3,
+  service_instance_id: "test",
+  status_seq: 1,
   engine: "stopped",
   control: "unconfigured",
 } as Status;
@@ -49,8 +51,8 @@ test("refresh waits for the active request and schedules one follow-up", async (
 });
 
 test.each([
-  [{ ...status, protocol_version: 99 }, "incompatible"],
-  [{ ...status, version: "0.0.1" }, "version_mismatch"],
+  [{ ...status, protocol_version: 99 }, "local_protocol_incompatible"],
+  [{ ...status, version: "0.0.1" }, "local_version_mismatch"],
 ] as const)(
   "rejects mismatched service metadata and recovers after replacement",
   async (remote, code) => {

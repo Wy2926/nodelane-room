@@ -34,15 +34,15 @@ type importedGame struct {
 func steamAppID(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Scheme != "https" || u.Host != "store.steampowered.com" || u.User != nil || len(raw) > 2048 {
-		return "", fmt.Errorf("%w: 请粘贴 https://store.steampowered.com/app/数字/ 游戏链接", ErrInvalid)
+		return "", model.Failure("game_import_invalid")
 	}
 	p := strings.Split(strings.Trim(u.EscapedPath(), "/"), "/")
 	if len(p) < 2 || len(p) > 3 || p[0] != "app" {
-		return "", ErrInvalid
+		return "", model.Failure("game_import_invalid")
 	}
 	id, err := strconv.ParseUint(p[1], 10, 32)
 	if err != nil || id == 0 || strconv.FormatUint(id, 10) != p[1] {
-		return "", ErrInvalid
+		return "", model.Failure("game_import_invalid")
 	}
 	return p[1], nil
 }
@@ -104,7 +104,7 @@ func publicGameIP(ip netip.Addr) bool {
 
 func fetchSteam(ctx context.Context, c *http.Client, raw string, limit int64) ([]byte, error) {
 	if !allowedSteamURL(raw) {
-		return nil, fmt.Errorf("%w: Steam 返回了不支持的资源地址", ErrInvalid)
+		return nil, model.Failure("game_import_invalid")
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", raw, nil)
 	if err != nil {
@@ -113,15 +113,15 @@ func fetchSteam(ctx context.Context, c *http.Client, raw string, limit int64) ([
 	req.Header.Set("User-Agent", "NodeLane-Room/"+model.ControlVersion)
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: 无法下载 Steam 资料或图片，请稍后重试", ErrInvalid)
+		return nil, model.Failure("game_import_unavailable")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("%w: Steam 资源暂不可用（HTTP %d）", ErrInvalid, resp.StatusCode)
+		return nil, model.Failure("game_import_unavailable")
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil || int64(len(b)) > limit {
-		return nil, fmt.Errorf("%w: Steam 资源过大或下载不完整", ErrInvalid)
+		return nil, model.Failure("game_import_invalid")
 	}
 	return b, nil
 }
@@ -150,16 +150,16 @@ func importSteamGame(ctx context.Context, id string, c *http.Client) (importedGa
 		} `json:"data"`
 	}
 	if err = json.Unmarshal(b, &response); err != nil {
-		return out, fmt.Errorf("%w: Steam 资料格式无法识别", ErrInvalid)
+		return out, model.Failure("game_import_invalid")
 	}
 	app := response[id]
 	d := app.Data
 	if !app.Success || d.Type != "game" || strconv.FormatUint(uint64(d.AppID), 10) != id || !model.ValidLabel(d.Name, 200) {
-		return out, fmt.Errorf("%w: Steam 未返回有效游戏，请检查链接或地区可用性", ErrInvalid)
+		return out, model.Failure("game_import_invalid")
 	}
 	summary := strings.Join(strings.Fields(html.UnescapeString(gameHTMLTags.ReplaceAllString(d.Summary, " "))), " ")
 	if len(summary) > 4000 {
-		return out, fmt.Errorf("%w: 游戏简介过长", ErrInvalid)
+		return out, model.Failure("game_import_invalid")
 	}
 	out.Game = model.Game{ID: "steam-" + id, Name: d.Name, Summary: summary, SourceURL: "https://store.steampowered.com/app/" + id + "/", Ports: []model.GamePort{}, Revision: 1}
 	background := d.BackgroundRaw
@@ -183,10 +183,10 @@ func importSteamGame(ctx context.Context, id string, c *http.Client) (importedGa
 func validateGameImage(b []byte) (gameImageData, error) {
 	config, format, err := image.DecodeConfig(bytes.NewReader(b))
 	if err != nil || (format != "jpeg" && format != "png") || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 16_000_000 || len(b) > 5<<20 {
-		return gameImageData{}, fmt.Errorf("%w: 游戏图片须为不超过 5 MiB、1600 万像素的 JPEG/PNG", ErrInvalid)
+		return gameImageData{}, model.Failure("game_import_invalid")
 	}
 	if _, _, err = image.Decode(bytes.NewReader(b)); err != nil {
-		return gameImageData{}, fmt.Errorf("%w: 游戏图片损坏", ErrInvalid)
+		return gameImageData{}, model.Failure("game_import_invalid")
 	}
 	return gameImageData{Data: b, ContentType: "image/" + format}, nil
 }

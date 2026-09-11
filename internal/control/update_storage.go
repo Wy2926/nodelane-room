@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -29,7 +28,7 @@ import (
 func storageCipher() (cipher.AEAD, error) {
 	key, err := base64.StdEncoding.DecodeString(os.Getenv("NODELANE_UPDATE_STORAGE_KEY"))
 	if err != nil || len(key) != 32 {
-		return nil, errors.New("NODELANE_UPDATE_STORAGE_KEY must contain a shared base64-encoded 32-byte encryption key")
+		return nil, model.Failure("update_source_credentials_unavailable")
 	}
 	b, err := aes.NewCipher(key)
 	if err != nil {
@@ -70,15 +69,15 @@ func readSource(ctx context.Context, tx pgx.Tx, id string, secrets bool) (model.
 			return src, err
 		}
 		if len(sealed) < c.NonceSize() {
-			return src, errors.New("invalid encrypted update credentials")
+			return src, model.Failure("update_source_credentials_unavailable")
 		}
 		b, err := c.Open(nil, sealed[:c.NonceSize()], sealed[c.NonceSize():], []byte(id))
 		if err != nil {
-			return src, errors.New("cannot decrypt update credentials")
+			return src, model.Failure("update_source_credentials_unavailable")
 		}
 		var pair []string
 		if json.Unmarshal(b, &pair) != nil || len(pair) != 2 {
-			return src, errors.New("invalid update credentials")
+			return src, model.Failure("update_source_credentials_unavailable")
 		}
 		src.AccessKey, src.SecretKey = pair[0], pair[1]
 	}
@@ -165,7 +164,7 @@ func saveSource(ctx context.Context, tx pgx.Tx, actor string, src model.UpdateSo
 				return nil, e
 			}
 			if _, e = releaseURLs(ctx, tx, r); e != nil {
-				return nil, fmt.Errorf("%w: verify a backup source or remove its policy before changing the last source", ErrConflict)
+				return nil, model.Failure("update_last_source_required")
 			}
 		}
 	}
@@ -196,7 +195,7 @@ func sourceURL(ctx context.Context, src model.UpdateSource, target string) (stri
 	}
 	u, err := s3.NewPresignClient(sourceClient(src)).PresignGetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(src.Bucket), Key: aws.String(key)}, func(o *s3.PresignOptions) { o.Expires = 2 * time.Hour })
 	if err != nil {
-		return "", errors.New("update source signing failed")
+		return "", model.Failure("update_source_unavailable")
 	}
 	return u.URL, nil
 }
@@ -219,16 +218,127 @@ func verifyReplica(ctx context.Context, src model.UpdateSource, a model.UpdateAr
 	}
 	res, err := update.HTTPClient().Do(req)
 	if err != nil {
-		return errors.New("update source unavailable")
+		return model.Failure("update_source_unavailable")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return errors.New("update package unavailable")
+		return model.Failure("update_source_unavailable")
 	}
 	h := sha256.New()
 	n, err := io.Copy(h, io.LimitReader(res.Body, a.Size+1))
 	if err != nil || n != a.Size || hex.EncodeToString(h.Sum(nil)) != a.SHA256 {
-		return errors.New("update package verification failed")
+		return model.Failure("update_source_verification_failed")
 	}
 	return nil
+}
+
+func (s *Store) testUpdateSource(ctx context.Context, actor, id string) error {
+	var src model.UpdateSource
+	err := s.Write(ctx, func(tx pgx.Tx) error {
+		var e error
+		src, e = readSource(ctx, tx, id, true)
+		return e
+	})
+	if err == nil {
+		if src.Kind == "https" {
+			var req *http.Request
+			req, err = http.NewRequestWithContext(ctx, "HEAD", src.PublicURL, nil)
+			if err == nil {
+				var res *http.Response
+				res, err = update.HTTPClient().Do(req)
+				if err == nil {
+					res.Body.Close()
+					if res.StatusCode < 200 || res.StatusCode >= 400 {
+						err = ErrConflict
+					}
+				}
+			}
+		} else {
+			_, err = sourceClient(src).HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(src.Bucket)})
+		}
+		if err != nil {
+			err = errors.New("update source connection failed; check endpoint and permissions")
+		}
+	}
+	if err == nil {
+		err = s.Write(ctx, func(tx pgx.Tx) error { return adminEvent(ctx, tx, actor, "update.source_tested", src.ID, nil) })
+	}
+	return err
+}
+
+func (s *Store) replicateUpdate(ctx context.Context, actor, sessionHash, sourceID, releaseID string, upload io.Reader) error {
+	var src model.UpdateSource
+	var release model.UpdateRelease
+	err := s.Write(ctx, func(tx pgx.Tx) error {
+		var e error
+		src, e = readSource(ctx, tx, sourceID, true)
+		if e != nil {
+			return e
+		}
+		release, e = readRelease(ctx, tx, releaseID)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	if release.State == "withdrawn" {
+		return ErrConflict
+	}
+	if upload != nil {
+		err = uploadReplica(ctx, src, release.UpdateArtifact, upload)
+	} else {
+		err = verifyReplica(ctx, src, release.UpdateArtifact)
+	}
+	if err == nil {
+		err = s.Write(ctx, func(tx pgx.Tx) error {
+			if e := validAdminSession(ctx, tx, sessionHash); e != nil {
+				return e
+			}
+			current, e := readSource(ctx, tx, src.ID, false)
+			if e != nil {
+				return e
+			}
+			latest, e := readRelease(ctx, tx, release.ID)
+			if e != nil {
+				return e
+			}
+			if current.Revision != src.Revision || latest.Revision != release.Revision {
+				return ErrConflict
+			}
+			_, e = tx.Exec(ctx, `INSERT INTO update_replicas(release_id,source_id,verified_at,source_revision) VALUES($1,$2,now(),$3) ON CONFLICT(release_id,source_id) DO UPDATE SET verified_at=now(),source_revision=$3`, release.ID, src.ID, src.Revision)
+			if e == nil {
+				e = adminEvent(ctx, tx, actor, "update.replica_verified", release.ID, map[string]string{"source_id": src.ID})
+			}
+			return e
+		})
+	}
+	return err
+}
+
+func uploadReplica(ctx context.Context, src model.UpdateSource, artifact model.UpdateArtifact, upload io.Reader) error {
+	if src.Kind == "https" {
+		return ErrInvalid
+	}
+	f, err := os.CreateTemp("", "nlroom-upload-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	n, err := io.Copy(f, io.LimitReader(upload, artifact.Size+1))
+	if err != nil || n != artifact.Size {
+		return ErrInvalid
+	}
+	if err = update.VerifyFile(f.Name(), artifact); err != nil {
+		return ErrInvalid
+	}
+	if _, err = f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	_, err = sourceClient(src).PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(src.Bucket), Key: aws.String(update.ObjectKey(src.Prefix, artifact.Target)), Body: f, ContentLength: aws.Int64(artifact.Size), ContentType: aws.String("application/octet-stream"), IfNoneMatch: aws.String("*")})
+	if err != nil {
+		// Accept an existing object only after its complete signed digest matches.
+		return verifyReplica(ctx, src, artifact)
+	}
+	return verifyReplica(ctx, src, artifact)
 }

@@ -21,6 +21,14 @@ import (
 )
 
 type Runtime struct {
+	commandMu         sync.Mutex
+	commandView       atomic.Value
+	commands          map[string]model.SavedCommand
+	paused            atomic.Bool
+	pauseMu           sync.Mutex
+	networkEpoch      atomic.Uint64
+	statusSeq         atomic.Uint64
+	instanceID        string
 	updateMu          sync.Mutex
 	updateState       model.UpdateStatus
 	updateWake        chan struct{}
@@ -65,17 +73,26 @@ type Runtime struct {
 
 func New(dir string, log *slog.Logger) (*Runtime, error) {
 	r := &Runtime{dir: dir, log: log, engine: engine.New(log), imageSlots: make(chan struct{}, 2), wake: make(chan struct{}, 1), status: model.Status{Control: "unconfigured", Engine: "stopped", Peers: []model.Peer{}}}
+	r.instanceID = client.ID()
+	if err := r.loadCommands(); err != nil {
+		return nil, err
+	}
+	if b, e := platform.LoadPrivateFile(filepath.Join(dir, "network-paused.bin")); e == nil {
+		r.paused.Store(string(b) == "true")
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return nil, model.Failure("local_storage_failed")
+	}
 	i, err := platform.LoadIdentity(dir)
 	r.updateWake = make(chan struct{}, 1)
 	if b, e := platform.LoadPrivateFile(filepath.Join(dir, "update-policy.bin")); e == nil {
 		_ = json.Unmarshal(b, &r.updateState.Policy)
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		return nil, model.Failure("local_identity_unreadable")
 	}
 	if err == nil {
 		if err = device.ValidateURL(i.Server); err != nil {
-			return nil, err
+			return nil, model.Failure("local_identity_unreadable")
 		}
 		r.identity = i
 		if !i.SignedOut {
@@ -100,19 +117,46 @@ func (r *Runtime) setError(control string, err error) {
 	r.stateMu.Lock()
 	r.status.Control = control
 	if err != nil {
-		r.status.Error = err.Error()
+		out := serviceFailure(err, "")
+		scope := "network"
+		if model.EndsIdentity(out.Code) {
+			scope = "account"
+		} else if model.EndsMembership(out.Code) {
+			scope = "room"
+		} else if model.IsCode(err, "local_probe_unavailable", "local_peer_unreachable", "local_probe_target_unavailable", "local_probe_target_ambiguous") {
+			scope = "peer"
+		}
+		r.status.Error = out.Message
+		found := false
+		for _, issue := range r.status.Issues {
+			if issue.Code == out.Code && issue.ResolvedAt == nil {
+				found = true
+			}
+		}
+		if !found {
+			r.status.Issues = append(r.status.Issues, model.Issue{Scope: scope, Code: out.Code, OccurredAt: time.Now().UTC()})
+			if len(r.status.Issues) > 16 {
+				r.status.Issues = r.status.Issues[len(r.status.Issues)-16:]
+			}
+		}
 	} else {
 		r.status.Error = ""
+		now := time.Now().UTC()
+		for i := range r.status.Issues {
+			if r.status.Issues[i].ResolvedAt == nil {
+				r.status.Issues[i].ResolvedAt = &now
+			}
+		}
 	}
 	r.stateMu.Unlock()
 	if err != nil {
-		r.log.Warn("agent state", "control", control, "error", err)
+		r.log.Warn("agent state", "control", control, "code", model.Code(err))
 	}
 }
 
 func (r *Runtime) persist(i device.Identity) error {
 	if err := platform.SaveIdentity(r.dir, i); err != nil {
-		return err
+		return model.Failure("local_storage_failed")
 	}
 	r.identity = i
 	r.setPublicIdentity(i)
@@ -191,7 +235,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 			for id, op := range r.nodeState.Operations {
 				if op.State == "running" {
 					op.State = "failed"
-					op.Error = err.Error()
+					op.Error = model.Code(err)
 					if len(op.Error) > 2000 {
 						op.Error = op.Error[:2000]
 					}
@@ -201,11 +245,20 @@ func (r *Runtime) Run(ctx context.Context) error {
 			}
 			if changed {
 				if e := r.saveNodeState(); e != nil {
-					r.log.Warn("operation result persistence failed", "error", e)
+					r.log.Warn("operation result persistence failed", "code", "local_storage_failed")
 				}
 			}
 		}
-		connection := "unreachable"
+		r.stateMu.Lock()
+		connection := r.status.Control
+		r.stateMu.Unlock()
+		var remote *client.APIError
+		if errors.As(err, &remote) {
+			connection = "connected"
+		}
+		if model.IsCode(err, "local_control_unreachable", "local_dns_failed", "local_control_timeout", "local_control_connection_lost", "local_tls_failed") {
+			connection = "unreachable"
+		}
 		if r.nodeMode && r.nodeControlOK {
 			connection = "connected"
 		}

@@ -5,9 +5,11 @@ export function useCatalog(
   device: string | undefined,
   unavailable: boolean,
   reload: number,
+  instance?: string,
 ) {
   const [games, setGames] = useState<Game[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [gamesError, setGamesError] = useState<Failure>();
   const [roomsError, setRoomsError] = useState<Failure>();
   const [loading, setLoading] = useState(true);
@@ -18,7 +20,7 @@ export function useCatalog(
     const load = async () => {
       const [g, r] = await Promise.allSettled([
         rpc<Game[]>({ action: "games" }),
-        rpc<Room[]>({ action: "rooms" }),
+        rpc<{ rooms: Room[]; truncated: boolean }>({ action: "rooms" }),
       ]);
       if (cancelled) return;
       if (g.status === "fulfilled") {
@@ -26,7 +28,8 @@ export function useCatalog(
         setGamesError(undefined);
       } else setGamesError(failure(g.reason));
       if (r.status === "fulfilled") {
-        setRooms(r.value);
+        setRooms(r.value.rooms);
+        setTruncated(r.value.truncated);
         setRoomsError(undefined);
       } else setRoomsError(failure(r.reason));
       setLoading(false);
@@ -37,8 +40,8 @@ export function useCatalog(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [device, unavailable, reload]);
+  }, [device, unavailable, reload, instance]);
 
-  return { games, rooms, gamesError, roomsError, loading };
+  return { games, rooms, truncated, gamesError, roomsError, loading };
 }
 export type Catalog = ReturnType<typeof useCatalog>;

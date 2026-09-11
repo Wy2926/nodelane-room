@@ -9,6 +9,7 @@ import socketserver
 import sys
 import threading
 import time
+import uuid
 
 
 class TCP(socketserver.BaseRequestHandler):
@@ -167,6 +168,7 @@ def request(mode):
     data = sys.stdin.buffer.read()
     conn = http.client.HTTPConnection("127.0.0.1", 9080, timeout=45)
     if mode == "rpc":
+        req=json.loads(data);req["contract"]="interaction-1";req.setdefault("command_id",uuid.uuid4().hex);data=json.dumps(req).encode()
         conn.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         conn.sock.settimeout(45)
         conn.sock.connect("/state/client/agent.sock")

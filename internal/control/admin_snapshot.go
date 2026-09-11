@@ -18,6 +18,7 @@ type AdminEvent struct {
 	CreatedAt time.Time       `json:"created_at"`
 }
 type AdminSnapshot struct {
+	Truncated    map[string]bool       `json:"truncated"`
 	PublicURL    string                `json:"public_url"`
 	Registry     string                `json:"registry"`
 	Revision     int64                 `json:"revision"`
@@ -69,6 +70,9 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 		return out, err
 	}
 	defer tx.Rollback(ctx)
+	if err = tx.QueryRow(ctx, "SELECT now()").Scan(&out.ServerTime); err != nil {
+		return out, err
+	}
 	if err = tx.QueryRow(ctx, "SELECT value FROM settings WHERE key='deployment_id'").Scan(&out.DeploymentID); err != nil {
 		return out, err
 	}
@@ -80,7 +84,7 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err := tx.Query(ctx, "SELECT r.id,r.name,r.owner_user_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game ORDER BY r.expires_at DESC LIMIT 500")
+	rows, err := tx.Query(ctx, "SELECT r.id,r.name,r.owner_user_id,r.game,r.revision,r.capacity,r.expires_at,r.closed,g.name FROM rooms r JOIN games g ON g.id=r.game ORDER BY r.expires_at DESC LIMIT 501")
 	if err != nil {
 		return out, err
 	}
@@ -97,7 +101,7 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err = tx.Query(ctx, "SELECT id,node_id,generation,revision,action,state,error,created_at,expires_at FROM node_operations ORDER BY created_at DESC LIMIT 200")
+	rows, err = tx.Query(ctx, "SELECT id,node_id,generation,revision,action,state,error,created_at,expires_at FROM node_operations ORDER BY created_at DESC LIMIT 201")
 	if err != nil {
 		return out, err
 	}
@@ -110,6 +114,7 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 		if (op.State == "pending" || op.State == "running") && op.ExpiresAt.Before(out.ServerTime) {
 			op.State = "expired"
 		}
+		op.Reason = nodeOperationReason(op)
 		out.Operations = append(out.Operations, op)
 	}
 	err = rows.Err()
@@ -117,7 +122,7 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 	if err != nil {
 		return out, err
 	}
-	rows, err = tx.Query(ctx, "SELECT id,actor,kind,target,detail,created_at FROM admin_events ORDER BY id DESC LIMIT 200")
+	rows, err = tx.Query(ctx, "SELECT id,actor,kind,target,detail,created_at FROM admin_events ORDER BY id DESC LIMIT 201")
 	if err != nil {
 		return out, err
 	}
@@ -132,5 +137,18 @@ func (s *Server) adminSnapshot(ctx context.Context) (AdminSnapshot, error) {
 			out.Revision = e.ID
 		}
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	out.Truncated = map[string]bool{"rooms": len(out.Rooms) > 500, "operations": len(out.Operations) > 200, "events": len(out.Events) > 200}
+	if len(out.Rooms) > 500 {
+		out.Rooms = out.Rooms[:500]
+	}
+	if len(out.Operations) > 200 {
+		out.Operations = out.Operations[:200]
+	}
+	if len(out.Events) > 200 {
+		out.Events = out.Events[:200]
+	}
+	return out, nil
 }

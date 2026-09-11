@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"image"
 	"image/png"
 	"io"
@@ -122,7 +121,7 @@ func TestGameCatalogPolicyAcrossReplicas(t *testing.T) {
 		t.Fatal(catalog)
 	}
 	var room model.RoomResult
-	must(t, host.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "Configured", Game: "minecraft-java"}, &room))
+	must(t, host.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "Configured", Game: "minecraft-java"}, &room))
 	join(t, guest, room)
 	path := "/v2/rooms/" + room.Room.ID
 	var snap model.Snapshot
@@ -167,7 +166,7 @@ func TestGameCatalogPolicyAcrossReplicas(t *testing.T) {
 		t.Fatal("disabled policy retained")
 	}
 	stranger := user(t, second, "stranger")
-	statusError(t, stranger.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "disabled", Game: "minecraft-java"}, nil), 403)
+	statusError(t, stranger.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 3, Name: "disabled", Game: "minecraft-java"}, nil), 403)
 	statusError(t, stranger.Call(ctx, "POST", "/v2/rooms/join", model.JoinRequest{Code: room.Invitation.Code}, nil), 403)
 	must(t, host.Call(ctx, "GET", "/v2/games", nil, &catalog))
 	if len(catalog) != 1 || catalog[0].ID != "custom" {
@@ -187,7 +186,7 @@ func TestGameConfigConcurrentUpdatesAndOfflineExpiry(t *testing.T) {
 	a := user(t, server, "host")
 	ctx := context.Background()
 	var room model.RoomResult
-	must(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "Test", Game: "minecraft-java"}, &room))
+	must(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "Test", Game: "minecraft-java"}, &room))
 	_, err := s.Pool.Exec(ctx, "UPDATE members SET last_seen=now()-interval '1 minute' WHERE room_id=$1", room.Room.ID)
 	must(t, err)
 	var wg sync.WaitGroup
@@ -208,7 +207,7 @@ func TestGameConfigConcurrentUpdatesAndOfflineExpiry(t *testing.T) {
 	for err := range results {
 		if err == nil {
 			success++
-		} else if !errors.Is(err, ErrConflict) {
+		} else if !model.IsCode(err, "request_state_stale") {
 			t.Fatal(err)
 		}
 	}
@@ -233,7 +232,11 @@ func TestImportedArtworkAndOfflineIdempotentReplay(t *testing.T) {
 	ctx := context.Background()
 	img := artwork(t)
 	key := randomID()
-	response, err := s.mutateChecked(ctx, "admin:owner", key, hash("game-import:105600"), nil, func(tx pgx.Tx) (any, error) {
+	deadline := time.Now().UTC().Add(50 * time.Minute)
+	a.deadlines = map[string]time.Time{key: deadline}
+	raw, _ := json.Marshal(model.GameImportRequest{URL: "https://store.steampowered.com/app/105600/"})
+	opctx := context.WithValue(ctx, operationContextKey{}, operationContext{ID: key, Method: "POST", Path: "/v2/admin/games/import", RequestID: "fixture", Deadline: deadline})
+	response, err := s.mutateChecked(opctx, "admin:owner", key, hash("POST:/v2/admin/games/import:"+string(raw)), nil, func(tx pgx.Tx) (any, error) {
 		if _, err := tx.Exec(ctx, "INSERT INTO games(id,name,source_url) VALUES('steam-105600','Terraria','https://store.steampowered.com/app/105600/')"); err != nil {
 			return nil, err
 		}
@@ -247,7 +250,7 @@ func TestImportedArtworkAndOfflineIdempotentReplay(t *testing.T) {
 	must(t, err)
 	status, b := a.requestKey("POST", "/games/import", model.GameImportRequest{URL: "https://store.steampowered.com/app/105600/"}, true, true, key)
 	var storedGame, returnedGame model.Game
-	must(t, json.Unmarshal(response, &storedGame))
+	must(t, json.Unmarshal(receiptData(t, response), &storedGame))
 	must(t, json.Unmarshal(b, &returnedGame))
 	if status != 200 || !reflect.DeepEqual(storedGame, returnedGame) {
 		t.Fatalf("replay: %d %s", status, b)
@@ -292,13 +295,13 @@ func TestLANPolicyCapabilitiesAndMACAcrossReplicas(t *testing.T) {
 		t.Fatalf("LAN policy: %d %s", status, body)
 	}
 	var room model.RoomResult
-	must(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "LAN", Game: "minecraft-java"}, &room))
+	must(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 2, Name: "LAN", Game: "minecraft-java"}, &room))
 	join(t, b, room)
 	path := "/v2/rooms/" + room.Room.ID
 	statusError(t, a.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{}, nil), 409)
 	must(t, a.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "02:00:00:00:00:01"}, nil))
 	statusError(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "02:00:00:00:00:01"}, nil), 409)
-	statusError(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "ff:ff:ff:ff:ff:ff"}, nil), 400)
+	statusError(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "ff:ff:ff:ff:ff:ff"}, nil), 422)
 	must(t, b.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: 1, MAC: "02:00:00:00:00:02"}, nil))
 	var snap model.Snapshot
 	must(t, a.Call(ctx, "GET", path, nil, &snap))
@@ -314,7 +317,7 @@ func TestLANPolicyCapabilitiesAndMACAcrossReplicas(t *testing.T) {
 	in.Network = model.GameNetwork{}
 	in.Revision = 2
 	status, _ = admin.request("PUT", "/games/minecraft-java", in, true, true)
-	if status != 400 {
+	if status != 422 {
 		t.Fatal("missing LAN policy accepted")
 	}
 	for _, method := range []string{"POST", "DELETE"} {

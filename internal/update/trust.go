@@ -32,7 +32,7 @@ const MaxPackageSize int64 = 2 << 30
 func TrustedRoot() ([]byte, error) {
 	b, err := base64.StdEncoding.DecodeString(TrustedRootBase64)
 	if err != nil || len(b) == 0 {
-		return nil, errors.New("update_trust_unconfigured")
+		return nil, model.Failure("local_update_trust_unconfigured")
 	}
 	return b, nil
 }
@@ -58,7 +58,7 @@ func (b bundleFetcher) DownloadFile(address string, limit int64, _ time.Duration
 		return nil, &metadata.ErrDownloadHTTP{StatusCode: 404, URL: address}
 	}
 	if int64(len(data)) > limit {
-		return nil, errors.New("update_metadata_too_large")
+		return nil, model.Failure("local_update_metadata_invalid")
 	}
 	return data, nil
 }
@@ -67,17 +67,17 @@ func (b bundleFetcher) DownloadFile(address string, limit int64, _ time.Duration
 // rollback checks. cache is private and persists the highest trusted versions.
 func VerifyRepository(root []byte, bundle map[string]json.RawMessage, cache string) (*updater.Updater, error) {
 	if len(bundle) > 80 {
-		return nil, errors.New("update_metadata_too_large")
+		return nil, model.Failure("local_update_metadata_invalid")
 	}
 	total := 0
 	for name, b := range bundle {
 		if !metadataName.MatchString(name) || !json.Valid(b) {
-			return nil, errors.New("update_metadata_invalid")
+			return nil, model.Failure("local_update_metadata_invalid")
 		}
 		total += len(b)
 	}
 	if total > 2<<20 {
-		return nil, errors.New("update_metadata_too_large")
+		return nil, model.Failure("local_update_metadata_invalid")
 	}
 	if cache != "" {
 		if b, err := os.ReadFile(filepath.Join(cache, "root.json")); err == nil {
@@ -96,7 +96,7 @@ func VerifyRepository(root []byte, bundle map[string]json.RawMessage, cache stri
 	cfg.DisableLocalCache = cache == ""
 	u, err := updater.New(cfg)
 	if err != nil {
-		return nil, errors.New("update_metadata_invalid")
+		return nil, model.Failure("local_update_metadata_invalid")
 	}
 	if err = u.Refresh(); err != nil {
 		return nil, fmt.Errorf("update_metadata_invalid: %w", err)
@@ -107,17 +107,17 @@ func VerifyRepository(root []byte, bundle map[string]json.RawMessage, cache stri
 func Artifact(u *updater.Updater, target string) (model.UpdateArtifact, error) {
 	var a model.UpdateArtifact
 	if !targetName.MatchString(target) {
-		return a, errors.New("update_target_invalid")
+		return a, model.Failure("local_update_package_invalid")
 	}
 	t, err := u.GetTargetInfo(target)
 	if err != nil {
 		return a, err
 	}
 	if t.Custom == nil || json.Unmarshal(*t.Custom, &a) != nil || !model.ValidVersion(a.Version) || !model.ValidUpdatePlatform(a.OS, a.Arch) {
-		return a, errors.New("update_target_invalid")
+		return a, model.Failure("local_update_package_invalid")
 	}
 	if (a.OS == "windows" && path.Ext(target) != ".exe") || (a.OS == "linux" && path.Ext(target) != ".deb") || len(t.Hashes["sha256"]) != 32 || t.Length <= 0 || t.Length > MaxPackageSize {
-		return a, errors.New("update_target_invalid")
+		return a, model.Failure("local_update_package_invalid")
 	}
 	a.Target, a.Size, a.SHA256 = target, t.Length, hex.EncodeToString(t.Hashes["sha256"])
 	return a, nil
@@ -150,12 +150,12 @@ func VerifyAdvance(root []byte, old, next map[string]json.RawMessage) (*updater.
 	}
 	var x, y any
 	if json.Unmarshal(actual, &x) != nil || json.Unmarshal(next["root.json"], &y) != nil {
-		return nil, errors.New("update_root_missing")
+		return nil, model.Failure("local_update_trust_unconfigured")
 	}
 	xb, _ := json.Marshal(x)
 	yb, _ := json.Marshal(y)
 	if !bytes.Equal(xb, yb) {
-		return nil, errors.New("update_root_mismatch")
+		return nil, model.Failure("local_update_metadata_invalid")
 	}
 	return u, nil
 }

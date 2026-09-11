@@ -43,8 +43,11 @@ func (s *Store) issueLease(ctx context.Context, tx pgx.Tx, ca *pki.Authority, ro
 		}
 	} else {
 		n, err := nodeForDevice(ctx, tx, device)
-		if err != nil || (n.State != "active" && n.State != "draining") {
-			return out, ErrForbidden
+		if err != nil {
+			return out, err
+		}
+		if n.State != "active" && n.State != "draining" {
+			return out, model.Failure("node_disabled")
 		}
 		if in.Revision > 0 {
 			var c model.NodeConfig
@@ -74,7 +77,7 @@ func (s *Store) issueLease(ctx context.Context, tx pgx.Tx, ca *pki.Authority, ro
 	}
 	c, err := ca.Sign(device, netip.PrefixFrom(ip, s.Network.Bits()), groups, in.PublicKey, until)
 	if err != nil {
-		return out, err
+		return out, model.Failure("system_ca_unavailable")
 	}
 	pem, err := c.MarshalPEM()
 	if err != nil {
@@ -96,21 +99,12 @@ func (s *Store) issueLease(ctx context.Context, tx pgx.Tx, ca *pki.Authority, ro
 func (s *Store) nodeLease(ctx context.Context, ca *pki.Authority, device, key, requestHash string, in model.LeaseRequest) ([]byte, error) {
 	return s.mutateChecked(ctx, device, key, requestHash, func(tx pgx.Tx) error {
 		n, err := nodeForDevice(ctx, tx, device)
-		if err != nil || (n.State != "active" && n.State != "draining") {
-			return ErrForbidden
+		if err != nil {
+			return err
 		}
-		return validCachedLease(ctx, tx, device, key)
+		if n.State != "active" && n.State != "draining" {
+			return model.Failure("node_disabled")
+		}
+		return nil
 	}, func(tx pgx.Tx) (any, error) { return s.issueLease(ctx, tx, ca, "", device, in) })
-}
-
-func validCachedLease(ctx context.Context, tx pgx.Tx, device, key string) error {
-	var obsolete bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM idempotency i LEFT JOIN certificates c ON c.fingerprint=i.response->>'fingerprint' WHERE i.device_id=$1 AND i.key=$2 AND i.expires_at>now() AND (c.fingerprint IS NULL OR c.revoked OR c.expires_at<=now()))`, device, key).Scan(&obsolete)
-	if err != nil {
-		return err
-	}
-	if obsolete {
-		return ErrConflict
-	}
-	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"fmt"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -29,10 +29,13 @@ func (s *Store) challenge(ctx context.Context, in model.ChallengeRequest, scope,
 		if scope == "enrollment" {
 			var id string
 			if len(key) != 64 {
-				return ErrForbidden
+				return model.Failure("node_enrollment_unusable")
 			}
 			if err := tx.QueryRow(ctx, `SELECT k.id FROM enrollment_keys k JOIN nodes n ON n.id=k.node_id WHERE k.key_hash=$1 AND NOT k.revoked AND k.consumed_by IS NULL AND k.expires_at>now() AND k.generation=n.generation AND k.revision=n.revision AND n.state='pending'`, hash(key)).Scan(&id); err != nil {
-				return ErrForbidden
+				if errors.Is(err, pgx.ErrNoRows) {
+					return model.Failure("node_enrollment_unusable")
+				}
+				return err
 			}
 			grant = &id
 			var used bool
@@ -42,14 +45,8 @@ func (s *Store) challenge(ctx context.Context, in model.ChallengeRequest, scope,
 			if used {
 				return ErrConflict
 			}
-		} else if scope == "node" {
-			if _, err := nodeForDevice(ctx, tx, in.DeviceID); err != nil {
-				return ErrForbidden
-			}
-		} else if scope == "player" {
-			if _, err := playerUser(ctx, tx, in.DeviceID); err != nil {
-				return err
-			}
+		} else if scope == "node" || scope == "player" {
+			// Account state is disclosed only after the signature proves this device.
 		} else {
 			var used bool
 			if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM node_bindings WHERE device_id=$1)", in.DeviceID).Scan(&used); err != nil {
@@ -74,11 +71,14 @@ func (s *Store) verify(ctx context.Context, in model.VerifyRequest, scope string
 	var grant *string
 	err := s.Pool.QueryRow(ctx, `DELETE FROM challenges WHERE id=$1 AND scope=$2 AND expires_at>now() RETURNING device_id,name,public_key,nonce,grant_id`, in.ID, scope).Scan(&id, &name, &pub, &nonce, &grant)
 	if err != nil {
-		return out, ErrUnauthorized
+		if errors.Is(err, pgx.ErrNoRows) {
+			return out, model.Failure("auth_challenge_unusable")
+		}
+		return out, err
 	}
 	message := append([]byte("nodelane-auth-v2:"+scope+":"+in.ID+":"), nonce...)
 	if !ed25519.Verify(pub, message, in.Signature) {
-		return out, ErrUnauthorized
+		return out, model.Failure("auth_proof_invalid")
 	}
 	sessionScope := scope
 	if scope == "enrollment" {
@@ -95,7 +95,7 @@ func (s *Store) verify(ctx context.Context, in model.VerifyRequest, scope string
 			}
 		} else if scope == "node" {
 			if _, err := nodeForDevice(ctx, tx, id); err != nil {
-				return ErrForbidden
+				return err
 			}
 		} else {
 			if scope == "guest" {
@@ -120,7 +120,15 @@ func (s *Store) verify(ctx context.Context, in model.VerifyRequest, scope string
 			out, err = issuePlayerSession(ctx, tx, id)
 			return err
 		}
-		_, err := tx.Exec(ctx, "INSERT INTO sessions(token_hash,device_id,scope,expires_at) VALUES($1,$2,$3,$4)", hash(out.Token), id, sessionScope, out.ExpiresAt)
+		n, err := nodeForDevice(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		out.NodeID, out.Generation = n.ID, n.Generation
+		if err = tx.QueryRow(ctx, "SELECT now()+interval '1 hour'").Scan(&out.ExpiresAt); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, "INSERT INTO sessions(token_hash,device_id,scope,expires_at) VALUES($1,$2,$3,$4)", hash(out.Token), id, sessionScope, out.ExpiresAt)
 		return err
 	})
 	return out, err
@@ -130,12 +138,21 @@ func (s *Store) Authenticate(ctx context.Context, token string) (string, error) 
 }
 func (s *Store) authenticate(ctx context.Context, token, scope string) (string, error) {
 	if len(token) != 64 {
-		return "", ErrUnauthorized
+		if scope == "node" {
+			return "", model.Failure("node_session_required")
+		}
+		return "", model.Failure("auth_session_required")
 	}
 	var id string
 	err := s.Pool.QueryRow(ctx, `SELECT device_id FROM sessions WHERE token_hash=$1 AND scope=$2 AND expires_at>now() AND ($2<>'node' OR EXISTS(SELECT 1 FROM node_bindings b JOIN nodes n ON n.id=b.node_id WHERE b.device_id=sessions.device_id AND b.revoked_at IS NULL AND n.state<>'revoked' AND b.generation=n.generation))`, hash(token), scope).Scan(&id)
 	if err != nil {
-		return "", ErrUnauthorized
+		if errors.Is(err, pgx.ErrNoRows) {
+			if scope == "node" {
+				return "", model.Failure("node_session_required")
+			}
+			return "", model.Failure("auth_session_required")
+		}
+		return "", err
 	}
 	if scope == "player" {
 		if _, err := s.Account(ctx, id); err != nil {
@@ -148,13 +165,12 @@ func activeMember(ctx context.Context, tx pgx.Tx, room, device string) error {
 	if _, err := playerUser(ctx, tx, device); err != nil {
 		return err
 	}
-	var ok bool
-	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM members m JOIN rooms r ON r.id=m.room_id WHERE m.room_id=$1 AND m.device_id=$2 AND m.active AND NOT r.closed AND r.expires_at>now())", room, device).Scan(&ok)
+	self, err := memberSelf(ctx, tx, room, device)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return ErrForbidden
+	if self.State != "active" {
+		return model.Failure(self.Reason)
 	}
 	return nil
 }
@@ -162,13 +178,29 @@ func owner(ctx context.Context, tx pgx.Tx, room, device string) error {
 	if _, err := playerUser(ctx, tx, device); err != nil {
 		return err
 	}
-	var ok bool
-	err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM rooms WHERE id=$1 AND owner_user_id=(SELECT user_id FROM user_devices WHERE device_id=$2) AND NOT closed AND expires_at>now())", room, device).Scan(&ok)
+	var ok, closed, expired bool
+	err := tx.QueryRow(ctx, "SELECT owner_user_id=(SELECT user_id FROM user_devices WHERE device_id=$2),closed,expires_at<=now() FROM rooms WHERE id=$1", room, device).Scan(&ok, &closed, &expired)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return model.Failure("resource_not_found")
+	}
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return fmt.Errorf("%w: active room owner required", ErrForbidden)
+		var related bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM members WHERE room_id=$1 AND user_id=(SELECT user_id FROM user_devices WHERE device_id=$2))", room, device).Scan(&related); err != nil {
+			return err
+		}
+		if !related {
+			return model.Failure("resource_not_found")
+		}
+		return model.Failure("room_owner_required")
+	}
+	if expired {
+		return model.Failure("room_expired")
+	}
+	if closed {
+		return model.Failure("room_closed")
 	}
 	return nil
 }

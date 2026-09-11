@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -67,8 +69,14 @@ type adminCredentials struct {
 
 func (s *Store) loginAdmin(ctx context.Context, in adminCredentials) (string, error) {
 	var encoded string
-	if err := s.Pool.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE username=$1", in.Username).Scan(&encoded); err != nil || !passwordOK(encoded, in.Password) {
-		return "", ErrUnauthorized
+	if err := s.Pool.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE username=$1", in.Username).Scan(&encoded); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", model.Failure("admin_credentials_invalid")
+		}
+		return "", err
+	}
+	if !passwordOK(encoded, in.Password) {
+		return "", model.Failure("admin_credentials_invalid")
 	}
 	token := randomID() + randomID()
 	csrf := hash("admin-csrf:" + token)
@@ -79,7 +87,7 @@ func (s *Store) loginAdmin(ctx context.Context, in adminCredentials) (string, er
 			return err
 		}
 		if current != encoded {
-			return ErrUnauthorized
+			return model.Failure("admin_credentials_invalid")
 		}
 		if _, err := tx.Exec(ctx, "INSERT INTO admin_sessions(token_hash,csrf_hash,expires_at) VALUES($1,$2,now()+interval '12 hours')", hash(token), hash(csrf)); err != nil {
 			return err
@@ -99,8 +107,11 @@ func (s *Store) logoutAdmin(ctx context.Context, tokenHash string) error {
 
 func (s *Store) changeAdminPassword(ctx context.Context, actor, tokenHash, current, password string) error {
 	var encoded string
-	if err := s.Pool.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE id=1").Scan(&encoded); err != nil || !passwordOK(encoded, current) {
-		return ErrUnauthorized
+	if err := s.Pool.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE id=1").Scan(&encoded); err != nil {
+		return err
+	}
+	if !passwordOK(encoded, current) {
+		return model.Failure("admin_current_password_invalid")
 	}
 	next, err := passwordHash(password)
 	if err != nil {
@@ -130,7 +141,7 @@ func validAdminSession(ctx context.Context, tx pgx.Tx, tokenHash string) error {
 		return err
 	}
 	if !valid {
-		return ErrUnauthorized
+		return model.Failure("admin_session_required")
 	}
 	return nil
 }

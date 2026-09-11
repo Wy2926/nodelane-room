@@ -56,12 +56,19 @@ class TestRun:
                               input=json.dumps(req))
         reply = json.loads(result.stdout)
         if denied:
-            self.require(reply["status"] == 400 and "error" in reply["data"], "operation must be rejected")
+            self.require(reply["status"] >= 400 and "code" in reply["data"], "operation must be rejected")
         else:
-            self.require(reply["status"] == 200, "client operation failed: " + self.redact(str(reply["data"])))
+            self.require(200 <= reply["status"] < 300, "client operation failed: " + self.redact(str(reply["data"])))
+        if mode=="rpc":
+            self.require(reply["data"].get("contract")=="interaction-1" and reply["data"].get("request_id"),"invalid IPC envelope")
+            if not denied: return reply["data"]["data"]
         return reply["data"]
 
     def rpc(self, service, action, denied=False, **args):
+        if action=="create":
+            game=next(g for g in self.rpc(service,"games") if g["id"]==args["body"]["game"]);args["body"]["expected_game_revision"]=game["revision"]
+        if action in ("invite","invite-revoke","owner-join","kick","transfer","close"):
+            snapshot=self.rpc(service,"members",room=args.get("room",""));args.setdefault("body",{})["expected_revision"]=snapshot["self"]["revision"]
         return self.call(service, "rpc", {"action": action, **args}, denied=denied)
 
     def fixture(self, service, action, **args):
@@ -89,7 +96,7 @@ class TestRun:
 
     def connected(self, service):
         value = self.status(service)
-        return value if value["engine"] == "running" and value["control"] == "connected" and not value.get("error") else None
+        return value if value["engine"] == "running" and value["control"] == "online" and not value.get("error") else None
 
     def echo(self, service, ip, protocol="tcp", port=26001):
         return self.fixture(service, "echo", ip=ip, port=port, protocol=protocol)["ok"]
@@ -234,13 +241,13 @@ class TestRun:
         old_code = self.invite(created["invitation"])
         code = self.invite(self.rpc("alice", "invite"))
         error = self.rpc("bob", "join", body={"code": old_code}, denied=True)
-        self.require("control API 403" in error["error"], "old invitation rejected for unexpected reason")
+        self.require(error["code"] == "invite_unusable", "old invitation rejected for unexpected reason")
         self.rpc("bob", "join", body={"code": code})
         self.eventually("two members", lambda: len(self.rpc("alice", "members")["members"]) == 2)
         for service in ("alice", "bob"):
             self.eventually(service + " online", lambda: self.connected(service))
-            cli = json.loads(self.execute(service, "nlroom-cli", "--state-dir", "/state/client", "status", "--json").stdout)
-            self.require(cli["engine"] == "running" and cli["room"]["id"] == room and cli["protocol_version"] == 2,
+            cli = json.loads(self.execute(service, "nlroom-cli", "--state-dir", "/state/client", "status", "--json").stdout)["data"]
+            self.require(cli["engine"] == "running" and cli["room"]["id"] == room and cli["protocol_version"] == 3,
                          "CLI status differs from joined room")
         self.rpc("bob", "create", body={"name": "Second active room", "game": "custom"}, denied=True)
         self.passed("independent registration, create/join, invitation rotation and one active room via current IPC")
@@ -293,7 +300,7 @@ class TestRun:
         self.stopped("bob")
         self.require(not self.echo("bob", alice["ip"], port=26002), "revoked game traffic survives")
         denial = self.rpc("bob", "join", body={"code": code}, denied=True)
-        self.require("control API 403" in denial["error"], "kicked member rejected for unexpected reason")
+        self.require(denial["code"] == "room_banned", "kicked member rejected for unexpected reason")
         self.rpc("alice", "close")
         self.stopped("alice")
         self.passed("generic game kick removes TAP, stops traffic and denies rejoin")

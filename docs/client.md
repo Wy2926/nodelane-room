@@ -81,7 +81,11 @@ flowchart LR
 - Linux 桌面状态目录 `/var/lib/nlroom` 由 root 持有，权限为 `0700`；socket 独立位于 `/run/nlroom/agent.sock`，权限为 `0600`，绑定 `/etc/nlroom/owner.uid` 指定的安装用户。服务校验对端 UID，客户端校验服务端 root UID；GUI 不使用 sudo。显式状态目录继续用于同用户的容器回归；宿主 systemd 安装尚待真机验收。
 - 使用 status 轮询，请求不重叠，操作后刷新，失败退避并标识陈旧数据；服务及协议版本不兼容时禁止操作。API 请求由 Go 服务发送，敏感值不进前端持久存储或日志。
 
-本机协议版本 2，动作和字段以 `internal/localapi`、`internal/model` 及 Rust 桥接白名单为准。公开配置仅返回服务器、昵称、设备标识等非秘密字段；用稳定错误码判断失败，不匹配错误文案。`rooms/manage` 校验房主身份，离房后的管理视图不授予联机权限；图片单独读取，不塞入周期状态响应。
+本机协议版本 3（`interaction-1`），动作和字段以 `internal/localapi`、`internal/model` 及 Rust 桥接白名单为准。公开配置仅返回服务器、昵称、设备标识等非秘密字段；用稳定错误码判断失败，不匹配错误文案。GUI 按服务实例 ID 与递增序号丢弃旧回复；成员、管理权限、网络、操作和控制可达性独立显示。`network-stop` 暂停意图持久化，独立于控制请求；重试网络不会加入房间。未知提交保持待确认并显示原操作查询，不能自动另发建房/入房。
+
+邀请明文仅存当前弹窗内存，定时核对元信息，换码、失效或失去权限后清除；接管确认后用新的子步骤完成原入房。OIDC 登录入口先查公开能力，同一浏览器事务可重新打开。详情见[事务与快照](architecture.md#事务与快照)。
+
+`rooms/manage` 校验房主身份，离房后的管理视图不授予联机权限；图片单独读取，不塞入周期状态响应。
 
 首期目标为 Windows 10/11、Ubuntu 22.04/24.04 与 Debian 12/13，先验收 x64，再验收 ARM64；不把 Go 交叉编译通过等同于 GUI 真机支持。Tauri Windows 依赖 WebView2，Linux 依赖 WebKitGTK 4.1 等系统库，须在目标发行版构建和测试。[构建前置条件](https://v2.tauri.app/start/prerequisites/)
 

@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -83,7 +82,7 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	}
 	check, err := r.fetchUpdate(ctx, server, false)
 	if err != nil {
-		r.setUpdateState("failed", "update_check_failed")
+		r.setUpdateState("failed", "local_update_check_failed")
 		return
 	}
 	if delta := time.Since(check.ServerTime); delta > 30*time.Second || delta < -30*time.Second {
@@ -97,7 +96,7 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	// Persist even a future enforcement deadline, independently of downloads.
 	b, _ := json.Marshal(check.Policy)
 	if platform.SavePrivateFile(filepath.Join(r.dir, "update-policy.bin"), b, true) != nil {
-		r.setUpdateState("failed", "update_storage_failed")
+		r.setUpdateState("failed", "local_update_storage_failed")
 		return
 	}
 	if check.Release == nil {
@@ -116,30 +115,30 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	}
 	root, err := update.TrustedRoot()
 	if err != nil {
-		r.setUpdateState("unconfigured", "update_trust_unconfigured")
+		r.setUpdateState("unconfigured", "local_update_trust_unconfigured")
 		return
 	}
 	if err = platform.SecureDir(r.dir); err != nil {
-		r.setUpdateState("failed", "update_storage_failed")
+		r.setUpdateState("failed", "local_update_storage_failed")
 		return
 	}
 	if err = os.MkdirAll(filepath.Join(r.dir, "updates"), 0700); err != nil {
-		r.setUpdateState("failed", "update_storage_failed")
+		r.setUpdateState("failed", "local_update_storage_failed")
 		return
 	}
 	if check.Repository == nil {
-		r.setUpdateState("failed", "update_metadata_invalid")
+		r.setUpdateState("failed", "local_update_metadata_invalid")
 		return
 	}
 	cache := filepath.Join(r.dir, "updates", "metadata")
 	u, err := update.VerifyRepository(root, check.Repository.Metadata, cache)
 	if err != nil {
-		r.setUpdateState("failed", "update_metadata_invalid")
+		r.setUpdateState("failed", "local_update_metadata_invalid")
 		return
 	}
 	a, err := update.Artifact(u, check.Release.Target)
 	if err != nil || a != check.Release.UpdateArtifact || a.OS != runtime.GOOS || a.Arch != runtime.GOARCH || model.CompareVersion(a.Version, model.ClientVersion) <= 0 {
-		r.setUpdateState("failed", "update_package_invalid")
+		r.setUpdateState("failed", "local_update_package_invalid")
 		return
 	}
 	keep := []model.UpdateArtifact{a}
@@ -150,39 +149,39 @@ func (r *Runtime) updateStep(ctx context.Context) {
 		}
 	}
 	if e := update.PrunePackages(r.dir, keep); e != nil {
-		r.setUpdateState("failed", "update_storage_failed")
+		r.setUpdateState("failed", "local_update_storage_failed")
 		return
 	}
 	space, err := update.FreeSpace(r.dir)
 	if err != nil || space < uint64(a.Size)*4+(256<<20) {
-		r.setUpdateState("failed", "update_disk_full")
+		r.setUpdateState("failed", "local_update_disk_full")
 		return
 	}
 	r.setUpdateState("downloading", "")
 	err = update.Download(ctx, update.HTTPClient(), check.URLs, update.PackagePath(r.dir, a), a, func(n int64) { r.updateMu.Lock(); r.updateState.Downloaded = n; r.updateMu.Unlock() })
 	if err != nil {
-		r.setUpdateState("failed", "update_download_failed")
+		r.setUpdateState("failed", "local_update_download_failed")
 		return
 	}
 	job := update.InstallJob{Prepared: update.Prepared{Release: *check.Release, Repository: *check.Repository}, From: model.ClientVersion, State: "ready"}
 	if runtime.GOOS == "linux" {
 		old, e := r.fetchUpdate(ctx, server, true)
 		if e != nil || old.Release == nil || old.Repository == nil || old.Release.Version != model.ClientVersion {
-			r.setUpdateState("failed", "update_rollback_unavailable")
+			r.setUpdateState("failed", "local_update_rollback_unavailable")
 			return
 		}
 		u, e := update.VerifyRepository(root, old.Repository.Metadata, cache)
 		if e != nil {
-			r.setUpdateState("failed", "update_metadata_invalid")
+			r.setUpdateState("failed", "local_update_metadata_invalid")
 			return
 		}
 		previous, e := update.Artifact(u, old.Release.Target)
 		if e != nil || previous != old.Release.UpdateArtifact {
-			r.setUpdateState("failed", "update_package_invalid")
+			r.setUpdateState("failed", "local_update_package_invalid")
 			return
 		}
 		if e = update.Download(ctx, update.HTTPClient(), old.URLs, update.PackagePath(r.dir, previous), previous, func(int64) {}); e != nil {
-			r.setUpdateState("failed", "update_rollback_unavailable")
+			r.setUpdateState("failed", "local_update_rollback_unavailable")
 			return
 		}
 		job.Previous = &update.Prepared{Release: *old.Release, Repository: *old.Repository}
@@ -193,17 +192,17 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	// the package installable; the signed bytes alone do not authorize rollout.
 	latest, e := r.fetchUpdate(ctx, server, false)
 	if e != nil {
-		r.setUpdateState("failed", "update_check_failed")
+		r.setUpdateState("failed", "local_update_check_failed")
 		return
 	}
 	if latest.Release == nil || latest.Release.ID != job.Release.ID {
-		job.State, job.ErrorCode = "failed", "update_release_changed"
+		job.State, job.ErrorCode = "failed", "local_update_release_changed"
 		_ = update.SaveJob(r.dir, job)
-		r.setUpdateState("failed", "update_release_changed")
+		r.setUpdateState("failed", "local_update_release_changed")
 		return
 	}
 	if err = update.SaveJob(r.dir, job); err != nil {
-		r.setUpdateState("failed", "update_storage_failed")
+		r.setUpdateState("failed", "local_update_storage_failed")
 		return
 	}
 	r.setUpdateState("ready", "")
@@ -227,6 +226,7 @@ func (r *Runtime) fetchUpdate(ctx context.Context, server string, installed bool
 	if err != nil {
 		return out, err
 	}
+	request.Header.Set(model.ContractHeader, model.Contract)
 	h := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := h.Do(request)
 	if err != nil {
@@ -234,13 +234,17 @@ func (r *Runtime) fetchUpdate(ctx context.Context, server string, installed bool
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return out, errors.New("update_check_failed")
+		return out, model.Failure("local_update_check_failed")
 	}
 	b, err := io.ReadAll(io.LimitReader(res.Body, (3<<20)+1))
 	if err != nil || len(b) > 3<<20 {
-		return out, errors.New("update_metadata_too_large")
+		return out, model.Failure("local_update_metadata_invalid")
 	}
-	err = json.Unmarshal(b, &out)
+	var result model.Result
+	if json.Unmarshal(b, &result) != nil || result.Contract != model.Contract || result.Code != "ok" {
+		return out, model.Failure("local_control_response_invalid")
+	}
+	err = json.Unmarshal(result.Data, &out)
 	return out, err
 }
 
@@ -250,18 +254,18 @@ func (r *Runtime) installUpdate(ctx context.Context) (any, error) {
 	r.updateMu.Lock()
 	defer r.updateMu.Unlock()
 	if r.updateState.State != "ready" {
-		return nil, localapi.Failure("update_not_ready", "update is not ready")
+		return nil, localapi.Failure("local_update_not_ready", "update is not ready")
 	}
 	if !update.SupportedInstall(r.dir) {
-		return nil, localapi.Failure("update_install_unsupported", "install the complete desktop package")
+		return nil, localapi.Failure("local_update_install_unsupported", "install the complete desktop package")
 	}
 	job, err := update.LoadJob(r.dir)
 	if err != nil || job.State != "ready" {
-		return nil, localapi.Failure("update_not_ready", "update is not ready")
+		return nil, localapi.Failure("local_update_not_ready", "update is not ready")
 	}
 	job.State, job.StartedAt = "installing", time.Now().UTC()
 	if err = update.SaveJob(r.dir, job); err != nil {
-		return nil, localapi.Failure("update_storage_failed", "could not save install job")
+		return nil, localapi.Failure("local_update_storage_failed", "could not save install job")
 	}
 	r.updateState.State = "installing"
 	if runtime.GOOS == "windows" {
@@ -271,7 +275,7 @@ func (r *Runtime) installUpdate(ctx context.Context) (any, error) {
 		job.State = "ready"
 		_ = update.SaveJob(r.dir, job)
 		r.updateState.State = "ready"
-		return nil, localapi.Failure("update_install_failed", "could not start the update task")
+		return nil, localapi.Failure("local_update_install_failed", "could not start the update task")
 	}
 	return map[string]bool{"elevate": false}, nil
 }

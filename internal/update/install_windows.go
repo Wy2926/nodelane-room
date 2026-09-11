@@ -4,7 +4,7 @@ package update
 
 import (
 	"context"
-	"errors"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"io"
 	"os"
 	"os/exec"
@@ -22,7 +22,7 @@ func SupportedInstall(dir string) bool {
 
 // Windows installation is explicitly launched by the ordinary user's GUI with
 // runas. The service only stages a protected job, never opens a SYSTEM desktop.
-func StartInstall(context.Context, string) error { return errors.New("update_elevation_required") }
+func StartInstall(context.Context, string) error { return model.Failure("local_update_not_ready") }
 func finishInstall() {
 	cmd := exec.Command("schtasks.exe", "/Delete", "/TN", "NodeLaneRoomUpdateRecovery", "/F")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -55,7 +55,7 @@ func Bootstrap(_ context.Context, dir string) error {
 	recovery := exec.Command("schtasks.exe", "/Create", "/TN", "NodeLaneRoomUpdateRecovery", "/TR", `"`+name+`" apply`, "/SC", "ONSTART", "/RU", "SYSTEM", "/RL", "HIGHEST", "/F")
 	recovery.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err = recovery.Run(); err != nil {
-		return errors.New("update_recovery_failed")
+		return model.Failure("local_update_recovery_failed")
 	}
 	cmd := exec.Command(name, "apply")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
@@ -66,7 +66,7 @@ func Bootstrap(_ context.Context, dir string) error {
 }
 func installLock(dir string) (func(), error) {
 	if !SupportedInstall(dir) {
-		return nil, errors.New("update_install_unsupported")
+		return nil, model.Failure("local_update_install_unsupported")
 	}
 	p, err := windows.UTF16PtrFromString(filepath.Join(dir, "update.lock"))
 	if err != nil {
@@ -74,7 +74,7 @@ func installLock(dir string) (func(), error) {
 	}
 	h, err := windows.CreateFile(p, windows.GENERIC_READ|windows.GENERIC_WRITE, 0, nil, windows.OPEN_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL, 0)
 	if err != nil {
-		return nil, errors.New("update_busy")
+		return nil, model.Failure("local_update_install_busy")
 	}
 	return func() { windows.CloseHandle(h) }, nil
 }
@@ -112,7 +112,7 @@ func rollbackPackage(ctx context.Context, dir string, j InstallJob) error {
 	// health check. Its rollback path validates the protected previous bundle.
 	b, err := os.ReadFile(filepath.Join(os.Getenv("ProgramFiles"), "NodeLaneRoom.previous", "BUILD.txt"))
 	if err != nil {
-		return errors.New("update_rollback_unavailable")
+		return model.Failure("local_update_rollback_unavailable")
 	}
 	version := ""
 	for _, line := range strings.Split(string(b), "\n") {
@@ -121,7 +121,7 @@ func rollbackPackage(ctx context.Context, dir string, j InstallJob) error {
 		}
 	}
 	if version != j.From {
-		return errors.New("update_rollback_invalid")
+		return model.Failure("local_update_rollback_invalid")
 	}
 	if err = VerifyPrepared(dir, j.Prepared); err != nil {
 		return err

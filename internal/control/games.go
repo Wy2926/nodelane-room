@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -54,17 +53,17 @@ func (s *Store) updateGame(ctx context.Context, tx pgx.Tx, actor, id string, in 
 		return g, err
 	}
 	if g.Revision != in.Revision {
-		return g, ErrConflict
+		return g, model.RevisionError(in.Revision, g.Revision)
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	if !model.ValidLabel(in.Name, 200) {
 		return g, ErrInvalid
 	}
 	if err = model.ValidateLAN(model.Game{Network: in.Network, Ports: in.Ports}); err != nil {
-		return g, fmt.Errorf("%w: %s", ErrInvalid, err)
+		return g, model.Validation("network", "invalid_format")
 	}
 	if in.Enabled && len(in.Ports) == 0 && len(in.Network.EthernetTypes) == 0 {
-		return g, fmt.Errorf("%w: 启用前请配置游戏端口或以太网类型", ErrInvalid)
+		return g, model.Failure("game_policy_missing")
 	}
 	if in.Ports == nil {
 		in.Ports = []model.GamePort{}

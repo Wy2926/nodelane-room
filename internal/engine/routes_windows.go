@@ -3,7 +3,7 @@
 package engine
 
 import (
-	"fmt"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
 	"net"
@@ -28,7 +28,7 @@ func checkRoutes(network netip.Prefix, ownInterface string) error {
 		}
 		p := netip.PrefixFrom(r.DestinationPrefix.RawPrefix.Addr(), int(r.DestinationPrefix.PrefixLength))
 		if network.Overlaps(p) {
-			return fmt.Errorf("overlay %s overlaps route %s via %s", network, p, i.Name)
+			return model.Failure("local_route_conflict")
 		}
 	}
 	return nil

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -69,7 +70,7 @@ func schema(t reflect.Type) M {
 					continue
 				}
 				properties[parts[0]] = schema(f.Type)
-				if !strings.Contains(tag, "omitempty") {
+				if !strings.Contains(tag, "omitempty") && !strings.Contains(tag, "omitzero") {
 					required = append(required, parts[0])
 				}
 			}
@@ -103,6 +104,9 @@ func run() error {
 	schemas = components["schemas"].(map[string]any)
 
 	generated = map[string]bool{}
+	for _, v := range []any{model.Result{}, model.RoomResult{}, model.MemberRequest{}, model.AccountStatus{}, model.RoomPage{}, model.InviteInfo{}, model.TakeoverRequest{}, model.Operation{}} {
+		schema(reflect.TypeOf(v))
+	}
 	schema(reflect.TypeOf(model.NetworkSample{}))
 	schema(reflect.TypeOf(model.TelemetrySnapshot{}))
 	for _, v := range []any{model.User{}, model.UserDetail{}, model.UserPage{}, model.UserAction{}, model.LoginStart{}, model.LoginAttempt{}, model.LoginClaim{}, model.LoginResult{}, model.OIDCSettings{}, model.Session{}, model.Game{}, model.GameUpdateRequest{}, model.GameImportRequest{}, model.RoomRequest{}, model.Node{}, model.NodeConfig{}, model.EnrollmentChallengeRequest{}, model.NodeOperation{}, model.NodeReport{}, model.NodeProbe{}, model.NodeSyncRequest{}, model.NodeSync{}, model.Snapshot{}, model.Lease{}, model.LeaseRequest{}, control.AdminSnapshot{}, control.AdminRoomSnapshot{}} {
@@ -218,11 +222,11 @@ func run() error {
 	add("/v2/rooms/{room}/manage", "get", "Owner-only consistent room, game, member and game-policy view, including after leaving; never grants tunnel authority", "Bearer", nil, ref("RoomManagement"), false)
 	doc["x-local-api"] = M{
 		"transport":        "HTTP over owner-authorized Named Pipe (Windows) or Unix socket (Linux); not served on the public control listener",
-		"protocol_version": 2,
+		"protocol_version": 3,
 		"rpc": M{"method": "POST", "path": "/rpc", "max_request_bytes": 65536, "max_response_bytes": 4 << 20,
 			"request":   object(M{"action": M{"type": "string", "enum": []string{"init", "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover", "update-status", "update-check", "update-install", "status", "games", "rooms", "manage", "members", "create", "join", "invite", "kick", "transfer", "leave", "close", "ping", "doctor"}}, "room": str, "server": str, "name": str, "target": str, "body": M{"type": "object"}}, "action"),
 			"error":     object(M{"code": str, "error": str}, "code", "error"),
-			"responses": M{"update-status": ref("UpdateStatus"), "update-check": ref("UpdateStatus"), "update-install": object(M{"elevate": M{"type": "boolean"}}, "elevate"), "status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": M{"type": "array", "items": ref("Room")}, "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
+			"responses": M{"update-status": ref("UpdateStatus"), "update-check": ref("UpdateStatus"), "update-install": object(M{"elevate": M{"type": "boolean"}}, "elevate"), "status": ref("Status"), "games": M{"type": "array", "items": ref("Game")}, "rooms": ref("RoomPage"), "manage": ref("RoomManagement"), "members": ref("Snapshot")}},
 		"images": M{"method": "GET", "path": "/game-images/{game}/{kind}", "kind": []string{"cover", "background"}, "max_response_bytes": 5 << 20, "description": "Public JPEG/PNG fetched only from the configured control origin, without session or redirects; at most two concurrent downloads; never part of status."},
 	}
 	add("/v2/games", "get", "Enabled server game catalog; all games use the mandatory Ethernet LAN policy", "Bearer", nil, M{"type": "array", "items": ref("Game")}, false)
@@ -276,6 +280,124 @@ func run() error {
 	}
 	for _, t := range []string{"NodeConfig", "NodeSyncRequest", "EnrollmentChallengeRequest"} {
 		schemas[t].(M)["additionalProperties"] = false
+	}
+	add("/v2/capabilities", "get", "Public interaction contract, LAN, login availability and business readiness", "", nil, object(M{"contract": str, "lan_version": M{"type": "integer"}, "local_protocol_version": M{"type": "integer"}, "oidc_enabled": M{"type": "boolean"}, "ready": M{"type": "boolean"}}, "contract", "lan_version", "local_protocol_version", "oidc_enabled", "ready"), false)
+	add("/v2/me", "get", "Current device grant, own membership and same-account occupancy; no credentials", "Bearer", nil, ref("AccountStatus"), false)
+	add("/v2/me/takeover", "post", "Release the explicitly confirmed other device occupancy; never joins another room", "Bearer", ref("TakeoverRequest"), ok, true)
+	add("/v2/me/operations/{operation}", "get", "Read this authorized device's receipt; missing does not establish nonexecution", "Bearer", nil, ref("Operation"), false)
+	add("/v2/me/devices", "get", "List this registered player's own device grants", "Bearer", nil, M{"type": "array", "items": ref("UserDevice")}, false)
+	add("/v2/me/devices/{device}/revoke", "post", "Revoke another device of this account; use logout for the current device", "Bearer", empty, ok, true)
+	add("/v2/rooms", "get", "Own open unexpired management rooms, bounded to 500 with explicit truncation", "Bearer", nil, ref("RoomPage"), false)
+	add("/v2/rooms/{room}/invite", "get", "Current invitation metadata only; no code or hash", "Bearer", nil, ref("InviteInfo"), false)
+	add("/v2/rooms/{room}/invite/revoke", "post", "Invalidate the invitation with the confirmed room revision", "Bearer", ref("MemberRequest"), ref("Room"), true)
+	add("/v2/rooms/{room}/join", "post", "Owner joins by room ID subject to the same capacity, ban, game and account checks", "Bearer", ref("MemberRequest"), ref("RoomResult"), true)
+	add("/v2/rooms/{room}/heartbeat", "post", "Accept LAN heartbeat; replay never extends membership authorization", "Bearer", ref("HeartbeatRequest"), object(M{"accepted_at": M{"type": "string", "format": "date-time"}, "membership_valid_until": M{"type": "string", "format": "date-time"}}, "accepted_at", "membership_valid_until"), true)
+	add("/v2/admin/operations/{operation}", "get", "Read the current administrator's mutation receipt", "AdminCookie", nil, ref("Operation"), false)
+	add("/v2/admin/nodes/{node}/operations/{operation}", "get", "Exact node execution status; independent from acceptance of an admin mutation", "AdminCookie", nil, ref("NodeOperation"), false)
+	for _, path := range []string{"/v2/admin/nodes/{node}/actions", "/v2/admin/rooms/{room}/actions"} {
+		body := paths[path].(M)["post"].(M)["requestBody"].(M)["content"].(M)["application/json"].(M)["schema"].(M)
+		body["properties"].(M)["expected_revision"] = M{"type": "integer", "minimum": 1}
+		body["required"] = append(body["required"].([]string), "expected_revision")
+	}
+	resultProperties := schemas["Result"].(M)["properties"].(M)
+	resultProperties["data"] = M{"nullable": true, "description": "Operation-specific payload, including arrays or scalars; null for errors."}
+	resultProperties["contract"] = M{"type": "string", "enum": []string{model.Contract}}
+	resultProperties["origin"] = M{"type": "string", "enum": []string{"control", "service", "bridge"}}
+	resultProperties["control_http_status"] = M{"type": "integer", "nullable": true, "description": "Actual upstream HTTP status when observed; null without a control response."}
+	codes := []string{}
+	catalog := M{}
+	for code, spec := range model.BusinessCodes {
+		codes = append(codes, code)
+		catalog[code] = M{"http_status": spec.Status, "default_message": spec.Message, "retry": spec.Retry}
+	}
+	sort.Strings(codes)
+	resultProperties["code"] = M{"type": "string", "enum": codes}
+	doc["x-business-codes"] = catalog
+	schemas["Retry"].(M)["properties"].(M)["kind"] = M{"type": "string", "enum": []string{"none", "manual", "after", "reauth", "refresh"}}
+	schemas["Details"].(M)["additionalProperties"] = false
+	schemas["Details"].(M)["description"] = "Per-code allowlist: validation fields/rules; stale expected/actual revision; occupancy room/device/revision; room_full capacity/member_count; request_too_large allowed_bytes; public expiry expires_at. known_commit only when a prior write was confirmed. Never request data, credentials or raw exceptions."
+	schemas["Error"] = ref("Result")
+	components["responses"].(M)["Error"] = M{"description": "Structured interaction-1 result; code determines recovery, never message or HTTP class alone.", "content": M{"application/json": M{"schema": ref("Result")}}}
+	envelope := func(data any) M {
+		return M{"x-interaction-envelope": true, "allOf": []any{ref("Result"), M{"type": "object", "properties": M{"data": data}}}}
+	}
+	for path, value := range paths {
+		if !strings.HasPrefix(path, "/v2/") {
+			continue
+		}
+		for method, raw := range value.(M) {
+			if method != "get" && method != "post" && method != "put" && method != "delete" {
+				continue
+			}
+			op := raw.(M)
+			responses := op["responses"].(M)
+			for _, status := range []string{"200", "201", "202"} {
+				response, ok := responses[status].(M)
+				if !ok {
+					continue
+				}
+				content, ok := response["content"].(M)
+				if !ok {
+					continue
+				}
+				jsonContent, ok := content["application/json"].(M)
+				if !ok {
+					continue
+				}
+				data := jsonContent["schema"]
+				if previous, ok := data.(M); ok && previous["x-interaction-envelope"] == true {
+					data = previous["allOf"].([]any)[1].(M)["properties"].(M)["data"]
+				}
+				jsonContent["schema"] = envelope(data)
+			}
+			for _, status := range []string{"400", "401", "403", "404", "405", "409", "410", "413", "415", "422", "429", "500", "503", "504"} {
+				responses[status] = M{"$ref": "#/components/responses/Error"}
+			}
+			params, _ := op["parameters"].([]any)
+			filtered := []any{}
+			idempotent := false
+			for _, param := range params {
+				p := param.(M)
+				if p["name"] == model.ContractHeader || p["name"] == model.DeadlineHeader {
+					continue
+				}
+				if p["name"] == "Idempotency-Key" {
+					idempotent = true
+				}
+				filtered = append(filtered, p)
+			}
+			public := path == "/v2/capabilities" || path == "/v2/updates/check" || strings.Contains(path, "/images/") || strings.HasSuffix(path, "/compose") || path == "/v2/auth/oidc/browser" || path == "/v2/auth/oidc/callback" || path == "/v2/auth/oidc/confirm"
+			if !public {
+				filtered = append(filtered, M{"name": model.ContractHeader, "in": "header", "required": true, "schema": M{"type": "string", "enum": []string{model.Contract}}})
+			}
+			if idempotent {
+				filtered = append(filtered, M{"name": model.DeadlineHeader, "in": "header", "required": true, "schema": M{"type": "string", "format": "date-time"}, "description": "Immutable deadline, future and at most database time + 1 hour on first acceptance. Binds raw body, method and path to Idempotency-Key. Expired requests cannot execute."})
+			}
+			op["parameters"] = filtered
+			if method == "post" && (path == "/v2/rooms" || path == "/v2/admin/nodes") {
+				if responses["200"] != nil {
+					responses["201"] = responses["200"]
+					delete(responses, "200")
+				}
+			}
+		}
+	}
+	paths["/v2/admin/nodes/{node}/actions"].(M)["post"].(M)["responses"].(M)["202"] = M{"description": "Command accepted; data identifies the independently tracked node operation.", "content": M{"application/json": M{"schema": envelope(ref("NodeOperation"))}}}
+	localRPC := doc["x-local-api"].(M)["rpc"].(M)
+	localRequest := localRPC["request"].(M)
+	localFields := localRequest["properties"].(M)
+	localFields["contract"] = M{"type": "string", "enum": []string{model.Contract}}
+	localFields["command_id"] = M{"type": "string", "minLength": 16, "maxLength": 128}
+	localRequest["required"] = []string{"contract", "action"}
+	actions := localFields["action"].(M)["enum"].([]string)
+	actions = append(actions, "capabilities", "get-operation", "network-retry", "network-stop", "invite-info", "invite-revoke", "owner-join", "account-devices", "account-status", "revoke-device")
+	localFields["action"].(M)["enum"] = actions
+	localRPC["error"] = ref("Result")
+	localRPC["response"] = ref("Result")
+	localRPC["description"] = "Protocol 3. Mutations require stable command_id; the protected service ledger freezes the raw request and deadline before submission. Recover through get-operation and status.pending_operations. No legacy protocol support."
+	localRPC["responses"].(M)["get-operation"] = ref("Operation")
+	for _, path := range []string{"/v2/rooms/{room}/events", "/v2/admin/events"} {
+		paths[path].(M)["get"].(M)["x-events"] = M{"snapshot": "Current authoritative snapshot; former room members receive only self tombstones", "reset": ref("Result"), "terminal": ref("Result")}
 	}
 	doc["tags"] = []any{M{"name": "Player"}, M{"name": "Admin"}, M{"name": "Node"}, M{"name": "Operations"}}
 	for path, value := range paths {

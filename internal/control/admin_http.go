@@ -5,9 +5,12 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/nodelane/nodelane-room/internal/model"
 )
 
 func (s *Server) registerAdmin(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v2/admin/nodes/{node}/operations/{operation}", s.adminHandler(s.adminNodeOperation))
+	mux.HandleFunc("GET /v2/admin/operations/{operation}", s.adminHandler(func(w http.ResponseWriter, r *http.Request, actor string) { s.operationReceipt(w, r, "admin:"+actor) }))
 	mux.HandleFunc("POST /v2/admin/games/import", s.adminWrite(s.adminImportGame))
 	mux.HandleFunc("PUT /v2/admin/games/{game}", s.adminWrite(s.adminMutation(s.adminUpdateGame)))
 	mux.HandleFunc("GET /v2/admin/telemetry", s.adminHandler(s.adminTelemetry))
@@ -40,15 +43,18 @@ func (s *Server) adminWrite(next func(http.ResponseWriter, *http.Request, string
 }
 
 func (s *Server) adminMutation(next func(*http.Request, pgx.Tx, string, []byte) (any, error)) func(http.ResponseWriter, *http.Request, string) {
+	return s.adminMutationLimit(next, 65536)
+}
+
+func (s *Server) adminMutationLimit(next func(*http.Request, pgx.Tx, string, []byte) (any, error), limit int64) func(http.ResponseWriter, *http.Request, string) {
 	return func(w http.ResponseWriter, r *http.Request, actor string) {
-		limit := int64(65536)
-		if r.URL.Path == "/v2/admin/updates/repository" {
-			limit = 3 << 20
+		if !jsonContentType(r) {
+			s.fail(w, model.Failure("request_media_unsupported"))
+			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		var raw json.RawMessage
-		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
-			s.fail(w, ErrInvalid)
+		if err := decodeLimitedRequest(w, r, &raw, limit); err != nil {
+			s.fail(w, err)
 			return
 		}
 		ctx := r.Context()

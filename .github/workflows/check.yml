@@ -21,6 +21,7 @@ jobs:
       - run: cargo +1.95.0 test --manifest-path desktop/src-tauri/Cargo.toml --locked
       - run: python scripts/desktop/test_package.py
       - if: runner.os == 'Windows'
+        shell: powershell
         run: ./scripts/desktop/test-windows.ps1
       - if: runner.os == 'Windows'
         run: ./scripts/desktop/test-uninstall.ps1

@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"net"
 	"net/netip"
 	"sync"
@@ -161,7 +160,7 @@ func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
 	allowed := s.allowed[ip] || s.infrastructure
 	s.mu.Unlock()
 	if !allowed {
-		return 0, errors.New("peer is not authorized")
+		return 0, model.Failure("local_probe_target_unavailable")
 	}
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -196,9 +195,9 @@ func (s *Service) Ping(ctx context.Context, ip string) (time.Duration, error) {
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	case <-timer.C:
-		return 0, errors.New("overlay probe timed out")
+		return 0, model.Failure("local_peer_unreachable")
 	case <-s.done:
-		return 0, errors.New("probe service stopped")
+		return 0, model.Failure("local_probe_unavailable")
 	case <-done:
 		ok = true
 		return time.Since(start), nil

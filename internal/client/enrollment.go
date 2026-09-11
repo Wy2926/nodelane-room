@@ -6,6 +6,12 @@ import (
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
+func (a *API) NodeBinding() (string, int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.session.NodeID, a.session.Generation
+}
+
 // Enroll authenticates a pre-authorized registration without creating a player
 // identity. The caller must persist Identity before this request.
 func (a *API) Enroll(ctx context.Context, key string) error {
@@ -18,5 +24,9 @@ func (a *API) Enroll(ctx context.Context, key string) error {
 	sig := ed25519.Sign(a.Identity.PrivateKey, append([]byte("nodelane-auth-v2:enrollment:"+challenge.ID+":"), challenge.Nonce...))
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.request(ctx, "POST", "/v2/node/enrollment/complete", model.VerifyRequest{ID: challenge.ID, Signature: sig}, &a.session, "", ID())
+	err := a.request(ctx, "POST", "/v2/node/enrollment/complete", model.VerifyRequest{ID: challenge.ID, Signature: sig}, &a.session, "", ID())
+	if err == nil {
+		a.terminal = nil
+	}
+	return err
 }

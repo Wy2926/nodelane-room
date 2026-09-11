@@ -32,9 +32,9 @@ async fn connect() -> Result<tokio::net::windows::named_pipe::NamedPipeClient, F
             Err(e) => {
                 return Err(Failure::new(
                     if e.kind() == std::io::ErrorKind::PermissionDenied {
-                        "permission_denied"
+                        "local_permission_denied"
                     } else {
-                        "service_unavailable"
+                        "local_service_unavailable"
                     },
                     "无法访问 NodeLane 服务，请检查安装与当前用户权限",
                 ))
@@ -50,21 +50,21 @@ async fn connect() -> Result<tokio::net::UnixStream, Failure> {
         .map_err(|e| {
             Failure::new(
                 if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    "permission_denied"
+                    "local_permission_denied"
                 } else {
-                    "service_unavailable"
+                    "local_service_unavailable"
                 },
                 "无法访问 NodeLane 服务，请检查安装与当前用户权限",
             )
         })?;
     if stream
         .peer_cred()
-        .map_err(|_| Failure::new("permission_denied", "无法验证本机服务身份"))?
+        .map_err(|_| Failure::new("local_permission_denied", "无法验证本机服务身份"))?
         .uid()
         != 0
     {
         return Err(Failure::new(
-            "permission_denied",
+            "local_permission_denied",
             "本机服务必须由 root 运行",
         ));
     }
@@ -83,7 +83,7 @@ where
 {
     let (mut sender, connection) = http1::handshake(TokioIo::new(stream))
         .await
-        .map_err(|_| Failure::new("service_unavailable", "本机服务握手失败"))?;
+        .map_err(|_| Failure::new("local_service_unavailable", "本机服务握手失败"))?;
     // The connection task owns its stream and exits when this one request finishes.
     let task = ConnectionTask(tokio::spawn(async move {
         let _ = connection.await;
@@ -96,11 +96,11 @@ where
             .header("Content-Type", "application/json")
             .header("Connection", "close")
             .body(Full::new(Bytes::from(body)))
-            .map_err(|_| Failure::new("invalid_request", "本机请求无效"))?;
+            .map_err(|_| Failure::new("request_validation_failed", "本机请求无效"))?;
         let response = sender
             .send_request(req)
             .await
-            .map_err(|_| Failure::new("service_unavailable", "本机服务连接中断"))?;
+            .map_err(|_| Failure::new("local_service_unavailable", "本机服务连接中断"))?;
         let status = response.status();
         let content_type = response
             .headers()
@@ -111,14 +111,21 @@ where
         let bytes = Limited::new(response.into_body(), limit)
             .collect()
             .await
-            .map_err(|_| Failure::new("invalid_response", "本机服务响应无效或过大"))?
+            .map_err(|_| Failure::new("local_ipc_response_invalid", "本机服务响应无效或过大"))?
             .to_bytes();
         if !status.is_success() {
-            return Err(
-                serde_json::from_slice::<Failure>(&bytes).unwrap_or_else(|_| {
-                    Failure::new("operation_failed", "本机操作失败，请检查客户端与服务版本")
-                }),
-            );
+            let failure = serde_json::from_slice::<Failure>(&bytes).ok().filter(|f| {
+                f.metadata
+                    .get("contract")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("interaction-1")
+                    && f.metadata
+                        .get("request_id")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|id| !id.is_empty())
+            });
+            return Err(failure
+                .unwrap_or_else(|| Failure::new("local_ipc_response_invalid", "本机响应不兼容")));
         }
         Ok((content_type, bytes))
     }
@@ -137,5 +144,10 @@ pub(super) async fn request(
         exchange(connect().await?, method, path, body, limit).await
     })
     .await
-    .map_err(|_| Failure::new("timeout", "请求超时；操作结果可能尚未确认，请刷新状态"))?
+    .map_err(|_| {
+        Failure::new(
+            "local_rpc_timeout",
+            "请求超时；操作结果可能尚未确认，请刷新状态",
+        )
+    })?
 }

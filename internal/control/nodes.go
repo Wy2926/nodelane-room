@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -21,7 +22,29 @@ func scanNode(row pgx.Row) (model.Node, error) {
 	return n, noRows(err)
 }
 func nodeForDevice(ctx context.Context, tx pgx.Tx, device string) (model.Node, error) {
-	return scanNode(tx.QueryRow(ctx, nodeSelect+` WHERE b.device_id=$1 AND b.generation=n.generation AND n.state<>'revoked'`, device))
+	n, err := scanNode(tx.QueryRow(ctx, nodeSelect+` WHERE b.device_id=$1 AND b.generation=n.generation`, device))
+	if errors.Is(err, ErrNotFound) {
+		var state string
+		var stale bool
+		e := tx.QueryRow(ctx, "SELECT n.state,b.generation<>n.generation FROM node_bindings b JOIN nodes n ON n.id=b.node_id WHERE b.device_id=$1", device).Scan(&state, &stale)
+		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+			return n, e
+		}
+		if state == "revoked" {
+			return n, model.Failure("node_revoked")
+		}
+		if stale {
+			return n, model.Failure("node_generation_stale")
+		}
+		return n, model.Failure("node_not_authorized")
+	}
+	if err != nil {
+		return n, err
+	}
+	if n.State == "revoked" {
+		return n, model.Failure("node_revoked")
+	}
+	return n, nil
 }
 func readNode(ctx context.Context, tx pgx.Tx, id string) (model.Node, error) {
 	return scanNode(tx.QueryRow(ctx, nodeSelect+" WHERE n.id=$1", id))
@@ -89,7 +112,7 @@ func (s *Store) issueEnrollmentKey(ctx context.Context, nodeID, actor string, ch
 			return err
 		}
 		if n.State != "pending" {
-			return ErrConflict
+			return model.Failure("node_state_conflict")
 		}
 		if _, err = tx.Exec(ctx, "UPDATE enrollment_keys SET revoked=true WHERE node_id=$1 AND consumed_by IS NULL", nodeID); err != nil {
 			return err
@@ -108,21 +131,24 @@ func (s *Store) completeEnrollment(ctx context.Context, tx pgx.Tx, grant, device
 	var node string
 	var generation, revision int64
 	if err := tx.QueryRow(ctx, `UPDATE enrollment_keys SET consumed_by=$2 WHERE id=$1 AND consumed_by IS NULL AND NOT revoked AND expires_at>now() RETURNING node_id,generation,revision`, grant, device).Scan(&node, &generation, &revision); err != nil {
-		return ErrForbidden
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Failure("node_enrollment_unusable")
+		}
+		return err
 	}
 	n, err := readNode(ctx, tx, node)
 	if err != nil {
 		return err
 	}
 	if n.Generation != generation || n.Revision != revision || n.State != "pending" {
-		return ErrForbidden
+		return model.Failure("node_enrollment_unusable")
 	}
 	var exists bool
 	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM devices WHERE id=$1)", device).Scan(&exists); err != nil {
 		return err
 	}
 	if exists {
-		return ErrConflict
+		return model.Failure("node_state_conflict")
 	}
 	if _, err = tx.Exec(ctx, "INSERT INTO devices(id,name,public_key) VALUES($1,$2,$3)", device, name, pub); err != nil {
 		return err
@@ -147,8 +173,11 @@ func (s *Store) updateNode(ctx context.Context, tx pgx.Tx, actor, id string, c m
 	if err != nil {
 		return n, err
 	}
-	if n.State == "revoked" || n.Revision != revision {
-		return n, ErrConflict
+	if n.State == "revoked" {
+		return n, model.Failure("node_revoked")
+	}
+	if n.Revision != revision {
+		return n, model.RevisionError(revision, n.Revision)
 	}
 	_, err = tx.Exec(ctx, `UPDATE nodes SET name=$2,region=$3,address=$4,lighthouse=$5,relay=$6,notes=$7,revision=revision+1 WHERE id=$1`, id, c.Name, c.Region, c.Address, c.Lighthouse, c.Relay, c.Notes)
 	if err != nil {
@@ -191,23 +220,23 @@ func (s *Store) nodeAction(ctx context.Context, tx pgx.Tx, actor, id, action str
 		return op, err
 	}
 	if n.State == "revoked" {
-		return op, ErrConflict
+		return op, model.Failure("node_revoked")
 	}
 	next := n.State
 	switch action {
 	case "drain":
 		if n.State != "active" {
-			return op, ErrConflict
+			return op, model.Failure("node_state_conflict")
 		}
 		next = "draining"
 	case "resume":
 		if n.State != "disabled" && n.State != "draining" {
-			return op, ErrConflict
+			return op, model.Failure("node_state_conflict")
 		}
 		next = "active"
 	case "disable":
 		if n.DeviceID == "" {
-			return op, ErrConflict
+			return op, model.Failure("node_state_conflict")
 		}
 		next = "disabled"
 		err = revokeNode(ctx, tx, n, false)
@@ -220,7 +249,7 @@ func (s *Store) nodeAction(ctx context.Context, tx pgx.Tx, actor, id, action str
 		n.Generation++
 	case "restart":
 		if n.DeviceID == "" || n.State == "disabled" {
-			return op, ErrConflict
+			return op, model.Failure("node_state_conflict")
 		}
 	case "revoke-key":
 	default:
@@ -268,20 +297,23 @@ func (s *Store) SyncNode(ctx context.Context, device string, in model.NodeSyncRe
 			return out, ErrInvalid
 		}
 	}
+	if in.Report.Error != "" {
+		in.Report.Error = safeNodeCode("failed", in.Report.Error)
+	}
 	err := s.Write(ctx, func(tx pgx.Tx) error {
 		n, err := nodeForDevice(ctx, tx, device)
 		if err != nil {
-			return ErrForbidden
+			return err
 		}
-		if in.Generation != 0 && in.Generation != n.Generation {
-			return ErrConflict
+		if in.Generation != n.Generation {
+			return model.Failure("node_generation_stale")
 		}
 		if in.Report.AppliedRevision > n.Revision {
-			return ErrInvalid
+			return model.Failure("node_applied_config_invalid")
 		}
 		if in.Report.AppliedRevision > 0 {
 			if in.Report.AppliedConfig == nil {
-				return ErrInvalid
+				return model.Failure("node_applied_config_invalid")
 			}
 			b, e := json.Marshal(in.Report.AppliedConfig)
 			if e != nil {
@@ -292,20 +324,21 @@ func (s *Store) SyncNode(ctx context.Context, device string, in model.NodeSyncRe
 				return e
 			}
 			if !valid {
-				return ErrInvalid
+				return model.Failure("node_applied_config_invalid")
 			}
 		} else if in.Report.AppliedConfig != nil {
-			return ErrInvalid
+			return model.Failure("node_applied_config_invalid")
 		}
 
 		for _, res := range in.Results {
+			res.Error = safeNodeCode(res.State, res.Error)
 			if res.State != "succeeded" && res.State != "failed" && res.State != "running" {
 				return ErrInvalid
 			}
 			if len(res.Error) > 2000 {
 				return ErrInvalid
 			}
-			tag, e := tx.Exec(ctx, `UPDATE node_operations SET state=$4,error=$5 WHERE id=$1 AND node_id=$2 AND generation=$3 AND state IN ('pending','running') AND expires_at>now() AND (state<>$4 OR error<>$5) AND ($4<>'succeeded' OR revision<=$6)`, res.ID, n.ID, n.Generation, res.State, res.Error, in.Report.AppliedRevision)
+			tag, e := tx.Exec(ctx, `UPDATE node_operations SET state=$4,error=$5 WHERE id=$1 AND node_id=$2 AND generation=$3 AND state IN ('pending','running') AND expires_at>now() AND (state<>$4 OR error<>$5) AND ($4<>'succeeded' OR revision<=$6)`, res.ID, n.ID, n.Generation, res.State, safeNodeCode(res.State, res.Error), in.Report.AppliedRevision)
 			if e != nil {
 				return e
 			}
@@ -368,4 +401,14 @@ func saveNodeConfig(ctx context.Context, tx pgx.Tx, id string, revision int64, c
 	}
 	_, err = tx.Exec(ctx, "INSERT INTO node_configs(node_id,revision,config) VALUES($1,$2,$3)", id, revision, b)
 	return err
+}
+
+func safeNodeCode(state, code string) string {
+	if state != "failed" {
+		return ""
+	}
+	if _, ok := model.BusinessCodes[code]; ok {
+		return code
+	}
+	return "node_operation_failed"
 }

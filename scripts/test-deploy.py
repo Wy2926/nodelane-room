@@ -158,10 +158,13 @@ def main():
             hidden.extend([code,admin_password])
             csrf=''
             def admin(path,body=None,method='POST'):
-                config=['url = '+json.dumps('https://room.test/v2/admin/'+path), 'request = '+json.dumps(method), 'cookie = "/tmp/admin.cookies"','cookie-jar = "/tmp/admin.cookies"', 'header = "Content-Type: application/json"','header = "Origin: https://room.test"','header = '+json.dumps('X-CSRF-Token: '+csrf),'header = '+json.dumps('Idempotency-Key: '+secrets.token_hex(16))]
+                deadline=(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=50)).isoformat().replace('+00:00','Z')
+                config=['header = \"X-NodeLane-Contract: interaction-1\"','header = '+json.dumps('X-NodeLane-Operation-Deadline: '+deadline),'url = '+json.dumps('https://room.test/v2/admin/'+path), 'request = '+json.dumps(method), 'cookie = "/tmp/admin.cookies"','cookie-jar = "/tmp/admin.cookies"', 'header = "Content-Type: application/json"','header = "Origin: https://room.test"','header = '+json.dumps('X-CSRF-Token: '+csrf),'header = '+json.dumps('Idempotency-Key: '+secrets.token_hex(16))]
                 if body is not None: config.append('data = '+json.dumps(json.dumps(body)))
                 reply=command(compose+["exec","-T","node","curl","--fail","--silent","--show-error","--config","-"],stdin='\n'.join(config))
-                return json.loads(reply.stdout)
+                result=json.loads(reply.stdout)
+                if result.get("contract")!="interaction-1" or not result.get("request_id"): raise RuntimeError("invalid response contract")
+                return result["data"]
             admin('setup',{'mode':'create','code':code,'username':'test-admin','password':admin_password,'database_url':f'postgres://nodelane:{password}@db:5432/nodelane?sslmode=disable','public_url':'room.test','network':'10.203.0.0/16','registry':args.registry,'ca_mode':'generate'})
             for attempt in range(30):
                 if admin('setup',method='GET')['initialized']: break
@@ -206,7 +209,7 @@ def main():
                     time.sleep(2)
                 raise RuntimeError('timed out: '+description)
             def action(kind):
-                return admin('nodes/'+node_record['id']+'/actions',{'action':kind})
+                return admin('nodes/'+node_record['id']+'/actions',{'action':kind,'expected_revision':node_status()['node']['revision']})
             existing=node_status()
             new_config={'name':'compose-test','region':'local','address':'node:4244','lighthouse':True,'relay':True,'notes':'port validation'}
             changed=admin('nodes/'+node_record['id'],{'config':new_config,'revision':existing['node']['revision']},'PUT')

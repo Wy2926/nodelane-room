@@ -7,7 +7,8 @@ import {
   type FormEvent,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { makeAPI } from "./api";
+import { makeAPI, watchAdmin, businessMessage } from "./api";
+import { PendingOperations } from "./operations";
 import { Auth } from "./auth";
 import {
   Action,
@@ -151,20 +152,20 @@ function App() {
   useEffect(() => {
     if (!session) return;
     const controller = new AbortController();
-    const stream = new EventSource("/v2/admin/events");
     let timer: ReturnType<typeof setTimeout>;
-    stream.addEventListener("snapshot", (e) => {
-      try {
-        setData(JSON.parse(e.data));
+    const stream = watchAdmin(
+      (value) => {
+        setData(value as Snapshot);
         setConnection("控制端已连接");
-      } catch {
-        setConnection("快照读取失败");
-      }
-    });
-    stream.onerror = () => {
-      setConnection("连接中断，正在重试");
-      void api("/session", undefined, "GET", controller.signal).catch(() => {});
-    };
+      },
+      () => {
+        setConnection("连接中断，正在重试");
+        void api("/session", undefined, "GET", controller.signal).catch(
+          () => {},
+        );
+      },
+      controller.signal,
+    );
     void api<Snapshot>("/snapshot", undefined, "GET", controller.signal)
       .then((x) => {
         if (!controller.signal.aborted) setData(x);
@@ -251,7 +252,7 @@ function App() {
               aria-current={tab === key ? "page" : undefined}
               onClick={() => setTab(key)}
             >
-                <span>{["◎", "◈", "▤", "◫", "◇", "≡", "⚙"][i]}</span>
+              <span>{["◎", "◈", "▤", "◫", "◇", "≡", "⚙"][i]}</span>
               {label}
             </button>
           ))}
@@ -261,7 +262,8 @@ function App() {
             {connection}
           </Badge>
           <small>
-            {session.username}{data?.version ? ` · v${data.version}` : ""}
+            {session.username}
+            {data?.version ? ` · v${data.version}` : ""}
           </small>
           <Action
             run={async () => {
@@ -277,6 +279,12 @@ function App() {
         </div>
       </aside>
       <main>
+        <PendingOperations api={api} refresh={refresh} />
+        {data?.truncated && Object.values(data.truncated).some(Boolean) && (
+          <p role="status">
+            部分列表仅显示最近记录；缺项不代表已删除或操作未执行，请按编号查询。
+          </p>
+        )}
         <header>
           <div>
             <p className="eyebrow">NODELANE / CONTROL CENTER</p>
@@ -379,7 +387,12 @@ function App() {
                 />
               </Card>
             )}
-            {tab === "users" && <><Users api={api} /><OIDCSettings api={api} publicURL={data.public_url} /></>}
+            {tab === "users" && (
+              <>
+                <Users api={api} />
+                <OIDCSettings api={api} publicURL={data.public_url} />
+              </>
+            )}
             {tab === "updates" && <Updates api={api} />}
             {tab === "games" && (
               <Games games={data.games} api={api} refresh={refresh} />
@@ -404,7 +417,11 @@ function App() {
                           </Badge>
                         </td>
                         <td>{date(o.created_at)}</td>
-                        <td>{o.error || "—"}</td>
+                        <td>
+                          {o.reason || o.error
+                            ? businessMessage(o.reason || o.error!)
+                            : "—"}
+                        </td>
                       </tr>
                     ))}
                   </Table>

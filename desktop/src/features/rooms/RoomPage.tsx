@@ -62,13 +62,15 @@ export function RoomPage({
                 }}
                 disabled={!usable || !!status.selected_room}
               >
-                {t("roomPage.joinWithInviteCode")}</button>
+                {t("roomPage.joinWithInviteCode")}
+              </button>
               <button
                 className="primary"
                 onClick={() => setPage("games")}
                 disabled={!usable || !!status.selected_room}
               >
-                {t("gameLibrary.createRoom")}<span aria-hidden="true">＋</span>
+                {t("gameLibrary.createRoom")}
+                <span aria-hidden="true">＋</span>
               </button>
             </div>
           )}
@@ -76,9 +78,13 @@ export function RoomPage({
       )}
       {roomsError && (
         <div className="banner warning" role="alert">
-          {t("roomPage.roomListCouldNotBeRefreshed")}{failure(roomsError).error}
+          {t("roomPage.roomListCouldNotBeRefreshed")}
+          {failure(roomsError).error}
           <button onClick={refreshAll}>{t("gameLibrary.retry")}</button>
         </div>
+      )}
+      {catalog.truncated && (
+        <p role="status">{t("interaction.roomsTruncated")}</p>
       )}
       {currentCard.length > 0 && (
         <div className="room-tabs" aria-label={t("roomPage.chooseARoom")}>
@@ -110,7 +116,9 @@ export function RoomPage({
                 </span>
                 <span className="room-tab-state">
                   {room?.id === r.id && <Check size={14} aria-hidden="true" />}
-                  {r.id === activeRoom?.id ? t("roomPage.joined") : t("roomHero.manageOnly")}
+                  {r.id === activeRoom?.id
+                    ? t("roomPage.joined")
+                    : t("roomHero.manageOnly")}
                 </span>
               </button>
             );
@@ -133,12 +141,14 @@ export function RoomPage({
           />
           {!roomFresh && (
             <div className="banner warning" role="status">
-              {t("roomPage.staleHelp")}<button onClick={refreshAll}>{t("roomPage.refresh")}</button>
+              {t("roomPage.staleHelp")}
+              <button onClick={refreshAll}>{t("roomPage.refresh")}</button>
             </div>
           )}
           {game?.enabled === false && (
             <div className="banner warning" role="status">
-              {t("roomPage.disabledGameHelp")}</div>
+              {t("roomPage.disabledGameHelp")}
+            </div>
           )}
           <div className="room-columns">
             <Members
@@ -159,14 +169,20 @@ export function RoomPage({
         ) : (
           <section className="room-welcome">
             <div className="welcome-copy">
-              <span className="eyebrow">{t("roomPage.yourNextGameStartsTogether")}</span>
+              <span className="eyebrow">
+                {t("roomPage.yourNextGameStartsTogether")}
+              </span>
               <h2>
-                {t("roomPage.whereverYouAre")}<br />
-                {t("roomPage.shareTheSameRoom")}<span>{t("roomPage.punctuation")}</span>
+                {t("roomPage.whereverYouAre")}
+                <br />
+                {t("roomPage.shareTheSameRoom")}
+                <span>{t("roomPage.punctuation")}</span>
               </h2>
               <p>
-                {t("roomPage.createYourOwnWorldOrJoinAFriend")}<br />
-                {t("roomPage.tonightTheChoiceIsYours")}</p>
+                {t("roomPage.createYourOwnWorldOrJoinAFriend")}
+                <br />
+                {t("roomPage.tonightTheChoiceIsYours")}
+              </p>
             </div>
             <div className="welcome-cards">
               <button

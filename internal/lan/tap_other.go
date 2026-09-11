@@ -3,10 +3,10 @@
 package lan
 
 import (
-	"errors"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"net/netip"
 )
 
 func OpenTAP(string, netip.Prefix) (*TAP, error) {
-	return nil, errors.New("Ethernet LAN is supported on Windows and Linux only")
+	return nil, model.Failure("local_platform_unsupported")
 }

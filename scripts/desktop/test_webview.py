@@ -66,7 +66,7 @@ def main():
         return script('return document.body.textContent.includes(arguments[0])', text)
 
     def status():
-        return json.loads(subprocess.check_output(['nlroom-cli', 'status', '--json'], stderr=subprocess.DEVNULL))
+        return json.loads(subprocess.check_output(['nlroom-cli', 'status', '--json'], stderr=subprocess.DEVNULL))['data']
 
     try:
         session = wait(lambda: call('POST', '/session', {'capabilities': {'alwaysMatch': {'tauri:options': {'application': '/usr/bin/nlroom'}}}}), 'native WebView startup')['sessionId']

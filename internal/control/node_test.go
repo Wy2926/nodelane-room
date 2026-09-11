@@ -51,13 +51,21 @@ func TestEnrollmentRejectsBeforeChallengeAndScopes(t *testing.T) {
 	}
 	n, key := testNode(t, s)
 	must(t, a.Enroll(ctx, key))
-	statusError(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{Name: "illegal", Game: "custom"}, nil), 401)
+	if id, generation := a.NodeBinding(); id != n.ID || generation != n.Generation {
+		t.Fatal("verified enrollment omitted binding")
+	}
+	recovered := client.NewAPI(a.Identity)
+	must(t, recovered.Authenticate(ctx))
+	if id, generation := recovered.NodeBinding(); id != n.ID || generation != n.Generation {
+		t.Fatal("signature recovery omitted binding")
+	}
+	statusError(t, a.Call(ctx, "POST", "/v2/rooms", model.RoomRequest{ExpectedGameRevision: 1, Name: "illegal", Game: "custom"}, nil), 401)
 	statusError(t, a.Call(ctx, "GET", "/v2/admin/snapshot", nil, nil), 401)
 	player := client.NewAPI(a.Identity)
 	player.Identity.Node = false
 	statusError(t, player.Authenticate(ctx), 403)
 	other := user(t, server, "player")
-	statusError(t, other.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, nil), 401)
+	statusError(t, other.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: 1, Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, nil), 401)
 	var stored string
 	must(t, s.Pool.QueryRow(ctx, "SELECT key_hash FROM enrollment_keys WHERE node_id=$1", n.ID).Scan(&stored))
 	if stored == key {
@@ -105,7 +113,7 @@ func TestEnrollmentConcurrentConsumptionAndRecovery(t *testing.T) {
 	recovered := client.NewAPI(winner.Identity)
 	must(t, recovered.Authenticate(ctx))
 	var sync model.NodeSync
-	must(t, recovered.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, &sync))
+	must(t, recovered.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: 1, Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, &sync))
 	if sync.Node.ID != n.ID {
 		t.Fatal("lost registration")
 	}
@@ -126,7 +134,7 @@ func TestDisableReplaceAndAddressQuarantine(t *testing.T) {
 	}
 	action("disable")
 	statusError(t, a.Call(ctx, "POST", "/v2/node/lease", model.LeaseRequest{PublicKey: pub}, nil), 403)
-	must(t, a.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, nil))
+	must(t, a.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: 1, Report: model.NodeReport{Version: model.NodeVersion, Engine: "stopped"}}, nil))
 	var revoked bool
 	must(t, s.Pool.QueryRow(ctx, "SELECT revoked FROM certificates WHERE fingerprint=$1", lease.Fingerprint).Scan(&revoked))
 	if !revoked {
@@ -134,7 +142,7 @@ func TestDisableReplaceAndAddressQuarantine(t *testing.T) {
 	}
 	action("resume")
 	action("replace")
-	statusError(t, client.NewAPI(a.Identity).Authenticate(ctx), 403)
+	statusError(t, client.NewAPI(a.Identity).Authenticate(ctx), 409)
 	var quarantine bool
 	must(t, s.Pool.QueryRow(ctx, "SELECT release_after>now() FROM addresses WHERE ip=$1", lease.IP).Scan(&quarantine))
 	if !quarantine {
@@ -180,7 +188,7 @@ func TestChallengeScopeCannotBeSwapped(t *testing.T) {
 	c, err := s.challenge(ctx, model.ChallengeRequest{DeviceID: i.ID(), Name: i.Name, PublicKey: ed25519.PrivateKey(i.PrivateKey).Public().(ed25519.PublicKey)}, "enrollment", key)
 	must(t, err)
 	sig := ed25519.Sign(i.PrivateKey, append([]byte("nodelane-auth-v2:enrollment:"+c.ID+":"), c.Nonce...))
-	if _, err = s.verify(ctx, model.VerifyRequest{ID: c.ID, Signature: sig}, "player"); err != ErrUnauthorized {
+	if _, err = s.verify(ctx, model.VerifyRequest{ID: c.ID, Signature: sig}, "player"); !model.IsCode(err, "auth_challenge_unusable") {
 		t.Fatal("scope confusion")
 	}
 	_, err = s.verify(ctx, model.VerifyRequest{ID: c.ID, Signature: sig}, "enrollment")
@@ -216,12 +224,12 @@ func TestNodeEnrollmentDrainAndInfrastructureLease(t *testing.T) {
 		t.Fatal("incorrect binding")
 	}
 	var snap model.NodeSync
-	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "running"}}, &snap))
+	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: 1, Report: model.NodeReport{Version: model.NodeVersion, Engine: "running"}}, &snap))
 	if len(snap.Snapshot.Nodes) != 1 {
 		t.Fatal("missing node")
 	}
 	must(t, s.Write(ctx, func(tx pgx.Tx) error { _, e := s.nodeAction(ctx, tx, "test", n.ID, "drain"); return e }))
-	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Report: model.NodeReport{Version: model.NodeVersion, Engine: "running"}}, &snap))
+	must(t, node.Call(ctx, "POST", "/v2/node/sync", model.NodeSyncRequest{Generation: 1, Report: model.NodeReport{Version: model.NodeVersion, Engine: "running"}}, &snap))
 	if len(snap.Snapshot.Nodes) != 1 || !snap.Snapshot.Nodes[0].Draining {
 		t.Fatal("drain must preserve authorization and remove candidacy")
 	}
@@ -247,7 +255,7 @@ func TestNodeDesiredAndAppliedEndpointAndOperationDedup(t *testing.T) {
 	}
 	must(t, s.Write(ctx, func(tx pgx.Tx) error {
 		_, e := s.updateNode(ctx, tx, "test", n.ID, fresh, 1)
-		if e != ErrConflict {
+		if !model.IsCode(e, "request_state_stale") {
 			t.Fatal("stale revision accepted")
 		}
 		return nil
@@ -276,5 +284,5 @@ func TestNodeDesiredAndAppliedEndpointAndOperationDedup(t *testing.T) {
 	statusError(t, a.Call(ctx, "POST", "/v2/node/sync", input, nil), 409)
 	input.Generation = 1
 	input.Report.AppliedRevision = 999
-	statusError(t, a.Call(ctx, "POST", "/v2/node/sync", input, nil), 400)
+	statusError(t, a.Call(ctx, "POST", "/v2/node/sync", input, nil), 422)
 }

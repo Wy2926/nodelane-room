@@ -1,7 +1,7 @@
 package control
 
 import (
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -86,12 +86,17 @@ func (s *Server) nodeSync(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (s *Server) nodeLease(w http.ResponseWriter, r *http.Request, id string) {
+	var raw json.RawMessage
 	var in model.LeaseRequest
-	if err := decodeRequest(w, r, &in); err != nil {
+	if err := decodeRequest(w, r, &raw); err != nil {
 		s.fail(w, err)
 		return
 	}
-	out, err := s.Store.nodeLease(r.Context(), s.CA, id, r.Header.Get("Idempotency-Key"), hash(fmt.Sprintf("%s:%x:%d", r.URL.Path, in.PublicKey, in.Revision)), in)
+	if err := decodeBytes(raw, &in); err != nil {
+		s.fail(w, err)
+		return
+	}
+	out, err := s.Store.nodeLease(r.Context(), s.CA, id, r.Header.Get("Idempotency-Key"), hash(r.Method+":"+r.URL.Path+":"+string(raw)), in)
 	s.rawResult(w, out, err)
 }
 

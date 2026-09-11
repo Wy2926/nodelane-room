@@ -39,7 +39,7 @@ func setupRequest(t *testing.T, d *Deployment, in SetupRequest, origin string) *
 	t.Helper()
 	b, err := json.Marshal(in)
 	must(t, err)
-	req := httptest.NewRequest("POST", "https://room.test/v2/admin/setup", bytes.NewReader(b))
+	req := contractRequest("POST", "https://room.test/v2/admin/setup", bytes.NewReader(b))
 	req.Header.Set("Origin", origin)
 	w := httptest.NewRecorder()
 	d.Handler().ServeHTTP(w, req)
@@ -68,7 +68,7 @@ func TestSetupWithoutDatabaseAndCodeSecurity(t *testing.T) {
 	d, code := setupInstance(t)
 	for path, status := range map[string]int{"/": 404, "/admin": 404, d.AdminPath: 200, "/healthz": 200, "/readyz": 503, "/v2/rooms": 503, "/v2/admin/setup": 200} {
 		w := httptest.NewRecorder()
-		d.Handler().ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		d.Handler().ServeHTTP(w, contractRequest("GET", path, nil))
 		if w.Code != status || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("%s: %d", path, w.Code)
 		}
@@ -130,7 +130,7 @@ func TestSetupCreatesAndConnectsIndependentInstances(t *testing.T) {
 	if w := setupRequest(t, d, in, "https://room.test"); w.Code != 409 {
 		t.Fatalf("setup replay accepted: %d", w.Code)
 	}
-	if _, err = BootstrapCode(context.Background(), d.StateDir); !errors.Is(err, ErrConflict) {
+	if _, err = BootstrapCode(context.Background(), d.StateDir); !model.IsCode(err, "setup_already_configured") {
 		t.Fatalf("bootstrap reopened: %v", err)
 	}
 	second, code2 := setupInstance(t)
@@ -166,14 +166,14 @@ func TestSetupCreatesAndConnectsIndependentInstances(t *testing.T) {
 	}
 	// A cookie issued by one instance authorizes the other without sticky routing.
 	login, _ := json.Marshal(adminCredentials{Username: in.Username, Password: in.Password})
-	r := httptest.NewRequest("POST", "https://room.test/v2/admin/login", bytes.NewReader(login))
+	r := contractRequest("POST", "https://room.test/v2/admin/login", bytes.NewReader(login))
 	r.Header.Set("Origin", "https://room.test")
 	w := httptest.NewRecorder()
 	d.Handler().ServeHTTP(w, r)
 	if w.Code != 200 {
 		t.Fatalf("login: %d", w.Code)
 	}
-	r = httptest.NewRequest("GET", "https://room.test/v2/admin/snapshot", nil)
+	r = contractRequest("GET", "https://room.test/v2/admin/snapshot", nil)
 	r.AddCookie(w.Result().Cookies()[0])
 	w = httptest.NewRecorder()
 	second.Handler().ServeHTTP(w, r)
@@ -196,7 +196,7 @@ func TestSetupConcurrentCreationAndUploadValidation(t *testing.T) {
 	other, err := pki.Generate(s.Network)
 	must(t, err)
 	in.CAKey = other.SigningPEM()
-	if w := setupRequest(t, d, in, "https://room.test"); w.Code != 400 {
+	if w := setupRequest(t, d, in, "https://room.test"); w.Code != 422 {
 		t.Fatalf("mismatched CA: %d", w.Code)
 	}
 	var count int
@@ -251,7 +251,7 @@ func TestSetupRollsBackAndRefusesOldDeployment(t *testing.T) {
 	_, err = s.Pool.Exec(context.Background(), "INSERT INTO settings(key,value) VALUES('ca_fingerprint','old')")
 	must(t, err)
 	err = s.initialize(context.Background(), in, ca, encoded, func() error { t.Fatal("old deployment rebound"); return nil })
-	if !errors.Is(err, ErrConflict) {
+	if !model.IsCode(err, "setup_already_configured") {
 		t.Fatalf("old deployment accepted: %v", err)
 	}
 }

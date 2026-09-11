@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/nodelane/nodelane-room/internal/lan"
@@ -47,7 +48,16 @@ func NewWithDeviceFactory(log *slog.Logger, factory overlay.DeviceFactory) *Engi
 	e.deviceFactory = factory
 	return e
 }
-func (e *Engine) Apply(c Config) error {
+func (e *Engine) Apply(c Config) (failure error) {
+	defer func() {
+		if failure != nil && model.Code(failure) == "system_internal_error" {
+			code := "local_engine_start_failed"
+			if errors.Is(failure, syscall.EADDRINUSE) || errors.Is(failure, syscall.EACCES) {
+				code = "local_udp_bind_failed"
+			}
+			failure = model.Failure(code)
+		}
+	}()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	raw, err := Render(c)

@@ -83,14 +83,14 @@ func (in *SetupRequest) normalize() error {
 func (s *Store) initialize(ctx context.Context, in SetupRequest, ca *pki.Authority, encoded string, bind func() error) error {
 	return s.Write(ctx, func(tx pgx.Tx) error {
 		if err := s.initializeSchema(ctx, tx); err != nil {
-			return fmt.Errorf("%w: 数据库须为空库或地址池一致的当前结构（版本 %d），不支持旧库迁移", ErrInvalid, schemaVersion)
+			return err
 		}
 		var used bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM administrator) OR EXISTS(SELECT 1 FROM deployment) OR EXISTS(SELECT 1 FROM devices) OR EXISTS(SELECT 1 FROM nodes) OR EXISTS(SELECT 1 FROM settings WHERE key='ca_fingerprint')`).Scan(&used); err != nil {
 			return err
 		}
 		if used {
-			return ErrConflict
+			return model.Failure("setup_already_configured")
 		}
 		if _, err := tx.Exec(ctx, `INSERT INTO deployment(id,database_url,public_url,registry,ca_cert,ca_key) VALUES(1,$1,$2,$3,$4,$5)`, in.DatabaseURL, in.PublicURL, in.Registry, ca.PEM, ca.SigningPEM()); err != nil {
 			return err
@@ -109,7 +109,7 @@ func (s *Store) initialize(ctx context.Context, in SetupRequest, ca *pki.Authori
 func LoadDeployment(ctx context.Context, databaseURL string) (*Server, error) {
 	s, err := Open(ctx, databaseURL, model.DefaultPool)
 	if err != nil {
-		return nil, errors.New("database unavailable")
+		return nil, model.Failure("system_unavailable")
 	}
 	ok := false
 	defer func() {
@@ -119,17 +119,17 @@ func LoadDeployment(ctx context.Context, databaseURL string) (*Server, error) {
 	}()
 	var valid bool
 	if err = s.Pool.QueryRow(ctx, "SELECT count(*)=1 AND min(version)=$1 FROM schema_version", schemaVersion).Scan(&valid); err != nil || !valid {
-		return nil, fmt.Errorf("database requires current schema version %d", schemaVersion)
+		return nil, model.Failure("setup_database_incompatible")
 	}
 	var network, publicURL, registry, caCert, caKey string
 	err = s.Pool.QueryRow(ctx, `SELECT s.value,d.public_url,d.registry,d.ca_cert,d.ca_key FROM deployment d JOIN settings s ON s.key='network' WHERE d.id=1 AND EXISTS(SELECT 1 FROM administrator)`).Scan(&network, &publicURL, &registry, &caCert, &caKey)
 	if err != nil {
-		return nil, errors.New("database deployment setup is incomplete")
+		return nil, model.Failure("setup_database_incompatible")
 	}
 	// Reuse validation without retaining the database password in the API server.
 	check := SetupRequest{Mode: "create", Username: "validation", Password: "validation password", DatabaseURL: databaseURL, Network: network, PublicURL: publicURL, Registry: registry, CAMode: "upload"}
 	if err = check.normalize(); err != nil {
-		return nil, errors.New("invalid stored deployment configuration")
+		return nil, model.Failure("setup_database_incompatible")
 	}
 	n, err := parseNetwork(network)
 	if err != nil {
@@ -138,7 +138,7 @@ func LoadDeployment(ctx context.Context, databaseURL string) (*Server, error) {
 	s.Network = n
 	ca, err := pki.Parse([]byte(caCert), []byte(caKey))
 	if err != nil || ca.ValidatePool(n) != nil {
-		return nil, errors.New("invalid stored deployment CA")
+		return nil, model.Failure("setup_ca_invalid")
 	}
 	ok = true
 	return &Server{Store: s, CA: ca, PublicURL: publicURL, Registry: registry}, nil
@@ -146,13 +146,19 @@ func LoadDeployment(ctx context.Context, databaseURL string) (*Server, error) {
 
 func (s *Store) connectDeployment(ctx context.Context, in SetupRequest, bind func() error) error {
 	var encoded string
-	if err := s.Pool.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE username=$1", in.Username).Scan(&encoded); err != nil || !passwordOK(encoded, in.Password) {
-		return ErrUnauthorized
+	if err := s.Pool.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE username=$1", in.Username).Scan(&encoded); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		return model.Failure("admin_credentials_invalid")
+	}
+	if !passwordOK(encoded, in.Password) {
+		return model.Failure("admin_credentials_invalid")
 	}
 	return s.Write(ctx, func(tx pgx.Tx) error {
 		var current string
 		if err := tx.QueryRow(ctx, "SELECT password_hash FROM administrator WHERE username=$1", in.Username).Scan(&current); err != nil || current != encoded {
-			return ErrUnauthorized
+			return model.Failure("admin_credentials_invalid")
 		}
 		if err := adminEvent(ctx, tx, in.Username, "control.connected", "deployment", struct{}{}); err != nil {
 			return err

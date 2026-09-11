@@ -7,7 +7,7 @@ check_ready() {
   while [ "$attempts" -lt 30 ]; do
     if status=$(timeout 3 nlroom-cli status --json 2>/dev/null); then
       version=$(printf '%s\n' "$status" | sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p')
-      if [ "$version" = "$expected" ] && printf '%s\n' "$status" | grep -Eq '"protocol_version":[[:space:]]*2([,}]|$)'; then return; fi
+      if [ "$version" = "$expected" ] && printf '%s\n' "$status" | grep -Eq '"protocol_version":[[:space:]]*3([,}]|$)'; then return; fi
     fi
     attempts=$((attempts + 1))
     sleep 1

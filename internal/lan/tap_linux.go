@@ -3,6 +3,7 @@ package lan
 import (
 	"crypto/sha256"
 	"fmt"
+	"github.com/nodelane/nodelane-room/internal/model"
 	"net"
 	"net/netip"
 
@@ -10,7 +11,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func OpenTAP(name string, prefix netip.Prefix) (*TAP, error) {
+func OpenTAP(name string, prefix netip.Prefix) (tap *TAP, failure error) {
+	defer func() {
+		if failure != nil && model.Code(failure) == "system_internal_error" {
+			failure = model.Failure("local_tap_unavailable")
+		}
+	}()
 	if len(name) > 15 {
 		return nil, fmt.Errorf("TAP interface name too long")
 	}

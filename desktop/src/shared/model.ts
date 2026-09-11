@@ -47,9 +47,44 @@ export type Peer = {
   mode: string;
   rtt_ms?: number;
   loss_percent?: number;
+  measured_at?: string;
 };
-export type User = { id: string; name: string; kind: "guest" | "registered"; state: string; created_at: string };
+export type User = {
+  id: string;
+  name: string;
+  kind: "guest" | "registered";
+  state: string;
+  created_at: string;
+};
 export type Status = {
+  service_instance_id: string;
+  status_seq: number;
+  service: string;
+  identity: string;
+  operation: string;
+  freshness: { observed_at: string; snapshot_at: string };
+  membership: {
+    device_id?: string;
+    valid_until?: string;
+    state: string;
+    reason?: string;
+    room_id?: string;
+    revision: number;
+  };
+  permissions: { manage: boolean; join: boolean; leave: boolean };
+  network: {
+    state: string;
+    reason?: string;
+    generation: number;
+    applied_game_revision: number;
+  };
+  pending_operations: Operation[];
+  issues: {
+    code: string;
+    scope: string;
+    occurred_at: string;
+    resolved_at?: string;
+  }[];
   update?: UpdateStatus;
   user?: User;
   lan_version: number;
@@ -79,16 +114,60 @@ export type Status = {
   lease_expires_at?: string;
 };
 export type Management = {
+  permissions: Status["permissions"];
   room: Room;
   game: Game;
   members: Member[];
   server_time: string;
 };
-export type Invitation = { code: string; expires_at: string };
+export type Invitation = { code: string; expires_at: string; revision: number };
+export type InviteInfo = {
+  active: boolean;
+  revision: number;
+  expires_at?: string;
+};
+export type Envelope<T> = {
+  contract: string;
+  code: string;
+  message: string;
+  origin: string;
+  request_id: string;
+  operation_id?: string;
+  data: T;
+  control_http_status?: number | null;
+  cause_request_id?: string;
+  details?: Record<string, unknown>;
+  retry?: { kind: string; after_ms?: number };
+};
+export type Operation = {
+  id: string;
+  action?: string;
+  state: string;
+  known_commit: boolean;
+  deadline: string;
+  result?: Envelope<unknown>;
+};
 export type RoomResult = { room: Room; invitation?: Invitation };
 export type Action =
-  | "update-check" | "update-status" | "update-install"
-  | "account-login" | "account-link" | "account-poll" | "account-cancel" | "account-logout" | "account-takeover"
+  | "capabilities"
+  | "get-operation"
+  | "network-stop"
+  | "network-retry"
+  | "invite-info"
+  | "invite-revoke"
+  | "owner-join"
+  | "account-devices"
+  | "account-status"
+  | "revoke-device"
+  | "update-check"
+  | "update-status"
+  | "update-install"
+  | "account-login"
+  | "account-link"
+  | "account-poll"
+  | "account-cancel"
+  | "account-logout"
+  | "account-takeover"
   | "status"
   | "init"
   | "games"
@@ -105,6 +184,7 @@ export type Action =
   | "ping"
   | "doctor";
 export type Request = {
+  command_id?: string;
   action: Action;
   room?: string;
   server?: string;
@@ -112,7 +192,17 @@ export type Request = {
   target?: string;
   body?: unknown;
 };
-export type Failure = { code: string; error: string };
+export type Failure = {
+  code: string;
+  error: string;
+  request_id?: string;
+  operation_id?: string;
+  origin?: string;
+  control_http_status?: number | null;
+  cause_request_id?: string;
+  details?: Record<string, unknown>;
+  retry?: { kind: string; after_ms?: number };
+};
 export type UpdateStatus = {
   state: string;
   error_code?: string;

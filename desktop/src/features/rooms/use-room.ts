@@ -28,6 +28,7 @@ export function useRoom(
   const canManage =
     !!room &&
     owner &&
+    (isCurrent ? status.permissions.manage : management?.permissions.manage) &&
     roomFresh &&
     !room.closed &&
     Date.parse(room.expires_at) > Date.now();
@@ -64,7 +65,14 @@ export function useRoom(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [selected, activeRoom?.id, hasIdentity, !!serviceError, reload]);
+  }, [
+    selected,
+    activeRoom?.id,
+    hasIdentity,
+    !!serviceError,
+    reload,
+    status.service_instance_id,
+  ]);
 
   return {
     selected,

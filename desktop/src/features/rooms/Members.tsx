@@ -14,6 +14,7 @@ import type { Actions } from "../../app/use-actions";
 import type { RoomView } from "./use-room";
 import { PortList } from "../../shared/ui/PortList";
 import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
+import { fresh } from "../../shared/time";
 
 export function Members({
   view,
@@ -51,9 +52,16 @@ export function Members({
           const peer = isCurrent
             ? status.peers.find((p) => p.device_id === m.device_id)
             : undefined;
-          const measured = roomFresh && status.engine === "running" && peer;
+          const measured =
+            roomFresh &&
+            status.engine === "running" &&
+            peer &&
+            fresh(peer.measured_at);
           const linked =
-            measured && (peer.mode === "direct" || peer.mode === "relay");
+            roomFresh &&
+            status.engine === "running" &&
+            peer &&
+            (peer.mode === "direct" || peer.mode === "relay");
           return (
             <article
               className="member console-surface"
@@ -72,7 +80,7 @@ export function Members({
                 <span className="member-number" aria-hidden="true">
                   {String(index + 1).padStart(2, "0")}
                 </span>
-                {!self && owner && (
+                {m.user_id !== status.user?.id && owner && (
                   <details
                     className="member-menu"
                     onKeyDown={(e) => {
@@ -83,7 +91,10 @@ export function Members({
                       }
                     }}
                   >
-                    <summary aria-label={t("members.manage", { 0: m.name })} title={t("members.memberActions")}>
+                    <summary
+                      aria-label={t("members.manage", { 0: m.name })}
+                      title={t("members.memberActions")}
+                    >
                       <DotsThree size={24} aria-hidden="true" />
                     </summary>
                     <div className="member-menu-actions">
@@ -97,7 +108,10 @@ export function Members({
                             {
                               action: "transfer",
                               room: room.id,
-                              body: { device_id: m.device_id },
+                              body: {
+                                device_id: m.device_id,
+                                expected_revision: room.revision,
+                              },
                             },
                           )
                         }
@@ -107,7 +121,8 @@ export function Members({
                           weight="light"
                           aria-hidden="true"
                         />
-                        {t("members.transferOwnership")}</button>
+                        {t("members.transferOwnership")}
+                      </button>
                       <button
                         className="danger"
                         disabled={!usable || !canManage}
@@ -118,7 +133,10 @@ export function Members({
                             {
                               action: "kick",
                               room: room.id,
-                              body: { device_id: m.device_id },
+                              body: {
+                                device_id: m.device_id,
+                                expected_revision: room.revision,
+                              },
                             },
                           )
                         }
@@ -128,7 +146,8 @@ export function Members({
                           weight="light"
                           aria-hidden="true"
                         />
-                        {t("members.removeMember")}</button>
+                        {t("members.removeMember")}
+                      </button>
                     </div>
                   </details>
                 )}
@@ -137,9 +156,13 @@ export function Members({
                 <PlayerAvatar name={m.name} identity={m.device_id} />
                 <div className="member-info">
                   <h3>{m.name}</h3>
-                  <span>{self ? t("members.yourDevice") : t("members.roomMembers")}</span>
+                  <span>
+                    {self ? t("members.yourDevice") : t("members.roomMembers")}
+                  </span>
                 </div>
-                {self && <span className="member-self">{t("members.you")}</span>}
+                {self && (
+                  <span className="member-self">{t("members.you")}</span>
+                )}
               </div>
               <button
                 className="member-address"
@@ -164,9 +187,11 @@ export function Members({
                   )}
                   {self
                     ? t("members.thisDevice")
-                    : measured
-                      ? { direct: t("diagnostics.direct"), relay: t("diagnostics.relay") }[peer.mode] ||
-                        t("diagnostics.notConnected")
+                    : linked
+                      ? {
+                          direct: t("diagnostics.direct"),
+                          relay: t("diagnostics.relay"),
+                        }[peer.mode] || t("diagnostics.notConnected")
                       : t("diagnostics.connectionUnknown")}
                 </span>
                 {!self && isCurrent && (
@@ -177,11 +202,18 @@ export function Members({
                       void perform<{ rtt_ms: number }>(
                         t("diagnostics.measureLatency"),
                         { action: "ping", target: m.device_id },
-                        (p) => setPing(t("members.ms", { 0: m.name, 1: p.rtt_ms.toFixed(1) })),
+                        (p) =>
+                          setPing(
+                            t("members.ms", {
+                              0: m.name,
+                              1: p.rtt_ms.toFixed(1),
+                            }),
+                          ),
                       )
                     }
                   >
-                    {t("members.testLatency")}</button>
+                    {t("members.testLatency")}
+                  </button>
                 )}
                 {!self && (
                   <small>
@@ -205,7 +237,8 @@ export function Members({
       <p className="party-note">{t("members.measurementsHelp")}</p>
       {ping && (
         <p role="status" className="ping-result">
-          {t("members.latestProbe")}{ping}
+          {t("members.latestProbe")}
+          {ping}
         </p>
       )}
     </section>

@@ -64,11 +64,13 @@ type LoginClaim struct {
 }
 
 type LoginResult struct {
+	Code    string   `json:"code"`
 	State   string   `json:"state"`
 	Session *Session `json:"session,omitempty"`
 }
 
 type OIDCSettings struct {
+	Revision     int64  `json:"revision"`
 	Issuer       string `json:"issuer"`
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret,omitempty"`

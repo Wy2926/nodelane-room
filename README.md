@@ -4,7 +4,7 @@
 
 玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面设计见 [客户端设计](docs/client.md)，修改代码先用 [任务导航](docs/files.md#按任务读取) 定位。
 
-V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 6，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。0.2.1 包含当前 Ethernet LAN 架构；[镜像清单](deploy/IMAGES.txt) 提供镜像摘要，历史 0.2.0 使用旧数据面，不能与当前客户端混用。本机 IPC 为版本 2。当前检查与未验收项见 [验证记录](docs/validation.md)。
+V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 6，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。0.2.1 包含当前 Ethernet LAN 架构；[镜像清单](deploy/IMAGES.txt) 提供镜像摘要，历史 0.2.0 使用旧数据面，不能与当前客户端混用。本机 IPC 为版本 3，HTTP 与 IPC 统一使用 `interaction-1` 契约，不兼容旧客户端或旧响应。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
 ## 控制面和节点
 
@@ -42,7 +42,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -OwnerSid 
 $nl = "$env:ProgramFiles\NodeLaneRoom\nlroom-cli.exe"
 & $nl init --server https://room.example.com --name 玩家甲
 & $nl games
-& $nl room create --name 周末世界 --game minecraft-java
+& $nl room create --game-revision <游戏当前revision> --name 周末世界 --game minecraft-java
 # 将输出的 invitation.code 发给朋友；朋友在自己的设备初始化后执行：
 & $nl room join <邀请码>
 & $nl status --watch
@@ -76,16 +76,20 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 
 | 命令 | 行为 |
 |---|---|
-| `room invite` | 生成有效 30 分钟的新邀请码，旧码立即失效；可多人使用至房满 |
-| `room kick <device-id>` | 踢出目标，并禁止该账号的所有设备再次用邀请码进入本房；撤销旧证书 |
-| `room transfer <device-id>` | 转让房间管理权，不迁移游戏进程或存档 |
+| `room invite --expected-revision <revision>` | 生成最长 30 分钟且不超过房间到期的新邀请码，旧码立即失效；可多人使用至房满 |
+| `room kick <device-id> --expected-revision <revision>` | 踢出目标，并禁止该账号的所有设备再次用邀请码进入本房；撤销旧证书 |
+| `room transfer <device-id> --expected-revision <revision>` | 转让房间管理权，不迁移游戏进程或存档 |
 | `room leave` | 退出房间、停止本机网络；房主保留房间管理权 |
-| `room close` | 房主关闭房间，撤销所有成员凭据 |
+| `room close --expected-revision <revision>` | 房主关闭房间，撤销所有成员凭据 |
 | `room … --room <id>` | 显式选择管理的房间；房主离房后管理时使用 |
 | `games`、`games --json` | 读取服务端已启用游戏、配置端口和资料 |
 | `status --watch`、`peers`、`ping <成员>` | 分别显示控制状态、Nebula 路径与真实探测结果；支持 `--json` |
 | `doctor` | 查看 LAN 就绪信息、网卡、凭据、控制状态和探测结果 |
 | `nlroom-service service install/uninstall` | 注册或删除 Windows 服务，需要管理员 |
+
+`--json` 返回统一响应外壳，业务值在 `data`；退出码 0 成功、2 用户或条件错误、3 暂不可达或系统故障、4 操作结果待确认。写命令可用 `--command-id <原ID>` 恢复，`get-operation <ID>` 查询原收据；不能通过自动换 ID 重试未知结果。房间管理需传最后读取的 `--expected-revision`，建房需游戏的 `--game-revision`。
+
+`network-stop` 持久暂停本机游戏网络并保持成员心跳；`network-retry` 核对当前成员后恢复网络。`room invite-info` 查询邀请有效性，`room invite-revoke` 停止邀请，`room owner-join --room <ID> --expected-revision <revision>` 让房主重新成为成员。`account status/devices` 查询自身占用与授权设备；接管需显式传期望房间、设备和成员版本，接管成功后再完成原入房。
 
 每账号同时一台设备联机、每设备同时一房，新房间默认 4 人，有效期 24 小时；房主离线不关闭房间。填写昵称创建访客，身份由本机私钥证明，昵称不唯一且不能用于找回账号。绑定 OIDC 后成为正式用户，用户 ID、房间和房主身份保留；不同账号不自动合并。管理台使用独立的管理员账号密码。默认地址池 `10.203.0.0/16`，页面初始化时可改，运行中不能直接换池。
 

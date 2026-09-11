@@ -17,10 +17,11 @@ import (
 )
 
 type adminClient struct {
-	t      *testing.T
-	server *httptest.Server
-	cookie *http.Cookie
-	csrf   string
+	t         *testing.T
+	server    *httptest.Server
+	cookie    *http.Cookie
+	deadlines map[string]time.Time
+	csrf      string
 }
 
 func (a *adminClient) request(method, path string, body any, origin, csrf bool) (int, []byte) {
@@ -34,8 +35,18 @@ func (a *adminClient) requestKey(method, path string, body any, origin, csrf boo
 	must(a.t, e)
 	req, e := http.NewRequest(method, a.server.URL+"/v2/admin"+path, bytes.NewReader(b))
 	must(a.t, e)
+	req.Header.Set(model.ContractHeader, model.Contract)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", key)
+	if a.deadlines == nil {
+		a.deadlines = map[string]time.Time{}
+	}
+	deadline, ok := a.deadlines[key]
+	if !ok {
+		deadline = time.Now().UTC().Add(50 * time.Minute)
+		a.deadlines[key] = deadline
+	}
+	req.Header.Set(model.DeadlineHeader, deadline.Format(time.RFC3339Nano))
 	if origin {
 		req.Header.Set("Origin", a.server.URL)
 	}
@@ -43,6 +54,7 @@ func (a *adminClient) requestKey(method, path string, body any, origin, csrf boo
 		req.Header.Set("X-CSRF-Token", a.csrf)
 	}
 	if a.cookie != nil {
+		req.Header.Set(model.ContractHeader, model.Contract)
 		req.AddCookie(a.cookie)
 	}
 	resp, e := a.server.Client().Do(req)
@@ -55,6 +67,9 @@ func (a *adminClient) requestKey(method, path string, body any, origin, csrf boo
 	}
 	data, e := io.ReadAll(resp.Body)
 	must(a.t, e)
+	if method != "HEAD" && strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		data = responseData(a.t, data)
+	}
 	return resp.StatusCode, data
 }
 func newAdmin(t *testing.T) (*Store, *adminClient) {
@@ -108,7 +123,7 @@ func TestAdminSessionAndCSRF(t *testing.T) {
 		}
 	}
 	status, data = a.request("POST", "/nodes", model.NodeConfig{Name: "n", Region: "d", Address: "n:4242", Relay: true}, true, true)
-	if status != 200 {
+	if status != 201 {
 		t.Fatalf("create: %s", data)
 	}
 	must(t, s.ResetAdminPassword(ctx, "replacement password"))
@@ -124,14 +139,14 @@ func TestAdminNodeRoutesAndIdempotency(t *testing.T) {
 	config := model.NodeConfig{Name: "relay", Region: "test", Address: "relay:4242", Relay: true}
 	key := randomID()
 	status, data := a.requestKey("POST", "/nodes", config, true, true, key)
-	if status != 200 {
+	if status != 201 {
 		t.Fatalf("create: %d", status)
 	}
 	var node, replay model.Node
 	must(t, json.Unmarshal(data, &node))
 	status, data = a.requestKey("POST", "/nodes", config, true, true, key)
 	must(t, json.Unmarshal(data, &replay))
-	if status != 200 || replay.ID != node.ID {
+	if status != 201 || replay.ID != node.ID {
 		t.Fatal("node creation replay changed the result")
 	}
 	path := "/nodes/" + node.ID
@@ -163,7 +178,7 @@ func TestAdminNodeRoutesAndIdempotency(t *testing.T) {
 	if status != 200 || len(enrollment.Key) != 64 {
 		t.Fatal("node key route failed")
 	}
-	status, data = a.request("POST", path+"/actions", map[string]string{"action": "revoke-key"}, true, true)
+	status, data = a.request("POST", path+"/actions", map[string]any{"action": "revoke-key", "expected_revision": replay.Revision}, true, true)
 	var operation model.NodeOperation
 	must(t, json.Unmarshal(data, &operation))
 	if status != 200 || operation.NodeID != node.ID || operation.Action != "revoke-key" {
@@ -186,7 +201,7 @@ func TestAdminNodeRoutesAndIdempotency(t *testing.T) {
 func TestAdminPasswordRouteRevokesSessions(t *testing.T) {
 	s, a := newAdmin(t)
 	status, _ := a.request("POST", "/password", map[string]string{"current": "wrong password", "password": "new test password"}, true, true)
-	if status != 401 {
+	if status != 403 {
 		t.Fatalf("wrong current password: %d", status)
 	}
 	status, _ = a.request("POST", "/password", map[string]string{"current": "correct test password", "password": "new test password"}, true, true)
@@ -243,9 +258,9 @@ func TestAdminRoomSnapshotAfterOwnerLeaves(t *testing.T) {
 		t.Fatal("former owner regained member visibility")
 	}
 	outsider := user(t, a.server, "outsider")
-	statusError(t, outsider.Call(ctx, "GET", path, nil, nil), 403)
+	statusError(t, outsider.Call(ctx, "GET", path, nil, nil), 404)
 	statusError(t, outsider.Call(ctx, "GET", "/v2/admin/rooms/"+room.Room.ID, nil, nil), 401)
-	status, _ = a.request("POST", "/rooms/"+room.Room.ID+"/actions", map[string]string{"action": "close"}, true, true)
+	status, _ = a.request("POST", "/rooms/"+room.Room.ID+"/actions", map[string]any{"action": "close", "expected_revision": detail.Room.Revision}, true, true)
 	if status != 200 {
 		t.Fatalf("admin close: %d", status)
 	}
@@ -260,6 +275,7 @@ func TestAdminRateLogoutAndSSERecovery(t *testing.T) {
 	_, a := newAdmin(t)
 	req, e := http.NewRequest("GET", a.server.URL+"/v2/admin/events", nil)
 	must(t, e)
+	req.Header.Set(model.ContractHeader, model.Contract)
 	req.AddCookie(a.cookie)
 	req.Header.Set("Last-Event-ID", "99999999999")
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)

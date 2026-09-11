@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -146,7 +147,14 @@ func TestLogoutOfAlreadyRevokedDevicePersistsSignedOut(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("requires protected ProgramData state; exercised in isolated Linux")
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) }))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/v2/auth/challenge" {
+			_ = json.NewEncoder(w).Encode(model.NewResult("ok", "control", client.ID(), model.Challenge{ID: client.ID(), Nonce: make([]byte, 32)}))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(model.NewResult("auth_device_revoked", "control", client.ID(), nil))
+	}))
 	defer server.Close()
 	dir := t.TempDir()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))

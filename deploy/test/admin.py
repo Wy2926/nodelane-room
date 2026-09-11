@@ -6,6 +6,7 @@ import sys
 import urllib.request
 import uuid
 import time
+import datetime
 
 def main():
     config = json.load(sys.stdin)
@@ -15,9 +16,12 @@ def main():
     opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context), urllib.request.HTTPCookieProcessor(jar))
     csrf = ''
     def call(path, body=None, method='POST'):
-        headers = {'Content-Type':'application/json','Origin':server,'X-CSRF-Token':csrf,'Idempotency-Key':uuid.uuid4().hex}
+        headers = {'X-NodeLane-Contract':'interaction-1','X-NodeLane-Operation-Deadline':(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=50)).isoformat().replace('+00:00','Z'),'Content-Type':'application/json','Origin':server,'X-CSRF-Token':csrf,'Idempotency-Key':uuid.uuid4().hex}
         request = urllib.request.Request(server+'/v2/admin/'+path, data=json.dumps(body).encode() if body is not None else None, headers=headers, method=method)
-        with opener.open(request, timeout=15) as response: return json.load(response)
+        with opener.open(request, timeout=15) as response:
+            result=json.load(response)
+            if result.get("contract")!="interaction-1" or not result.get("request_id"): raise RuntimeError("invalid control contract")
+            return result["data"]
     if config.get('code'):
         call('setup', {**{k:config[k] for k in ('code','username','password','database_url')}, 'mode':'create','public_url':server,'network':'10.203.0.0/16','registry':'docker.nodelane.net','ca_mode':'generate'})
         for attempt in range(30):
@@ -33,7 +37,6 @@ def main():
     if config.get('wait_telemetry'):
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            import datetime
             ready = True
             for device in config['wait_telemetry']:
                 series = next((s for s in result['series'] if s['device_id'] == device), None)

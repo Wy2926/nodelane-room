@@ -1,7 +1,7 @@
 package control
 
 import (
-	"io"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +11,11 @@ import (
 )
 
 func (s *Server) registerPlayer(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v2/rooms/{room}/invite", s.playerAuth(s.playerInviteInfo))
+	mux.HandleFunc("POST /v2/rooms/{room}/invite/revoke", s.playerMutation(func(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
+		return s.playerMemberAction(r, tx, id, b, "invite/revoke")
+	}))
+	mux.HandleFunc("POST /v2/rooms/{room}/join", s.playerMutation(s.playerOwnerJoin, checkUpdatedPlayer))
 	mux.HandleFunc("GET /v2/rooms", s.playerAuth(s.playerOwnedRooms))
 	mux.HandleFunc("GET /v2/rooms/{room}/manage", s.playerAuth(s.playerRoomManagement))
 	mux.HandleFunc("GET /v2/games", s.playerAuth(s.playerGames))
@@ -22,10 +27,10 @@ func (s *Server) registerPlayer(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v2/auth/verify", s.playerVerify)
 	mux.HandleFunc("GET /v2/rooms/{room}", s.playerAuth(s.playerSnapshot))
 	mux.HandleFunc("GET /v2/rooms/{room}/events", s.playerAuth(s.playerEvents))
-	mux.HandleFunc("POST /v2/rooms", s.playerMutation(s.playerCreateRoom))
-	mux.HandleFunc("POST /v2/rooms/join", s.playerMutation(s.playerJoinRoom))
-	mux.HandleFunc("POST /v2/rooms/{room}/lease", s.playerMutation(s.playerLease))
-	mux.HandleFunc("POST /v2/rooms/{room}/heartbeat", s.playerMutation(s.playerHeartbeat))
+	mux.HandleFunc("POST /v2/rooms", s.playerMutation(s.playerCreateRoom, checkUpdatedPlayer))
+	mux.HandleFunc("POST /v2/rooms/join", s.playerMutation(s.playerJoinRoom, checkUpdatedPlayer))
+	mux.HandleFunc("POST /v2/rooms/{room}/lease", s.playerMutation(s.playerLease, checkUpdatedPlayer, checkActivePlayer))
+	mux.HandleFunc("POST /v2/rooms/{room}/heartbeat", s.playerMutation(s.playerHeartbeat, checkUpdatedPlayer))
 	mux.HandleFunc("POST /v2/rooms/{room}/invite", s.playerMutation(s.playerInvite))
 	mux.HandleFunc("POST /v2/rooms/{room}/kick", s.playerMutation(s.playerKick))
 	mux.HandleFunc("POST /v2/rooms/{room}/transfer", s.playerMutation(s.playerTransfer))
@@ -85,28 +90,29 @@ func (s *Server) playerAuth(next func(http.ResponseWriter, *http.Request, string
 	}
 }
 
-func (s *Server) playerMutation(next func(*http.Request, pgx.Tx, string, []byte) (any, error)) http.HandlerFunc {
+func checkUpdatedPlayer(r *http.Request, tx pgx.Tx, id string) error {
+	return requireUpdated(r.Context(), tx, id)
+}
+
+func checkActivePlayer(r *http.Request, tx pgx.Tx, id string) error {
+	return activeMember(r.Context(), tx, r.PathValue("room"), id)
+}
+
+func (s *Server) playerMutation(next func(*http.Request, pgx.Tx, string, []byte) (any, error), checks ...func(*http.Request, pgx.Tx, string) error) http.HandlerFunc {
 	return s.playerAuth(func(w http.ResponseWriter, r *http.Request, id string) {
-		r.Body = http.MaxBytesReader(w, r.Body, 65536)
-		b, err := io.ReadAll(r.Body)
-		if err != nil {
-			s.fail(w, ErrInvalid)
+		var b json.RawMessage
+		if err := decodeRequest(w, r, &b); err != nil {
+			s.fail(w, err)
 			return
 		}
 		check := func(tx pgx.Tx) error {
 			if err := validPlayerSession(r.Context(), tx, id, hash(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))); err != nil {
 				return err
 			}
-			if r.URL.Path == "/v2/rooms" || r.URL.Path == "/v2/rooms/join" || strings.HasSuffix(r.URL.Path, "/lease") || strings.HasSuffix(r.URL.Path, "/heartbeat") {
-				if err := requireUpdated(r.Context(), tx, id); err != nil {
+			for _, check := range checks {
+				if err := check(r, tx, id); err != nil {
 					return err
 				}
-			}
-			if strings.HasSuffix(r.URL.Path, "/lease") {
-				if err := activeMember(r.Context(), tx, r.PathValue("room"), id); err != nil {
-					return err
-				}
-				return validCachedLease(r.Context(), tx, id, r.Header.Get("Idempotency-Key"))
 			}
 			return nil
 		}

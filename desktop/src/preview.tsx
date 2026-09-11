@@ -1,6 +1,7 @@
 // Development-only UI fixture. This entry is not part of the desktop build.
 import { createRoot } from "react-dom/client";
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
+import { clientVersion } from "./native/api";
 import { App } from "./app/App";
 import type { Game, Request, Room, Status } from "./shared/model";
 import "./styles/index.css";
@@ -63,16 +64,52 @@ function makeRoom(name: string, selected: Game): Room {
     expires_at: new Date(Date.now() + 3600000).toISOString(),
   };
 }
+let statusSequence = 0;
 function status(): Status {
   return {
-    user: initialized ? {id: "preview-user", name: "旅人", kind: "guest", state: "active", created_at: new Date().toISOString()} : undefined,
-    version: "0.2.1",
-    protocol_version: 2,
+    user: initialized
+      ? {
+          id: "preview-user",
+          name: "旅人",
+          kind: "guest",
+          state: "active",
+          created_at: new Date().toISOString(),
+        }
+      : undefined,
+    service_instance_id: "preview",
+    status_seq: ++statusSequence,
+    service: "ready",
+    identity: initialized ? "active" : "unconfigured",
+    operation: "idle",
+    membership: {
+      state: connected ? "active" : "none",
+      room_id: room?.id,
+      device_id: "preview-player",
+      revision: room?.revision || 0,
+    },
+    permissions: {
+      manage: !!room,
+      join: !!room && !connected,
+      leave: connected,
+    },
+    network: {
+      state: connected ? "preparing" : "stopped",
+      generation: 0,
+      applied_game_revision: 0,
+    },
+    freshness: {
+      observed_at: new Date().toISOString(),
+      snapshot_at: new Date().toISOString(),
+    },
+    issues: [],
+    pending_operations: [],
+    version: clientVersion,
+    protocol_version: 3,
     lan_version: 1,
     server: "https://room.nodelane.net",
     name: "旅人",
     device_id: initialized ? "preview-player" : "",
-    control: "idle",
+    control: "online",
     engine: "stopped",
     selected_room: connected ? room!.id : "",
     room: connected ? room : undefined,
@@ -80,13 +117,15 @@ function status(): Status {
     members: connected
       ? [
           {
-            device_id: "preview-player", user_id: "preview-user",
+            device_id: "preview-player",
+            user_id: "preview-user",
             name: "旅人",
             ip: "10.203.0.2",
             last_seen: new Date().toISOString(),
           },
           {
-            device_id: "preview-friend", user_id: "preview-friend",
+            device_id: "preview-friend",
+            user_id: "preview-friend",
             name: "远山",
             ip: "10.203.0.3",
             last_seen: new Date().toISOString(),
@@ -134,82 +173,106 @@ mockIPC(
       throw { code: "preview", error: "界面预览中不会退出桌面应用。" };
     const request = payload?.requestData as Request;
     if (!request) throw new Error("Unsupported preview command");
-    switch (request.action) {
-      case "account-poll":
-        return { state: "none" };
-      case "status":
-        if (scenario === "error")
-          throw { code: "service_unavailable", error: "预览服务故障" };
-        return status();
-      case "init":
-        initialized = true;
-        return {};
-      case "games":
-        return games;
-      case "rooms":
-        return room ? [room] : [];
-      case "manage":
-        return {
-          room,
-          game,
-          members: status().members,
-          server_time: new Date().toISOString(),
-        };
-      case "create": {
-        const body = request.body as { name: string; game: string };
-        game = games.find((g) => g.id === body.game) || games[0];
-        room = makeRoom(body.name, game);
-        connected = true;
-        return {
-          room,
-          invitation: {
-            code: "UI-PREVIEW-ONLY",
+    const execute = async () => {
+      switch (request.action) {
+        case "account-poll":
+          return { state: "none" };
+        case "status":
+          if (scenario === "error")
+            throw { code: "service_unavailable", error: "预览服务故障" };
+          return status();
+        case "init":
+          initialized = true;
+          return {};
+        case "games":
+          return games;
+        case "rooms":
+          return { rooms: room ? [room] : [], truncated: false };
+        case "capabilities":
+          return { oidc_enabled: true, ready: true };
+        case "manage":
+          return {
+            permissions: { manage: true, join: false, leave: true },
+            room,
+            game,
+            members: status().members,
+            server_time: new Date().toISOString(),
+          };
+        case "create": {
+          const body = request.body as { name: string; game: string };
+          game = games.find((g) => g.id === body.game) || games[0];
+          room = makeRoom(body.name, game);
+          connected = true;
+          return {
+            room,
+            invitation: {
+              code: "UI-PREVIEW-ONLY",
+              revision: room?.revision || 1,
+              expires_at: new Date(Date.now() + 600000).toISOString(),
+            },
+          };
+        }
+        case "join":
+          room = makeRoom("朋友的房间", game);
+          connected = true;
+          return { room };
+        case "invite-info":
+          return {
+            active: !!room,
+            revision: room?.revision || 1,
             expires_at: new Date(Date.now() + 600000).toISOString(),
-          },
-        };
+          };
+        case "invite":
+          return {
+            code: "UI-PREVIEW-ONLY",
+            revision: room?.revision || 1,
+            expires_at: new Date(Date.now() + 600000).toISOString(),
+          };
+        case "leave":
+          connected = false;
+          return {};
+        case "close":
+          connected = false;
+          room = undefined;
+          return {};
+        case "doctor":
+          return {
+            nebula_version: "1.11.1",
+            control: "online",
+            engine: "stopped",
+            platform: {
+              os: "windows",
+              arch: "amd64",
+              tap_interface_present: true,
+              interfaces: [
+                {
+                  name: "示例以太网",
+                  up: true,
+                  mtu: 1500,
+                  addresses: ["192.0.2.10/24"],
+                },
+                { name: "示例无线网卡", up: false, mtu: 1500, addresses: [] },
+              ],
+            },
+          };
+        default:
+          throw {
+            code: "preview",
+            error: "此操作需要真实桌面服务；预览中未执行。",
+          };
       }
-      case "join":
-        room = makeRoom("朋友的房间", game);
-        connected = true;
-        return { room };
-      case "invite":
-        return {
-          code: "UI-PREVIEW-ONLY",
-          expires_at: new Date(Date.now() + 600000).toISOString(),
-        };
-      case "leave":
-        connected = false;
-        return {};
-      case "close":
-        connected = false;
-        room = undefined;
-        return {};
-      case "doctor":
-        return {
-          nebula_version: "1.11.1",
-          control: "idle",
-          engine: "stopped",
-          platform: {
-            os: "windows",
-            arch: "amd64",
-            tap_interface_present: true,
-            interfaces: [
-              {
-                name: "示例以太网",
-                up: true,
-                mtu: 1500,
-                addresses: ["192.0.2.10/24"],
-              },
-              { name: "示例无线网卡", up: false, mtu: 1500, addresses: [] },
-            ],
-          },
-        };
-      default:
-        throw {
-          code: "preview",
-          error: "此操作需要真实桌面服务；预览中未执行。",
-        };
-    }
+    };
+    return {
+      contract: "interaction-1",
+      code: "ok",
+      message: "",
+      origin: "service",
+      request_id: crypto.randomUUID(),
+      operation_id: request.command_id,
+      data: await execute(),
+      details: {},
+      retry: { kind: "none" },
+    };
   },
   { shouldMockEvents: true },
 );

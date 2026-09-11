@@ -2,7 +2,6 @@ package engine
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/netip"
 	"sort"
@@ -202,7 +201,7 @@ func CheckAddressConflict(network string, ownInterface string) error {
 		for _, a := range addrs {
 			p, e := netip.ParsePrefix(a.String())
 			if e == nil && p.Addr().Is4() && (n.Contains(p.Addr()) || p.Contains(n.Addr())) {
-				return fmt.Errorf("overlay %s overlaps interface %s (%s)", network, iface.Name, p)
+				return model.Failure("local_route_conflict")
 			}
 		}
 	}

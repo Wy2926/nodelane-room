@@ -29,10 +29,16 @@ type Identity struct {
 
 func NewIdentity(server, name string) (Identity, error) {
 	if err := ValidateURL(server); err != nil {
-		return Identity{}, err
+		return Identity{}, model.Validation("server", "invalid_format")
 	}
 	if !model.ValidLabel(name, 80) {
-		return Identity{}, errors.New("name must contain 1-80 bytes")
+		rule := "invalid_format"
+		if strings.TrimSpace(name) == "" {
+			rule = "required"
+		} else if len(name) > 80 {
+			rule = "too_long"
+		}
+		return Identity{}, model.Validation("name", rule)
 	}
 	_, key, err := ed25519.GenerateKey(rand.Reader)
 	return Identity{Server: strings.TrimRight(server, "/"), Name: name, PrivateKey: key}, err
