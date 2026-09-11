@@ -1,6 +1,6 @@
 # NodeLane Room
 
-Go 游戏组网产品。先读本文件，再按任务检索 [文件索引](docs/files.md) 和相关实现/测试；文档只读相关章节，不沿链接逐份通读。操作见 [README](README.md)，协议与包边界见 [架构](docs/architecture.md)。
+Go 游戏组网产品。先读本文件，再用 [任务导航](docs/files.md#按任务读取) 定位相关实现、测试和文档章节；索引树按关键词检索，不沿链接逐份通读。操作见 [README](README.md)，协议与包边界见 [架构](docs/architecture.md)。
 
 ## 不可破坏的边界
 
@@ -15,7 +15,7 @@ Go 游戏组网产品。先读本文件，再按任务检索 [文件索引](docs
 
 - 作最小完整修改，优先标准库及现有实现，清理失效与重复代码；不预建泛化层、为单一实现增加接口或按行数拆包。
 - 新增包或改变依赖同步 `scripts/architecture/boundaries_test.go`，不得为保留无必要的跨层依赖放宽规则。
-- 新增、删除、移动文件/目录或改变职责时，同步更新 `docs/files.md`；每项一行短述，产物与缓存不展开。
+- 新增、删除、移动文件/目录或改变职责时，同步更新 `docs/files.md`；每项一行短述，产物与缓存不展开。`go test ./scripts/architecture` 检查包边界及索引完整性。
 - 代码、注释、文档和输出保持紧凑、直观；文档按职责单处维护，新增前先合并去重，临时排错过程不写入长期规范。
 - 接口变更同步更新 `docs/openapi.yaml`；操作变更同步更新 README/部署文档。
 - 提交前执行 `gofmt`、`go vet ./...`、`go test ./...`；并发/控制状态改动还须在 Linux 配置独立 `NODELANE_TEST_DATABASE_URL` 后运行 `go test -race -count=1 ./...`。

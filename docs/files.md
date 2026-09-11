@@ -1,6 +1,23 @@
 # 文件索引
 
-按任务检索路径或职责，无需通读。相对项目根目录，缩进表示层级；维护文件每项一行，产物与缓存不展开。
+## 按任务读取
+
+先选任务行，再读对应实现、测试及文档章节。用 `rg -n '关键词' docs/files.md` 定位文件职责；涉及 HTTP 契约时只读取 OpenAPI 的目标路径及引用 schema。验收记录仅在验证、排错或发布时读取。
+
+| 任务 | 实现与测试入口 | 文档章节 |
+|---|---|---|
+| 包依赖、进程分工 | `cmd/`、`scripts/architecture/` | [代码组织](architecture.md#代码组织) |
+| 房间、成员、游戏配置 | `internal/control/` 的 `rooms`、`games`、`player_*`、`store` | [游戏规则](architecture.md#游戏目录与网络规则)、[事务与快照](architecture.md#事务与快照) |
+| 管理台、初始化、节点 | `internal/control/admin*`、`setup*`、`node*`；`internal/agent/node*` | [控制实例](architecture.md#控制实例与配置)、[节点协议](architecture.md#v2-管理与节点协议) |
+| LAN、授权、凭据到期 | `internal/lan/`、`internal/engine/`、`internal/agent/network.go`、`runtime*_test.go` | [数据面](architecture.md#数据面)、[游戏网络](game-network.md) |
+| 桌面界面、本机 IPC | `desktop/src/`、`desktop/src-tauri/src/ipc/`、`internal/agent/local*`、`images.go` | [界面](client.md#主机界面与设计令牌)、[桌面架构](client.md#桌面架构) |
+| 安装、权限、系统服务 | `internal/platform/`、`internal/nodehost/`、`scripts/desktop/`、安装脚本 | [本机权限](architecture.md#本机权限)、[客户端安装](../README.md#windows-客户端) |
+| 监控、探测、GeoIP | `internal/probe/`、`internal/engine/telemetry.go`、`internal/agent/telemetry.go`、`traffic*`、`internal/control/telemetry*`、`geoip*` | [统计口径](architecture.md#监控)、[采集配置](deployment.md#监控与-ip-归属地) |
+| 构建、部署、验收 | `scripts/`、`deploy/`、`.github/workflows/` | [构建](../README.md#开发与构建)、[部署](deployment.md)、[当前验收](validation.md#当前源码与产物) |
+
+## 完整文件索引
+
+路径相对项目根目录，两个空格表示一级缩进；维护文件每项一行。标注“（不展开）”的目录仅保留职责。Git 工作副本中的完整性由 `go test ./scripts/architecture` 检查；无 Git 元数据的源码副本跳过此项。
 
 ```text
 .dockerignore 镜像构建排除项
@@ -10,7 +27,7 @@
     check.yml Windows 检查、Linux 数据库与 race 测试
 .gitignore 版本管理排除项
 .nvmrc Node.js LTS 开发与 CI 版本
-.local/ 本地临时文件与验收日志
+.local/ 本地临时文件与验收日志（不展开）
 AGENTS.md 开发约束与索引维护规则
 cmd/ 可执行程序入口
   nlroom-node/ Linux lighthouse/relay 命令
@@ -122,8 +139,8 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     tauri.conf.json 桌面窗口、资源与 CSP 边界
     capabilities/ 受限桌面命令能力
       main.json 主窗口允许调用的本机功能
-    permissions/ 本机命令权限与生成配置
-    icons/ 原生窗口及安装图标
+    permissions/ 本机命令权限与生成配置（不展开）
+    icons/ 原生窗口及安装图标（不展开）
     src/ 原生程序实现
       main.rs 窗口、托盘、通知与生命周期
       ipc/ 有界玩家服务桥接
@@ -131,24 +148,26 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         protocol.rs 玩家请求校验与类型
         transport.rs Named Pipe 与 Unix socket 通信
         tests.rs 桥接请求与边界测试
-dist/ 构建、安装包与镜像发布产物
+dist/ 构建、安装包与镜像发布产物（不展开）
 Dockerfile 从源码构建控制面与节点镜像
 docs/ 协议、部署与验收说明
-  architecture.md 包依赖、接口分工、监控口径与协议安全边界
-  client.md 桌面首版需求、进程命名、GUI 选型与跨平台实施边界
+  architecture.md 包依赖、状态归属、权限、生命周期与监控口径
+  client.md 当前桌面交互、GUI 决策、本机桥接与平台边界
   deployment.md V2 部署与维护步骤
-  files.md 文件层级与职责索引
+  files.md 任务阅读导航与完整文件职责索引
   game-network.md Ethernet LAN 架构、MTU 评审、授权及游戏验收边界
   manual-v2-validation.md V2 人工及环境验收清单
   nebula-race-review.md 固定补丁原理与未处理的上游竞争
   openapi.yaml HTTP API 与数据结构契约
-  validation.md 最近检查范围、复现入口、必要历史证据与待验收项
+  validation.md 当前源码与产物验收、未验证项、复现入口及历史证据
 go.mod 模块依赖与 Nebula 补丁锁定
 go.sum 依赖校验和
 internal/ 产品内部实现
   agent/ 玩家与节点后台状态协调
     health.go 存活与就绪检查
+    images.go 受限控制端图片读取与本机图片响应
     local.go 本机 RPC 服务、玩家命令分派与后台启停
+    local_test.go 玩家本机命令、协议版本与图片通道边界测试
     network.go 授权快照、凭据续签、Nebula 与探测生命周期
     node.go 节点登记、配置同步、续签与状态
     node_doctor.go 节点诊断检查
@@ -180,8 +199,8 @@ internal/ 产品内部实现
     admin_web.go 随机入口保护与持久化、管理页面和静态资源白名单
     admin_web_test.go 隐藏入口持久化、轮换、校验及默认关闭测试
     adminweb/ React 与 TypeScript 管理台
-      dist/ Vite 编译产物，由 Go 嵌入
-      node_modules/ npm 本地依赖缓存
+      dist/ Vite 编译产物，由 Go 嵌入（不展开）
+      node_modules/ npm 本地依赖缓存（不展开）
       index.html React 页面入口
       package.json Node.js 版本、前端依赖与构建测试命令
       package-lock.json npm 依赖版本及完整性锁定
@@ -219,6 +238,7 @@ internal/ 产品内部实现
     node_http.go 节点登记、认证、同步与领证接口
     node_test.go 节点登记、身份隔离、配置与操作同步测试
     nodes.go 节点登记、配置、操作、撤销与同步
+    player_desktop_test.go 桌面房间管理查询与离房房主权限测试
     player_events_http.go 玩家房间事件流与快照恢复
     player_http.go 玩家路由、认证、限速与幂等写入
     player_rooms_http.go 玩家房间查询、成员操作与领证接口
@@ -275,6 +295,9 @@ internal/ 产品内部实现
     pki_test.go 上传 CA 的地址池、组约束、有效期及多证书拒绝测试
   platform/ 平台权限、存储与本机通信
     diagnostics.go 系统、LAN 网卡与 TUN/TAP 设备诊断
+    local_linux.go Linux 桌面 root 服务、安装用户绑定与 socket 对端校验
+    local_linux_test.go Linux 桌面真实 socket 与 UID 隔离测试
+    local_other.go 非 Linux 平台的桌面 socket 接入占位
     platform_unix.go Unix 目录权限与本机套接字
     platform_windows.go DPAPI、ACL、Named Pipe 与 Windows 服务
     protection_windows_test.go Windows 私密数据与状态目录保护测试
@@ -286,9 +309,10 @@ internal/ 产品内部实现
     probe_test.go 探测成员授权与统计过期测试
 README.md 产品说明、默认配置与操作入口
 scripts/ 构建、安装与验证工具
-  __pycache__/ Python 字节码缓存
-  architecture/ Go 包依赖规范检查
+  __pycache__/ Python 字节码缓存（不展开）
+  architecture/ 包依赖与文件索引检查
     boundaries_test.go 跨平台生产导入、数据库与数据面归属及客户端运行依赖边界
+    files_test.go Git 维护文件与索引的遗漏、重复和失效检查
   build-images.ps1 校验发布包并构建镜像，支持显式推送
   build.ps1 Windows/Linux 多架构发布包构建
   build.sh Linux 可执行文件构建
