@@ -90,6 +90,9 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       Shell.tsx 统一顶部导航、玩家入口与无边框窗口控制
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
+      OperationFeedback.tsx 接管确认、未决操作查询与执行进度
+      Problem.tsx 业务错误、恢复入口与支持详情
+      experience.ts 连接状态展示、操作可用性与恢复动作映射
       use-actions.ts 操作互斥、复制与确认管理
       use-actions.test.ts 未决写互斥、接管子步骤与跨服务实例旧回复测试
     i18n/ 客户端语言选择与翻译
