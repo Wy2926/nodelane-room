@@ -1,25 +1,27 @@
 NodeLane Room component releases
-Control: 0.2.2
+Control: 0.3.0
 Node: 0.2.1
-Client: 0.2.1
+Client source: 0.3.0（本次未发布桌面安装包）
 
-2026-09-11 已发布，远端 OCI manifest index 摘要已核对。
-源码与本记录同次提交；本次一并提交此前 0.2.1 的独立版本、Windows 安装及 TAP 修复。
-构建源码清单（统一 LF）SHA256: 93a1f06a90a1b69bf9ba26505bceb4fa3f77f1f41aca07d77d732c005e70f88c
-清单与验证记录：.local/release-0.2.2/source-manifest.json、docs/validation.md。
-数据库结构 5，API /v2，本机 IPC 2，统一 Ethernet LAN。
+2026-09-12 已发布，远端 OCI manifest index 摘要及双架构已核对。
+构建源码提交：10e10ef10cb55a4f41aafa40d1b1829461d54604
+数据库结构 6，API /v2，本机 IPC 3，interaction-1，统一 Ethernet LAN。
 
-docker.nodelane.net/nodelane-room-control:0.2.2
-docker.nodelane.net/nodelane-room-control@sha256:d979e84c6b6ce84798cc76053ecd7e2497322319ae478224369d729930fa5a4c
+docker.nodelane.net/nodelane-room-control:0.3.0
+docker.nodelane.net/nodelane-room-control@sha256:650f8bc8696fca9130da0eeb86409235127244f9d750913fe521e98fb424ece6
 
 docker.nodelane.net/nodelane-room-node:0.2.1
-docker.nodelane.net/nodelane-room-node@sha256:76dcea2103e4893300d7ae034d69ffe3c997904478aa4149ce40c09e6e092286
+docker.nodelane.net/nodelane-room-node@sha256:cb455d04c9ef465a19daea0b026b44e4ff9f0b95ab5ea88f93fd0c7906edc32b
 
-两份镜像均包含 linux/amd64、linux/arm64；控制面程序版本与发布包 SHA256 已逐项核对。
-控制面 0.2.2 修复 OIDC 确认页 Origin 丢失导致的 403，保留同源、Cookie 和 CSRF 校验。
-同源节点安装清单及归档沿用已发布的 NodeVersion 0.2.1，摘要未变。
-本次仅推送控制面 0.2.2 明确标签；未创建 latest，未更新线上容器。
+两份镜像均包含 linux/amd64、linux/arm64；四个程序的版本及 SHA256 与发布包一致。
+Node 0.2.1 同名标签已更新为本次源码构建；按摘要引用的历史镜像不变。
+Node.js 24.21.0 构建管理台；发布包、镜像及隔离部署检查见 docs/validation.md。
+本次未创建 latest、未更新线上容器；客户端安装包及在线更新签名发布单独处理。
 自行构建使用 scripts/build-images.ps1；只有显式 -Push 才推送。
+
+历史 2026-09-11 控制面 0.2.2 / 节点 0.2.1：
+control: sha256:d979e84c6b6ce84798cc76053ecd7e2497322319ae478224369d729930fa5a4c
+node: sha256:76dcea2103e4893300d7ae034d69ffe3c997904478aa4149ce40c09e6e092286
 
 历史控制面 0.2.1：
 control: sha256:c45b10d3491296f2e257d1e2c4e3cce43a916b1305118668a93b29d38b32752a
