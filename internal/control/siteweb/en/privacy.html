@@ -1,0 +1,67 @@
+{{define "content"}}
+<section class="page-heading container compact">
+  <p class="eyebrow">TRUST / PRIVACY</p>
+  <h1>Understand how<br /><span>your data is used.</span></h1>
+  <p class="lead">
+    This page explains how the current product uses data.<br />For a self-hosted
+    service, ask its provider about operation and retention policies.
+  </p>
+</section>
+<article class="document container">
+  <p class="document-date">Updated September 12, 2026</p>
+  <h2>Visiting this website</h2>
+  <p>
+    The public website does not set login cookies or use advertising trackers,
+    third-party analytics scripts or external fonts. The server and reverse
+    proxy may keep access logs according to their configuration, including IP
+    addresses, request paths and times. External sites such as GitHub apply
+    their own data practices when you follow a link to them.
+  </p>
+  <h2>Accounts and devices</h2>
+  <p>
+    The game service stores account identifiers, display names, linked devices,
+    session expiry times and authorization status to support sign-in, identify
+    members and revoke devices. Registered accounts sign in through the
+    configured identity service, whose own data handling is covered by its
+    notices. Administrator sessions use necessary cookies and are separate from
+    the public website pages.
+  </p>
+  <h2>Rooms and networking</h2>
+  <p>
+    The service processes rooms, members, invitation status and network
+    authorization to establish connections within a room. Administrators can
+    view the member, device and room information needed to operate the service,
+    and administrative actions are recorded in an audit log. Device identity is
+    separate from tunnel keys; short-lived certificates limit the duration of
+    connection authorization.
+  </p>
+  <h2>Connection diagnostics</h2>
+  <p>
+    Network status may include virtual IPs, observed public endpoints,
+    connection types, latency, packet loss and traffic. The current control
+    instance keeps the latest 60 seconds of live monitoring samples and clears
+    them on restart. This does not mean account, room or audit records are
+    cleared at the same time. IP region information is looked up in a local
+    database; member IPs are not sent to third parties for those lookups.
+  </p>
+  <h2>Managing your data</h2>
+  <p>
+    You can view your account and authorized devices in the client and use the
+    available controls to sign out a device. Contact your actual service
+    provider about account deletion, backend records, access logs or backup
+    retention. Technical issues can be submitted through the
+    <a href="https://github.com/Wy2926/nodelane-room/issues"
+      >project feedback channel</a
+    >. Do not include credentials or other private information in public
+    reports.
+  </p>
+  <h2>Updates to this notice</h2>
+  <p>
+    This page and the project documentation are maintained as product behavior
+    changes. A deployment may use separate identity services, reverse proxies
+    and retention settings; read the corresponding service notices alongside
+    this page.
+  </p>
+  <a class="text-link" href="/en/help">Back to the help center →</a>
+</article>
+{{end}}

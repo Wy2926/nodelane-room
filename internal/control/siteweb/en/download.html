@@ -1,0 +1,194 @@
+{{define "content"}}
+<section class="page-heading container">
+  <p class="eyebrow">DOWNLOAD / NODELANE ROOM</p>
+  <h1>Get your computer ready.<br /><span>Bring your friends.</span></h1>
+  <p class="lead">
+    Desktop apps for Windows and Linux.<br />Choose the installation method for
+    your system.
+  </p>
+</section>
+<section
+  id="releases"
+  class="container download-section"
+  data-downloads
+  aria-busy="true"
+>
+  <div class="notice">
+    <strong>Available releases</strong>
+    <p data-download-status role="status">Loading available releases…</p>
+    <button
+      type="button"
+      class="button download-refresh"
+      data-download-refresh
+      hidden
+    >
+      Refresh releases
+    </button>
+    <noscript
+      ><p>
+        Enable JavaScript to load releases and download an installer.
+      </p></noscript
+    >
+  </div>
+  <div class="download-grid">
+    <article class="download-card" data-platform="windows">
+      <p class="eyebrow">DESKTOP / WINDOWS</p>
+      <h2>Windows</h2>
+      <p class="format">Full desktop installer <span>.exe</span></p>
+      <p>
+        The full package includes the desktop app, game client, and background
+        networking service.
+      </p>
+      <ul>
+        <li>Choose an installer that matches your Windows architecture</li>
+        <li>
+          Installation and initial network adapter setup require administrator
+          approval
+        </li>
+        <li>A working WebView2 runtime is required</li>
+      </ul>
+      <div class="download-options">
+        <label for="windows-architecture">Architecture</label>
+        <select id="windows-architecture" data-architecture disabled>
+          <option value="amd64">x64 (AMD / Intel)</option>
+          <option value="arm64">ARM64</option>
+        </select>
+        <label for="windows-version">Version</label>
+        <select id="windows-version" data-version disabled>
+          <option value="">Loading available releases…</option>
+        </select>
+      </div>
+      <details class="release-details" data-release-details hidden>
+        <summary>Release notes and file details</summary>
+        <p data-release-notes class="release-notes"></p>
+        <dl>
+          <dt>File</dt>
+          <dd data-file-name></dd>
+          <dt>Size</dt>
+          <dd data-file-size></dd>
+          <dt>SHA-256</dt>
+          <dd><code data-file-hash></code></dd>
+        </dl>
+      </details>
+      <button
+        type="button"
+        class="button primary"
+        data-download-button
+        disabled
+      >
+        Download installer
+      </button>
+      <p class="download-status" data-platform-status role="status"></p>
+      <div class="download-mirrors" data-download-mirrors></div>
+      <a
+        class="text-link"
+        href="https://github.com/Wy2926/nodelane-room#windows-客户端"
+        >Installation and maintenance →</a
+      >
+    </article>
+    <article class="download-card" data-platform="linux">
+      <p class="eyebrow">DESKTOP / LINUX</p>
+      <h2>Linux</h2>
+      <p class="format">Ubuntu / Debian <span>.deb</span></p>
+      <p>
+        The desktop app and networking service install together, with
+        dependencies handled by the system package manager.
+      </p>
+      <ul>
+        <li>Ubuntu 22.04 / 24.04 and Debian 12 / 13</li>
+        <li>
+          After the first installation, bind the system account that will use
+          the app
+        </li>
+        <li>A desktop environment and working TUN/TAP support are required</li>
+      </ul>
+      <div class="download-options">
+        <label for="linux-architecture">Architecture</label>
+        <select id="linux-architecture" data-architecture disabled>
+          <option value="amd64">x64 (AMD / Intel)</option>
+          <option value="arm64">ARM64</option>
+        </select>
+        <label for="linux-version">Version</label>
+        <select id="linux-version" data-version disabled>
+          <option value="">Loading available releases…</option>
+        </select>
+      </div>
+      <details class="release-details" data-release-details hidden>
+        <summary>Release notes and file details</summary>
+        <p data-release-notes class="release-notes"></p>
+        <dl>
+          <dt>File</dt>
+          <dd data-file-name></dd>
+          <dt>Size</dt>
+          <dd data-file-size></dd>
+          <dt>SHA-256</dt>
+          <dd><code data-file-hash></code></dd>
+        </dl>
+      </details>
+      <button type="button" class="button" data-download-button disabled>
+        Download installer
+      </button>
+      <p class="download-status" data-platform-status role="status"></p>
+      <div class="download-mirrors" data-download-mirrors></div>
+      <a
+        class="text-link"
+        href="https://github.com/Wy2926/nodelane-room#linux-桌面与客户端开发"
+        >Installation and maintenance →</a
+      >
+    </article>
+  </div>
+</section>
+<section class="section container">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">BEFORE YOU INSTALL</p>
+      <h2>Choose the right file to get started.</h2>
+    </div>
+  </div>
+  <div class="feature-grid">
+    <article>
+      <h3>Check the version and platform</h3>
+      <p>
+        Follow the release notes to choose a full desktop package. CLI
+        development archives do not include a graphical interface. Node software
+        is not a substitute for the player client.
+      </p>
+    </article>
+    <article>
+      <h3>Keep your device identity</h3>
+      <p>
+        Regular upgrades preserve your linked account and device identity. When
+        reinstalling, use the full package and follow the instructions for your
+        platform.
+      </p>
+    </article>
+    <article>
+      <h3>Start with diagnostics</h3>
+      <p>
+        The app includes network diagnostics. Include your operating system
+        version, app version, and error code when reporting a problem to help
+        identify the cause.
+      </p>
+    </article>
+  </div>
+</section>
+<section class="container resource-row">
+  <div>
+    <h2>Developers and self-hosting</h2>
+    <p>
+      Explore the source, build instructions, and control service deployment
+      guide.
+    </p>
+  </div>
+  <div class="actions">
+    <a class="button" href="https://github.com/Wy2926/nodelane-room#开发与构建"
+      >Build from source ↗</a
+    ><a
+      class="text-link"
+      href="https://github.com/Wy2926/nodelane-room/blob/main/docs/deployment.md"
+      >Deployment guide ↗</a
+    >
+  </div>
+</section>
+<script type="module" src="/site-assets/downloads.js"></script>
+{{end}}

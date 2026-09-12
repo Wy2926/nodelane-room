@@ -6,10 +6,11 @@ NodeLane Room 控制面 0.3.0 / 节点 0.2.1 部署
 控制面：已有 PostgreSQL/反代用 compose.host.yaml + .env.host.example；
 全套新建用 compose.yaml + .env.example + Caddyfile。不要合并两套。
 控制面使用 NODELANE_CONTROL_VERSION=0.3.0，节点使用 NODELANE_NODE_VERSION=0.2.1。
-数据库结构为 5，拒绝旧结构；使用独立空库，不迁移或清空旧库。
+数据库结构为 6，拒绝旧结构；使用独立空库，不迁移或清空旧库。
 每次部署只有 control 一个控制实例。up -d --wait 后执行
 docker compose exec control nodelane-server admin path，访问 HTTPS 域名加输出路径。
-根路径和旧 /admin 返回 404。随机入口随私有卷持久化，可设置 NODELANE_ADMIN_PATH 后重建。
+根路径默认展示中文官网，7类中英页面共14个入口在初始化前也可访问；英文入口为 /en，切换语言保留页面。
+旧 /admin 返回 404。随机管理入口随私有卷持久化，可设置 NODELANE_ADMIN_PATH 后重建。
 在 control 终端执行 nodelane-server admin bootstrap，页面填写初始化码、
 数据库、公网地址、地址池、节点仓库及管理员，CA 可直接生成或上传。
 配置及 CA 保存到 PostgreSQL；实例私有卷保存启动定位、随机入口和自动下载的 GeoIP 缓存。

@@ -12,6 +12,16 @@
 | 当前完整安装包 | Windows amd64 0.3.0 已重建为原生覆盖安装，TAP 改为客户端启动时按需安装，移除安装器 WebView2 与 PowerShell 依赖；安装包未签名，完整安装与驱动加载仍待真机验收 |
 | 历史 0.2.0 安装包与镜像 | 使用旧数据面，不能与当前客户端混用；发布源码提交和镜像摘要见 [IMAGES.txt](../deploy/IMAGES.txt)，旧包/WebView 结果只列于历史证据 |
 
+## 官网后台下载（2026-09-12）
+
+基于 `3ccfbd5` 的工作区：中英文官网下载页读取后台有效发布，按系统、架构和版本选择安装包；点击时重新核对发布状态、签名及来源。没有发布安装包或更新线上部署。
+
+- Linux Go 1.26.8、独立 PostgreSQL 18.6 空库：`go test -race -count=1 ./...` 通过，305 项含子用例通过、3 项跳过，数据库用例全部运行；含真实 Nebula 隔离、Ethernet、P2P 与中继。[全量记录](../.local/nodelane-download-race-99814893/linux-go-race-final.jsonl)。
+- 最后按系统/架构各限 50 项的调整后，`go test -race -count=1 ./internal/control -run '^TestPublicDownloads'` 12 项含子用例通过，无跳过。覆盖 491 条发布的配额隔离、签名过滤、推荐与版本排序、列表外有效版本下载，以及暂停/撤回、源修订、签名过期、公开字段和私有 S3 本地预签名。[最终定向记录](../.local/nodelane-download-race-99814893/linux-downloads-final.jsonl)。
+- 最新 `go test ./scripts/architecture` 与文档差异检查通过。Steam 在线导入及两项 GeoIP 样本测试未配置而跳过；未运行真实云存储和公网下载、系统安装/驱动、双机 NAT/Minecraft 验收。
+
+测试数据库位于任务专属 Docker 内部网络，未发布宿主端口；临时数据库、容器和网络已清理，日志与 Linux 编译缓存保留在 `.local/`。[清理记录](../.local/nodelane-download-race-99814893/cleanup.txt)。
+
 ## 镜像发布（2026-09-12）
 
 源码提交 `10e10ef`：桌面引导、账号和房间布局调整，以及启动更新提示、跳过版本、可取消下载和自动安装。控制面 `0.3.0`、节点 `0.2.1` 镜像已推送至 `docker.nodelane.net`，远端摘要与构建元数据一致，均含 linux/amd64 和 linux/arm64。节点同名版本标签更新，历史摘要仍在镜像清单中保留。

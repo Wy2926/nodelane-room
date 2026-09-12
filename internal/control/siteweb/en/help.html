@@ -1,0 +1,152 @@
+{{define "content"}}
+<section class="page-heading container">
+  <p class="eyebrow">SUPPORT / HELP CENTER</p>
+  <h1>From getting started<br /><span>to playing together.</span></h1>
+  <p class="lead">
+    Find your next step, and know where to start when something goes wrong.
+  </p>
+  <nav class="topic-links" aria-label="Help topics">
+    <a href="#get-started">Quick start</a><a href="#faq">Common questions</a
+    ><a href="#contact">Report an issue</a>
+  </nav>
+</section>
+<section class="section container" id="get-started">
+  <p class="eyebrow">QUICK START</p>
+  <h2>Your first game together</h2>
+  <ol class="guide-steps">
+    <li>
+      <div>
+        <h3>Install and sign in</h3>
+        <p>
+          Visit the <a href="/en/download">download page</a> to find the
+          complete installer for your system. Open the client, choose a
+          language, then sign in. Where the service allows it, you can also
+          enter a display name and start as a guest.
+        </p>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h3>Create or join a room</h3>
+        <p>
+          In My rooms, create a room, choose its name and game, then invite your
+          friends. If a friend has already created one, paste their invitation
+          code to join. An account can play on one device at a time.
+        </p>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h3>Wait for the network</h3>
+        <p>
+          Check the members and network status after joining. Wait while the
+          network is being prepared. If it does not become ready, follow the
+          recovery steps shown in the client or open network diagnostics.
+        </p>
+      </div>
+    </li>
+    <li>
+      <div>
+        <h3>Meet inside the game</h3>
+        <p>
+          Use compatible game versions. The host opens a LAN game or server;
+          other players can find it in the game's LAN list or connect using the
+          host's virtual IP and game port.
+        </p>
+      </div>
+    </li>
+  </ol>
+</section>
+<section class="section soft-section" id="faq">
+  <div class="container faq-layout">
+    <div>
+      <p class="eyebrow">COMMON QUESTIONS</p>
+      <h2>A little help<br />along the way.</h2>
+      <p>Answers for before you start<br />and while you play.</p>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>Does it work with every game?</summary>
+        <p>
+          It is designed for games that support LAN or direct IP connections.
+          Game versions, listening ports, firewalls and server rules can affect
+          connectivity. Compatibility with every game, anti-cheat system or
+          network environment is not guaranteed.
+        </p>
+      </details>
+      <details>
+        <summary>
+          I joined the room. Why can't I find my friends in the game?
+        </summary>
+        <p>
+          Check that the room network is ready and the host has opened a LAN
+          game, then compare game versions and ports. Some games do not list
+          other players automatically. Try connecting to the virtual IP directly
+          and use network diagnostics to check the actual connection.
+        </p>
+      </details>
+      <details>
+        <summary>What if an invitation has expired?</summary>
+        <p>
+          Ask the host to check that the room is still active and create a new
+          invitation. An invitation code grants access to a room; share it only
+          with friends you want to play with.
+        </p>
+      </details>
+      <details>
+        <summary>Does closing the window disconnect me?</summary>
+        <p>
+          The network service keeps running when you close the window. The
+          interface moves to the system tray, or minimizes if no tray is
+          available. To stop playing in the room, use Leave room in the client.
+        </p>
+      </details>
+      <details>
+        <summary>
+          How is signing in different from using a guest account?
+        </summary>
+        <p>
+          When account sign-in is enabled, you can verify your account in a
+          browser and manage authorized devices. A guest identity is tied to the
+          local device and cannot be recovered from a display name alone if it
+          is lost. Check the Account page for the option to link an account.
+        </p>
+      </details>
+      <details>
+        <summary>
+          Why does latency show “—”, or the connection show as unknown?
+        </summary>
+        <p>
+          No current measurement or tunnel information is available. The client
+          does not fill in missing data with estimates. Check whether the other
+          player is online, whether the game network is ready, and what network
+          diagnostics reports.
+        </p>
+      </details>
+      <details>
+        <summary>Can I use it to proxy all internet traffic?</summary>
+        <p>
+          NodeLane Room focuses on game LAN traffic within a room. It does not
+          provide an internet exit proxy. Your network must allow UDP; there is
+          no TCP fallback when UDP is completely blocked.
+        </p>
+      </details>
+    </div>
+  </div>
+</section>
+<section class="container cta" id="contact">
+  <div>
+    <p class="eyebrow">WE'RE HERE TO HELP</p>
+    <h2>Still need a hand?</h2>
+    <p>
+      Include your system, client version, error code and steps to reproduce.<br />Do
+      not post invitation codes, keys, sessions or database connection strings.
+    </p>
+  </div>
+  <a
+    class="button primary"
+    href="https://github.com/Wy2926/nodelane-room/issues"
+    >Report an issue ↗</a
+  >
+</section>
+{{end}}

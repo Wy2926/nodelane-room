@@ -66,7 +66,7 @@ type runningControl struct {
 	handler http.Handler
 }
 
-// Deployment exposes the setup page before PostgreSQL has been configured, then
+// Deployment exposes the public site and private setup entry before PostgreSQL has been configured, then
 // atomically publishes an immutable API server loaded from shared database state.
 type Deployment struct {
 	GeoIP       *GeoIP
@@ -199,6 +199,7 @@ func (d *Deployment) Handler() http.Handler {
 	mux := http.NewServeMux()
 	web := &Server{Log: d.Log, AdminPath: d.AdminPath}
 	web.registerAdminWeb(mux)
+	registerSiteWeb(mux)
 	mux.HandleFunc("GET /healthz", web.health)
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 503, map[string]string{"status": "setup_required"})

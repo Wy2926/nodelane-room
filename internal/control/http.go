@@ -48,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerNode(mux)
 	s.registerAdmin(mux)
 	s.registerAdminWeb(mux)
+	registerSiteWeb(mux)
 	s.registerInstall(mux)
 	s.registerUpdates(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -10,6 +10,8 @@ import { t, useLanguage, setLanguage, languageStorageKey } from "./i18n";
 if (!import.meta.env.DEV)
   throw new Error("UI preview is only available in development");
 const scenario = new URLSearchParams(location.search).get("state");
+const previewEnglish =
+  new URLSearchParams(location.search).get("lang") === "en-US";
 if (scenario === "language") localStorage.removeItem(languageStorageKey);
 else
   setLanguage(
@@ -20,8 +22,8 @@ else
 const games: Game[] = [
   {
     id: "custom",
-    name: "通用房间",
-    summary: "和朋友一起玩。",
+    name: previewEnglish ? "General room" : "通用房间",
+    summary: previewEnglish ? "Play together with friends." : "和朋友一起玩。",
     network: {
       version: 1,
       broadcast: true,
@@ -40,8 +42,8 @@ const games: Game[] = [
   },
 ];
 const owned = [
-  makeRoom("周末的冒险小队", games[0]),
-  makeRoom("今晚一起玩", games[0]),
+  makeRoom(previewEnglish ? "Weekend adventurers" : "周末的冒险小队", games[0]),
+  makeRoom(previewEnglish ? "Let's play tonight" : "今晚一起玩", games[0]),
 ];
 let game = games[0];
 let room: Room | undefined = ["room", "metrics"].includes(scenario || "")
@@ -52,7 +54,7 @@ let initialized = !["setup", "login", "language"].includes(scenario || "");
 let updateState = scenario === "update" ? "available" : "idle";
 let updateStarted = 0;
 let autoStart = false;
-let playerName = "旅人";
+let playerName = previewEnglish ? "Traveler" : "旅人";
 let loginState = scenario === "login" ? "waiting" : "none";
 function makeRoom(name: string, selected: Game): Room {
   return {
@@ -157,7 +159,7 @@ function status(): Status {
           {
             device_id: "preview-friend",
             user_id: "preview-friend",
-            name: "远山",
+            name: previewEnglish ? "Summit" : "远山",
             ip: "10.203.0.3",
             last_seen: new Date().toISOString(),
           },
@@ -167,7 +169,7 @@ function status(): Status {
       ? [
           {
             device_id: "preview-friend",
-            name: "远山",
+            name: previewEnglish ? "Summit" : "远山",
             ip: "10.203.0.3",
             mode: measured ? "direct" : "unknown",
             measured_at: measured ? new Date().toISOString() : undefined,
@@ -299,9 +301,33 @@ mockIPC(
           return {};
         case "update-status":
         case "update-check":
-          if (updateState === "downloading" && Date.now() - updateStarted >= 15000) updateState = "ready";
-          return { state: updateState, required: false, downloaded: updateState === "downloading" ? Math.min(125829120, Math.floor((Date.now() - updateStarted) / 15000 * 125829120)) : 0,
-            release: scenario === "update" ? { id: "preview-release", version: "0.4.0", size: 125829120, notes: "改进房间连接体验\n优化网络稳定性，修复已知问题。" } : undefined };
+          if (
+            updateState === "downloading" &&
+            Date.now() - updateStarted >= 15000
+          )
+            updateState = "ready";
+          return {
+            state: updateState,
+            required: false,
+            downloaded:
+              updateState === "downloading"
+                ? Math.min(
+                    125829120,
+                    Math.floor(
+                      ((Date.now() - updateStarted) / 15000) * 125829120,
+                    ),
+                  )
+                : 0,
+            release:
+              scenario === "update"
+                ? {
+                    id: "preview-release",
+                    version: "0.4.0",
+                    size: 125829120,
+                    notes: "改进房间连接体验\n优化网络稳定性，修复已知问题。",
+                  }
+                : undefined,
+          };
         case "update-download":
           updateState = "downloading";
           updateStarted = Date.now();

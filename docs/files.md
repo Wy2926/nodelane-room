@@ -9,6 +9,7 @@
 | 包依赖、进程分工 | `cmd/`、`scripts/architecture/` | [代码组织](architecture.md#代码组织) |
 | 用户、访客、OIDC | `internal/control/users*`、`oidc*`、`internal/agent/account.go`、`internal/client/account.go`、`internal/model/user.go` | [用户身份](architecture.md#用户身份)、[账号登录配置](deployment.md#账号登录配置) |
 | 房间、成员、游戏配置 | `internal/control/` 的 `rooms`、`games`、`player_*`、`store` | [游戏规则](architecture.md#游戏目录与网络规则)、[事务与快照](architecture.md#事务与快照) |
+| 官网、管理导航与设置 | `internal/control/site_web*`、`siteweb/`、`adminweb/src/navigation*`、`settings*`、`update-*` | [官网入口](deployment.md#官网与管理入口)、[管理操作](deployment.md#管理操作划分) |
 | 管理台、初始化、节点 | `internal/control/admin*`、`setup*`、`node*`；`internal/agent/node*` | [控制实例](architecture.md#控制实例与配置)、[节点协议](architecture.md#v2-管理与节点协议) |
 | LAN、授权、凭据到期 | `internal/lan/`、`internal/engine/`、`internal/agent/network.go`、`runtime*_test.go` | [数据面](architecture.md#数据面)、[游戏网络](game-network.md) |
 | 桌面界面、本机 IPC | `desktop/src/`、`desktop/src-tauri/src/ipc/`、`internal/agent/local*`、`images.go` | [界面](client.md#界面与视觉规范)、[桌面架构](client.md#桌面架构) |
@@ -82,7 +83,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       brand-mark.png 从选定设计提取的珊瑚色品牌图形
       generic-room.png 暖白珊瑚色双手柄通用房间封面
     main.tsx 正式客户端挂载
-    preview.tsx 独立开发预览夹具，模拟交互并明确无真实网络
+    preview.tsx 中英文开发预览夹具与截图样例，模拟交互并明确无真实网络
     test-setup.ts DOM 测试环境与对话框模拟
     app/ 应用编排与系统导航
       App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
@@ -233,12 +234,41 @@ internal/ 产品内部实现
     account.go OIDC 登录发起、设备证明领取与账号状态读取
     api.go 控制面认证、幂等请求与 SSE 恢复
     enrollment.go 基础设施节点登记认证
-  control/ 按调用方分文件的 HTTP API 与共享事务状态
-    updates_test.go 强制撤销、共享修订与存储凭据保护回归
-    updates_http.go 更新管理、包上传、公开检查与版本上报的 HTTP 适配
+  control/ 公开官网、私有管理页面、按调用方分文件的 HTTP API 与共享事务状态
+    site_web.go 与控制状态独立的中英官网模板渲染、语言路由及静态资源白名单
+    site_web_test.go 中英官网页面切换、资源白名单、方法边界及管理入口隔离测试
+    siteweb/ 与桌面风格一致的公开中英双语多页官网
+      layout.html 共用页面骨架、双语导航、语言切换、页脚和元信息
+      index.html 产品介绍、应用截图与主要入口
+      product.html 房间、邀请、连接状态与中文桌面截图展示
+      download.html 后台发布驱动的客户端版本选择、平台要求与安装指引
+      help.html 入门步骤、联机排错与常见问题
+      about.html 产品理念、开源项目与联系渠道
+      privacy.html 账号、设备、房间及诊断数据的隐私说明
+      terms.html 产品用途、使用条件与支持范围说明
+      en/ 官网对应的英文页面内容
+        index.html 英文产品介绍、应用截图与主要入口
+        product.html 英文房间、邀请、连接状态与桌面截图展示
+        download.html 英文客户端版本选择、平台要求与安装指引
+        help.html 英文入门步骤、联机排错与常见问题
+        about.html 英文产品理念、开源项目与联系渠道
+        privacy.html 英文账号、设备、房间及诊断数据的隐私说明
+        terms.html 英文产品用途、使用条件与支持范围说明
+      assets/ 官网本地样式与应用截图
+        site.css 暖白珊瑚色、多页共享与响应式官网样式
+        downloads.js 官网双语版本加载、平台选择与按需下载地址获取
+        brand-mark.png 复用的 NodeLane 应用品牌图形
+        app-lobby.jpg 当前应用房间大厅截图
+        app-lobby-en.jpg 当前应用英文房间大厅截图
+        app-room.jpg 当前应用房间成员截图
+        app-room-en.jpg 当前应用英文房间成员截图
+        app-settings.jpg 当前应用账号设置截图
+        app-settings-en.jpg 当前应用英文账号设置截图
+    updates_test.go 强制撤销、共享修订、公开下载可用性与存储凭据保护回归
+    updates_http.go 更新管理、包上传、官网下载、公开检查与版本上报的 HTTP 适配
     updates.go 签名发布、版本规则与强制授权撤销事务
     update_storage.go 加密凭据、更新源连接、包上传与副本校验提交
-    update_snapshot.go 公开更新检查与管理更新总览的数据库查询
+    update_snapshot.go 公开下载签名与来源核对、更新检查及管理更新总览查询
     admin_audit.go 管理事件持久化与失败写操作审计
     admin_auth.go 管理员密码、登录与会话事务
     admin_events_http.go 管理台总览与事件流接口
@@ -249,18 +279,23 @@ internal/ 产品内部实现
     admin_snapshot.go 管理台总览与房间详情的一致性快照
     admin_test.go 管理会话、CSRF、节点路由、幂等、审计与事件恢复测试
     admin_web.go 随机入口保护与持久化、管理页面和静态资源白名单
-    admin_web_test.go 隐藏入口持久化、轮换、校验及默认关闭测试
+    admin_web_test.go 隐藏入口持久化、轮换、校验与官网隔离测试
     adminweb/ React 与 TypeScript 管理台
       dist/ Vite 编译产物，由 Go 嵌入（不展开）
       node_modules/ npm 本地依赖缓存（不展开）
       index.html React 页面入口
+      preview.html 仅开发使用的管理台演示入口
       package.json Node.js 版本、前端依赖与构建测试命令
       package-lock.json npm 依赖版本及完整性锁定
       tsconfig.json TypeScript 严格类型检查配置
       vite.config.ts Vite 同源资源构建与开发代理
       src/ 前端组件、数据处理与测试
-        updates.test.tsx 源配置编辑修订保持与凭据只写回归
-        updates.tsx 发布、存储源、强制规则和设备版本管理
+        updates.test.tsx 独立存储与发布页面、配置修订、凭据只写及陈旧响应回归
+        updates.tsx 签名清单、安装包草稿、验证与发布操作
+        update-data.ts 更新快照的加载、刷新与错误状态
+        update-sources.tsx 独立更新存储源配置及连接验证
+        update-policies.tsx 独立推荐和最低版本规则设置
+        update-devices.tsx 设备版本分布、报告及安装结果查询
         api.ts 管理员请求、CSRF 与认证失败处理
         operations.tsx 管理员未决收据查询与过期核对
         auth.tsx 登录与创建或接入控制面的初始化表单
@@ -268,7 +303,13 @@ internal/ 产品内部实现
         components.tsx 表格、指标、表单及可访问对话框
         games.tsx Steam 导入、游戏草稿及统一 LAN/端口配置
         games.test.tsx 游戏版本保护、导入、完整端口范围与 LAN 策略测试
-        main.tsx 管理台导航、SSE、监控轮询与系统页面
+        main.tsx 管理台页面装配、SSE 与监控轮询
+        main.test.tsx 管理分类导航、页面地址恢复与设置职责分离回归
+        navigation.tsx 按操作职责分组的导航与地址 hash 页面定位
+        settings.tsx 独立 OIDC 与管理员密码设置页面
+        settings.test.tsx 账号登录设置、凭据清除与密码修改交互回归
+        site-downloads.test.js 官网双语版本选择、下载失效与空状态交互回归
+        preview.tsx 仅开发演示数据与管理台交互夹具
         metrics.ts 新鲜度、速率、房间去重与出口观察计算
         metrics.test.ts 计数重置、断档、未知值与房间统计测试
         monitor.tsx 链路、出口与最近 60 秒趋势视图
@@ -277,8 +318,8 @@ internal/ 产品内部实现
         rooms.tsx 房间汇总、成员详情与授权操作
         style.css 管理台与移动端布局样式
         types.ts 前端 HTTP 与监控类型
-        users.tsx 用户分页、设备与会话管理和 OIDC 配置
-        users.test.tsx 限制建房原因与 OIDC secret 清除交互测试
+        users.tsx 用户分页、设备、会话和账号授权管理
+        users.test.tsx 用户限制建房的操作原因与授权交互回归
     auth.go 显式访客登记、设备挑战、会话与房间权限校验
     users.go 用户查询、事务授权检查、设备与管理操作及连接撤销
     users_http.go 用户与设备路由、请求解码和 HTTP 响应
@@ -353,7 +394,7 @@ internal/ 产品内部实现
     interaction.go 自身成员、权限、操作收据与独立状态维度
     result.go 统一响应、类型化业务错误与安全详情白名单
     result_test.go 业务码本地化覆盖、权限终态与详情脱敏测试
-    update.go 客户端版本、更新规则、发布与设备报告结构
+    update.go 客户端版本、公开下载、更新规则、发布与设备报告结构
     game.go 游戏目录、LAN 策略/心跳、端口区间与管理类型
     lan.go LAN 版本、MAC、完整端口区间校验与 IPv6 地址推导
     model.go 设备、房间、凭据与 LAN 客户端状态类型

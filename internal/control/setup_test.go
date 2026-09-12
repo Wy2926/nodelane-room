@@ -66,7 +66,7 @@ func createRequest(code, db string) SetupRequest {
 
 func TestSetupWithoutDatabaseAndCodeSecurity(t *testing.T) {
 	d, code := setupInstance(t)
-	for path, status := range map[string]int{"/": 404, "/admin": 404, d.AdminPath: 200, "/healthz": 200, "/readyz": 503, "/v2/rooms": 503, "/v2/admin/setup": 200} {
+	for path, status := range map[string]int{"/": 200, "/admin": 404, d.AdminPath: 200, "/healthz": 200, "/readyz": 503, "/v2/rooms": 503, "/v2/admin/setup": 200} {
 		w := httptest.NewRecorder()
 		d.Handler().ServeHTTP(w, contractRequest("GET", path, nil))
 		if w.Code != status || w.Header().Get("Cache-Control") != "no-store" {

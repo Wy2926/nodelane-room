@@ -216,30 +216,79 @@ aside {
   inset: 0 auto 0 0;
   background: #fff;
   border-right: 1px solid #e3e9e3;
-  padding: 32px 20px;
+  padding: 26px 16px 20px;
   display: flex;
   flex-direction: column;
   z-index: 1;
 }
 aside .eyebrow {
-  margin: 50px 10px 16px;
+  margin: 14px 10px 5px;
 }
 nav {
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
-nav button {
+nav button,
+.main-navigation a {
   display: flex;
   gap: 13px;
   text-align: left;
   border-color: transparent;
-  padding: 11px 13px;
+  padding: 7px 12px;
   color: #708076;
 }
-nav button span {
+nav button span,
+.main-navigation a span {
   width: 18px;
   font-size: 17px;
+}
+.main-navigation {
+  overflow-y: auto;
+  margin-top: 8px;
+  gap: 0;
+  min-height: 0;
+}
+.nav-group {
+  display: grid;
+  gap: 2px;
+}
+.main-navigation a {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  min-height: 32px;
+  padding: 5px 10px;
+}
+.main-navigation a span {
+  font-size: 14px;
+  line-height: 18px;
+  width: 16px;
+}
+.main-navigation a:hover {
+  background: #f2f6f0;
+  color: #265f3c;
+}
+.page-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -12px 0 16px;
+}
+.sidebar-site {
+  color: #55735e;
+  font-size: 11px;
+  text-decoration: none;
+}
+.editor-panel {
+  padding: 18px;
+  border: 1px solid #e1e8e1;
+  border-radius: 9px;
+  margin-bottom: 22px;
+  background: #f8faf7;
 }
 nav .selected,
 .tabs .selected {
@@ -251,8 +300,28 @@ nav .selected,
 .sidebar-foot {
   margin-top: auto;
   display: grid;
-  gap: 15px;
-  padding: 25px 10px 0;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 10px 0;
+  flex-shrink: 0;
+}
+.sidebar-foot > .badge,
+.sidebar-foot > small {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.sidebar-foot > .sidebar-site {
+  grid-column: 1;
+  grid-row: 3;
+}
+.sidebar-foot > .action {
+  grid-column: 2;
+  grid-row: 3;
+}
+.sidebar-foot .action button {
+  padding: 5px 8px;
+  font-size: 11px;
 }
 main {
   margin-left: 222px;
@@ -739,7 +808,7 @@ details pre {
     border-bottom: 1px solid #e1e8dd;
   }
   aside .eyebrow {
-    display: none;
+    margin: 0 8px 5px;
   }
   .sidebar-foot {
     display: flex;
@@ -751,6 +820,30 @@ details pre {
     flex-direction: row;
     overflow: auto;
     margin-top: 15px;
+  }
+  .main-navigation {
+    align-items: stretch;
+    gap: 14px;
+    padding-bottom: 4px;
+  }
+  .nav-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 0 0 auto;
+    max-width: 360px;
+    padding-right: 12px;
+    border-right: 1px solid #e3e9e3;
+  }
+  .nav-group:last-child {
+    border-right: 0;
+  }
+  .nav-group .eyebrow {
+    width: 100%;
+  }
+  .main-navigation a {
+    padding: 6px 8px;
+    gap: 5px;
   }
   nav button {
     padding: 8px;

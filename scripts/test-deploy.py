@@ -139,13 +139,18 @@ def main():
             entry = command(compose + ["exec", "-T", "control", "nodelane-server", "admin", "path"]).stdout.strip()
             hidden.append(entry)
             def check_entry():
-                for path, expected in (("/", "404"), ("/admin", "404"), ("/admin/assets/app.js", "404"),
+                for path, expected in (("/", "200"), ("/product", "200"), ("/download", "200"), ("/help", "200"),
+                                       ("/about", "200"), ("/privacy", "200"), ("/terms", "200"),
+                                       ("/en", "200"), ("/en/product", "200"), ("/en/download", "200"), ("/en/help", "200"),
+                                       ("/en/about", "200"), ("/en/privacy", "200"), ("/en/terms", "200"),
+                                       ("/site-assets/site.css", "200"), ("/site-assets/", "404"),
+                                       ("/admin", "404"), ("/admin/assets/app.js", "404"),
                                        (entry, "200"), (entry + "/assets/app.js", "200"), (entry + "/assets/style.css", "200")):
                     response = command(compose + ["exec", "-T", "control", "curl", "--silent", "--output", "/dev/null",
                                                   "--write-out", "%{http_code} %{redirect_url}", "http://127.0.0.1:8080" + path]).stdout.strip()
-                    if response != expected: raise RuntimeError("private admin entry or public 404 boundary failed")
+                    if response != expected: raise RuntimeError("public site or private admin entry boundary failed")
             check_entry()
-            passed("single control starts without database URL or CA; setup page is reachable")
+            passed("single control starts without database URL or CA; public site and private setup page are reachable")
             trust = command(compose + ["exec", "-T", "edge", "cat", "/data/caddy/pki/authorities/local/root.crt"]).stdout
             command(compose + ["run", "--rm", "--no-deps", "-T", "--entrypoint", "sh", "-v", f"{run}_trust:/out",
                                "node", "-c", "cat > /out/root.crt"], stdin=trust)

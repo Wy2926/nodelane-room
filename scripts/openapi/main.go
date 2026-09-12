@@ -115,7 +115,7 @@ func run() error {
 	schema(reflect.TypeOf(model.RoomManagement{}))
 	schema(reflect.TypeOf(model.HeartbeatRequest{}))
 	schema(reflect.TypeOf(model.Status{}))
-	for _, v := range []any{model.UpdateOverview{}, model.UpdateCheck{}, model.UpdateRepository{}, model.ClientReport{}} {
+	for _, v := range []any{model.UpdateOverview{}, model.UpdateCheck{}, model.UpdateRepository{}, model.ClientReport{}, model.DownloadCatalog{}, model.DownloadLinks{}} {
 		schema(reflect.TypeOf(v))
 	}
 	schemes := components["securitySchemes"].(map[string]any)
@@ -175,6 +175,8 @@ func run() error {
 	add("/v2/me", "get", "Current account, distinct from the device and paid entitlements", "Bearer", nil, ref("User"), false)
 	add("/v2/client/report", "post", "Authenticated device service/GUI version and update result; independent of room membership", "Bearer", ref("ClientReport"), ok, true)
 	add("/v2/updates/check", "get", "Public update policy, signed TUF metadata and ordered HTTPS package URLs; no-store, 120/IP/minute", "", nil, ref("UpdateCheck"), false)
+	add("/v2/downloads", "get", "Public installer catalog: at most 50 releases per OS/architecture and 200 total, after matching current signed artifacts and enabled verified sources; grouped by platform, recommendation first then numeric version descending; no-store, shared 120/IP/minute", "", nil, ref("DownloadCatalog"), false)
+	add("/v2/downloads/{release}", "get", "Recheck current publication, signed metadata and verified source revisions before issuing ordered HTTPS download URLs; unavailable release returns 404; no-store, shared 120/IP/minute", "", nil, ref("DownloadLinks"), false)
 	paths["/v2/updates/check"].(M)["get"].(M)["parameters"] = []any{M{"name": "version", "in": "query", "required": true, "schema": str}, M{"name": "os", "in": "query", "required": true, "schema": M{"type": "string", "enum": []string{"windows", "linux"}}}, M{"name": "arch", "in": "query", "required": true, "schema": M{"type": "string", "enum": []string{"amd64", "arm64"}}}, M{"name": "installed", "in": "query", "schema": M{"type": "string", "enum": []string{"1"}}, "description": "Retrieve the exact installed release for a verified Linux rollback package; includes published and paused releases."}}
 	add("/v2/admin/updates", "get", "Update sources, latest 200 releases, policies, version distribution, latest 100 device/release results and 100 devices", "AdminCookie", nil, ref("UpdateOverview"), false)
 	paths["/v2/admin/updates"].(M)["get"].(M)["parameters"] = []any{M{"name": "after", "in": "query", "schema": str}}
@@ -247,7 +249,7 @@ func run() error {
 	add("/v2/admin/password", "post", "Change password and revoke every admin session", "AdminCookie", object(M{"current": str, "password": password}, "current", "password"), ok, false)
 	add("/v2/admin/snapshot", "get", "Current shared deployment, nodes, rooms, operations and recent audit snapshot", "AdminCookie", nil, ref("AdminSnapshot"), false)
 	add("/v2/admin/telemetry", "get", "Current instance memory only: 60-second observations, stale after 15 seconds; no durable cursor", "AdminCookie", nil, ref("TelemetrySnapshot"), false)
-	paths["/v2/admin/telemetry"].(M)["get"].(M)["description"] = "GeoIP is true only while a local MMDB is loaded. DB-IP City Lite is downloaded and refreshed automatically by default; lookups never send peer IPs to an external service. Failed updates retain the last valid cache. The browser entry is instance-local, randomly generated or configured with NODELANE_ADMIN_PATH, and available only through the local admin path command. GET / and /admin return 404 without redirects; API paths and authentication are unchanged."
+	paths["/v2/admin/telemetry"].(M)["get"].(M)["description"] = "GeoIP is true only while a local MMDB is loaded. DB-IP City Lite is downloaded and refreshed automatically by default; lookups never send peer IPs to an external service. Failed updates retain the last valid cache. The admin browser entry is instance-local, randomly generated or configured with NODELANE_ADMIN_PATH, and available only through the local admin path command. GET / serves the Chinese public website and GET /en serves the English website before and after initialization. Language switching preserves the current page. GET /admin returns 404 without redirects; the website does not disclose the admin entry. API paths and authentication are unchanged."
 	add("/v2/node/telemetry", "post", "Authenticated node observations; 128 peers per report, 5-second cadence, no persistence", "NodeBearer", ref("NetworkSample"), ok, false)
 	add("/v2/rooms/{room}/telemetry", "post", "Active member observations scoped to this room; no persistence or idempotency record", "Bearer", ref("NetworkSample"), ok, false)
 	add("/v2/admin/events", "get", "SSE full authoritative snapshots with durable event IDs; reconnect every five minutes", "AdminCookie", nil, ref("AdminSnapshot"), false)

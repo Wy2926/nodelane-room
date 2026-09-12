@@ -14,8 +14,8 @@ import (
 )
 
 //go:embed adminweb/dist
-var webFiles embed.FS
-var page, _ = webFiles.ReadFile("adminweb/dist/index.html")
+var adminWebFiles embed.FS
+var adminHTML, _ = adminWebFiles.ReadFile("adminweb/dist/index.html")
 
 var adminPathPattern = regexp.MustCompile(`^/[A-Za-z0-9_-]{16,128}$`)
 
@@ -55,7 +55,7 @@ func (s *Server) registerAdminWeb(mux *http.ServeMux) {
 	if !adminPathPattern.MatchString(s.AdminPath) {
 		return // Fail closed when no instance entry has been configured.
 	}
-	assets, _ := fs.Sub(webFiles, "adminweb/dist/assets")
+	assets, _ := fs.Sub(adminWebFiles, "adminweb/dist/assets")
 	prefix := s.AdminPath + "/assets/"
 	files := http.StripPrefix(prefix, http.FileServer(http.FS(assets)))
 	entries, _ := fs.ReadDir(assets, ".")
@@ -73,5 +73,5 @@ func (s *Server) adminPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(bytes.ReplaceAll(page, []byte(`"./assets/`), []byte(`"`+s.AdminPath+`/assets/`)))
+	_, _ = w.Write(bytes.ReplaceAll(adminHTML, []byte(`"./assets/`), []byte(`"`+s.AdminPath+`/assets/`)))
 }

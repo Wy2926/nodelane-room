@@ -126,6 +126,25 @@ type UpdateCheck struct {
 	Repository *UpdateRepository `json:"repository,omitempty"`
 }
 
+// DownloadRelease contains only the public installer details.
+type DownloadRelease struct {
+	UpdateArtifact
+	ID          string    `json:"id"`
+	Notes       string    `json:"notes"`
+	CreatedAt   time.Time `json:"created_at"`
+	Recommended bool      `json:"recommended"`
+}
+
+type DownloadCatalog struct {
+	ServerTime time.Time         `json:"server_time"`
+	Releases   []DownloadRelease `json:"releases"`
+}
+
+type DownloadLinks struct {
+	Release DownloadRelease `json:"release"`
+	URLs    []string        `json:"urls"`
+}
+
 type UpdateStatus struct {
 	State      string         `json:"state"`
 	ErrorCode  string         `json:"error_code,omitempty"`

@@ -1,0 +1,169 @@
+{{define "content"}}
+<section class="page-heading container">
+  <p class="eyebrow">DOWNLOAD / 下载</p>
+  <h1>准备好电脑，<br /><span>把朋友叫上。</span></h1>
+  <p class="lead">
+    为 Windows 和 Linux 提供桌面客户端。<br />选择适合自己系统的安装方式。
+  </p>
+</section>
+<section
+  id="releases"
+  class="container download-section"
+  data-downloads
+  aria-busy="true"
+>
+  <div class="notice">
+    <strong>可用客户端版本</strong>
+    <p data-download-status role="status">正在加载可用版本…</p>
+    <button
+      type="button"
+      class="button download-refresh"
+      data-download-refresh
+      hidden
+    >
+      刷新版本
+    </button>
+    <noscript><p>请启用 JavaScript，以加载版本列表并下载安装包。</p></noscript>
+  </div>
+  <div class="download-grid">
+    <article class="download-card" data-platform="windows">
+      <p class="eyebrow">DESKTOP / WINDOWS</p>
+      <h2>Windows</h2>
+      <p class="format">完整桌面安装包 <span>.exe</span></p>
+      <p>安装界面、游戏客户端与独立网络后台随完整包交付。</p>
+      <ul>
+        <li>使用与你的 Windows 架构匹配的安装包</li>
+        <li>安装及首次配置网卡需要管理员授权</li>
+        <li>系统需要可用的 WebView2 运行环境</li>
+      </ul>
+      <div class="download-options">
+        <label for="windows-architecture">处理器架构</label>
+        <select id="windows-architecture" data-architecture disabled>
+          <option value="amd64">x64 (AMD / Intel)</option>
+          <option value="arm64">ARM64</option>
+        </select>
+        <label for="windows-version">客户端版本</label>
+        <select id="windows-version" data-version disabled>
+          <option value="">正在加载可用版本…</option>
+        </select>
+      </div>
+      <details class="release-details" data-release-details hidden>
+        <summary>更新说明与文件信息</summary>
+        <p data-release-notes class="release-notes"></p>
+        <dl>
+          <dt>文件</dt>
+          <dd data-file-name></dd>
+          <dt>大小</dt>
+          <dd data-file-size></dd>
+          <dt>SHA-256</dt>
+          <dd><code data-file-hash></code></dd>
+        </dl>
+      </details>
+      <button
+        type="button"
+        class="button primary"
+        data-download-button
+        disabled
+      >
+        下载安装包
+      </button>
+      <p class="download-status" data-platform-status role="status"></p>
+      <div class="download-mirrors" data-download-mirrors></div>
+      <a
+        class="text-link"
+        href="https://github.com/Wy2926/nodelane-room#windows-客户端"
+        >安装与维护说明 →</a
+      >
+    </article>
+    <article class="download-card" data-platform="linux">
+      <p class="eyebrow">DESKTOP / LINUX</p>
+      <h2>Linux</h2>
+      <p class="format">Ubuntu / Debian <span>.deb</span></p>
+      <p>桌面客户端和网络后台一起安装，系统包管理器负责依赖。</p>
+      <ul>
+        <li>Ubuntu 22.04 / 24.04、Debian 12 / 13</li>
+        <li>首次安装后需要绑定实际使用的玩家账户</li>
+        <li>需要桌面环境及可用的 TUN/TAP 支持</li>
+      </ul>
+      <div class="download-options">
+        <label for="linux-architecture">处理器架构</label>
+        <select id="linux-architecture" data-architecture disabled>
+          <option value="amd64">x64 (AMD / Intel)</option>
+          <option value="arm64">ARM64</option>
+        </select>
+        <label for="linux-version">客户端版本</label>
+        <select id="linux-version" data-version disabled>
+          <option value="">正在加载可用版本…</option>
+        </select>
+      </div>
+      <details class="release-details" data-release-details hidden>
+        <summary>更新说明与文件信息</summary>
+        <p data-release-notes class="release-notes"></p>
+        <dl>
+          <dt>文件</dt>
+          <dd data-file-name></dd>
+          <dt>大小</dt>
+          <dd data-file-size></dd>
+          <dt>SHA-256</dt>
+          <dd><code data-file-hash></code></dd>
+        </dl>
+      </details>
+      <button type="button" class="button" data-download-button disabled>
+        下载安装包
+      </button>
+      <p class="download-status" data-platform-status role="status"></p>
+      <div class="download-mirrors" data-download-mirrors></div>
+      <a
+        class="text-link"
+        href="https://github.com/Wy2926/nodelane-room#linux-桌面与客户端开发"
+        >安装与维护说明 →</a
+      >
+    </article>
+  </div>
+</section>
+<section class="section container">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">BEFORE YOU INSTALL</p>
+      <h2>选对文件，顺利开始。</h2>
+    </div>
+  </div>
+  <div class="feature-grid">
+    <article>
+      <h3>核对版本与平台</h3>
+      <p>
+        根据发布说明选择完整桌面包。CLI
+        开发归档不包含图形界面；不要用节点程序代替玩家客户端。
+      </p>
+    </article>
+    <article>
+      <h3>保留设备身份</h3>
+      <p>
+        常规升级保留账号关联与设备身份。重新安装时使用完整包，并遵循对应平台的安装说明。
+      </p>
+    </article>
+    <article>
+      <h3>遇到问题先看诊断</h3>
+      <p>
+        客户端提供网络诊断入口。反馈时附上系统版本、客户端版本和错误码，有助于准确定位问题。
+      </p>
+    </article>
+  </div>
+</section>
+<section class="container resource-row">
+  <div>
+    <h2>开发者与自托管</h2>
+    <p>查看源码、构建步骤和控制服务部署指南。</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="https://github.com/Wy2926/nodelane-room#开发与构建"
+      >源码构建 ↗</a
+    ><a
+      class="text-link"
+      href="https://github.com/Wy2926/nodelane-room/blob/main/docs/deployment.md"
+      >部署文档 ↗</a
+    >
+  </div>
+</section>
+<script type="module" src="/site-assets/downloads.js"></script>
+{{end}}

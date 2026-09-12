@@ -96,8 +96,8 @@ func TestHTTPRouteBoundaries(t *testing.T) {
 		path   string
 		status int
 	}{
-		{"GET", "/", 404},
-		{"HEAD", "/", 404},
+		{"GET", "/", 200},
+		{"HEAD", "/", 200},
 		{"GET", "/admin", 404},
 		{"GET", "/admin/", 404},
 		{"GET", "/admin/assets/app.js", 404},

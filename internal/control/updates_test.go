@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -28,9 +30,8 @@ import (
 	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
 
-func updateFixture(t *testing.T, s *Store) model.UpdateRelease {
+func updateRepositoryFixture(t *testing.T, timestampExpires time.Time, additional ...model.UpdateArtifact) model.UpdateRepository {
 	t.Helper()
-	ctx := context.Background()
 	_, key, _ := ed25519.GenerateKey(nil)
 	signer, e := signature.LoadSigner(key, crypto.Hash(0))
 	must(t, e)
@@ -48,11 +49,15 @@ func updateFixture(t *testing.T, s *Store) model.UpdateRelease {
 	must(t, os.WriteFile(rootPath, rb, 0600))
 	t.Setenv("NODELANE_UPDATE_ROOT", rootPath)
 	targets := metadata.Targets(time.Now().Add(time.Hour))
-	tf, e := metadata.TargetFile().FromBytes("nlroom-9.0.0.exe", []byte("fixture"), "sha256")
-	must(t, e)
-	custom := json.RawMessage(`{"version":"9.0.0","os":"windows","arch":"amd64"}`)
-	tf.Custom = &custom
-	targets.Signed.Targets["nlroom-9.0.0.exe"] = tf
+	for _, a := range append([]model.UpdateArtifact{{Version: "9.0.0", OS: "windows", Arch: "amd64", Target: "nlroom-9.0.0.exe"}}, additional...) {
+		tf, e := metadata.TargetFile().FromBytes(a.Target, []byte("fixture"), "sha256")
+		must(t, e)
+		b, e := json.Marshal(a)
+		must(t, e)
+		custom := json.RawMessage(b)
+		tf.Custom = &custom
+		targets.Signed.Targets[a.Target] = tf
+	}
 	_, e = targets.Sign(signer)
 	must(t, e)
 	tb, e := targets.ToBytes(false)
@@ -63,13 +68,19 @@ func updateFixture(t *testing.T, s *Store) model.UpdateRelease {
 	must(t, e)
 	sb, e := snapshot.ToBytes(false)
 	must(t, e)
-	timestamp := metadata.Timestamp(time.Now().Add(time.Hour))
+	timestamp := metadata.Timestamp(timestampExpires)
 	timestamp.Signed.Meta["snapshot.json"] = metadata.MetaFile(1)
 	_, e = timestamp.Sign(signer)
 	must(t, e)
 	ts, e := timestamp.ToBytes(false)
 	must(t, e)
-	repo := model.UpdateRepository{Metadata: map[string]json.RawMessage{"root.json": rb, "1.root.json": rb, "targets.json": tb, "snapshot.json": sb, "timestamp.json": ts}}
+	return model.UpdateRepository{Metadata: map[string]json.RawMessage{"root.json": rb, "1.root.json": rb, "targets.json": tb, "snapshot.json": sb, "timestamp.json": ts}}
+}
+
+func updateFixture(t *testing.T, s *Store, additional ...model.UpdateArtifact) model.UpdateRelease {
+	t.Helper()
+	ctx := context.Background()
+	repo := updateRepositoryFixture(t, time.Now().Add(time.Hour), additional...)
 	var result model.UpdateRelease
 	must(t, s.Write(ctx, func(tx pgx.Tx) error {
 		if _, e := saveRepository(ctx, tx, "admin", repo); e != nil {
@@ -330,5 +341,267 @@ func TestS3CompatibleClientAndPrivateDownloadURL(t *testing.T) {
 	must(t, e)
 	if heads != 1 || puts != 1 || parsed.Query().Get("X-Amz-Expires") != "7200" || parsed.Query().Get("X-Amz-Signature") == "" || strings.Contains(u, src.SecretKey) {
 		t.Fatal("invalid S3 private download behavior")
+	}
+}
+
+func TestPublicDownloadsContractAndSetup(t *testing.T) {
+	for name, handler := range map[string]http.Handler{"server": (&Server{}).Handler(), "setup": (&Deployment{}).Handler()} {
+		for _, path := range []string{"/v2/downloads", "/v2/downloads/" + strings.Repeat("a", 32)} {
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, contractRequest("GET", path, nil))
+			var result model.Result
+			must(t, json.Unmarshal(w.Body.Bytes(), &result))
+			if w.Code != 503 || result.Code != "system_unavailable" || result.Contract != model.Contract || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("%s %s: %d %s", name, path, w.Code, w.Body.String())
+			}
+			w = httptest.NewRecorder()
+			handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+			must(t, json.Unmarshal(w.Body.Bytes(), &result))
+			if result.Code != "api_contract_unsupported" {
+				t.Fatalf("%s accepted missing contract", name)
+			}
+		}
+	}
+}
+
+func TestPublicDownloadsCatalogAndLinks(t *testing.T) {
+	s, ca := database(t)
+	release := updateFixture(t, s,
+		model.UpdateArtifact{Version: "9.2.0", OS: "windows", Arch: "amd64", Target: "nlroom-9.2.0.exe"},
+		model.UpdateArtifact{Version: "9.10.0", OS: "windows", Arch: "amd64", Target: "nlroom-9.10.0.exe"})
+	ctx := context.Background()
+	catalog, err := s.downloads(ctx)
+	must(t, err)
+	if len(catalog.Releases) != 1 || catalog.Releases[0].Recommended || catalog.ServerTime.IsZero() {
+		t.Fatal("published installer requires an update policy", catalog)
+	}
+	must(t, s.Write(ctx, func(tx pgx.Tx) error {
+		for _, target := range []string{"nlroom-9.2.0.exe", "nlroom-9.10.0.exe"} {
+			v, err := saveRelease(ctx, tx, "admin", model.UpdateRelease{UpdateArtifact: model.UpdateArtifact{Target: target}, State: "draft"})
+			if err != nil {
+				return err
+			}
+			r := v.(model.UpdateRelease)
+			if _, err = tx.Exec(ctx, "INSERT INTO update_replicas(release_id,source_id,verified_at,source_revision) SELECT $1,id,now(),revision FROM update_sources WHERE id=$2", r.ID, release.Sources[0]); err != nil {
+				return err
+			}
+			r.State = "published"
+			if _, err = saveRelease(ctx, tx, "admin", r); err != nil {
+				return err
+			}
+		}
+		_, err := savePolicy(ctx, tx, "admin", model.UpdatePolicy{OS: release.OS, Arch: release.Arch, ReleaseID: release.ID})
+		return err
+	}))
+	handler := (&Server{Store: s, CA: ca}).Handler()
+	get := func(path string, out any) []byte {
+		t.Helper()
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, contractRequest("GET", path, nil))
+		if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
+		}
+		b := responseData(t, w.Body.Bytes())
+		must(t, json.Unmarshal(b, out))
+		return b
+	}
+	b := get("/v2/downloads", &catalog)
+	if len(catalog.Releases) != 3 || catalog.Releases[0].Version != "9.0.0" || !catalog.Releases[0].Recommended || catalog.Releases[1].Version != "9.10.0" || catalog.Releases[2].Version != "9.2.0" {
+		t.Fatal("wrong recommendation or numeric version order", catalog)
+	}
+	for _, forbidden := range []string{"sources", "revision", "state", "metadata", "devices", "secret_key", "access_key", "https://"} {
+		if bytes.Contains(b, []byte(forbidden)) {
+			t.Fatalf("catalog exposes %s", forbidden)
+		}
+	}
+	var links model.DownloadLinks
+	get("/v2/downloads/"+release.ID, &links)
+	if links.Release.ID != release.ID || len(links.URLs) != 1 || links.URLs[0] != "https://updates.example.test/nlroom-9.0.0.exe" || links.Release.SHA256 != release.SHA256 {
+		t.Fatal("wrong installer or source URL", links)
+	}
+	t.Setenv("NODELANE_UPDATE_STORAGE_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	must(t, s.Write(ctx, func(tx pgx.Tx) error {
+		v, err := saveSource(ctx, tx, "admin", model.UpdateSource{Name: "private", Kind: "s3", Endpoint: "https://objects.example.test", Bucket: "packages", AccessKey: "fixture-access", SecretKey: "fixture-secret", Enabled: true, Priority: 1})
+		if err != nil {
+			return err
+		}
+		source := v.(model.UpdateSource)
+		_, err = tx.Exec(ctx, "INSERT INTO update_replicas(release_id,source_id,verified_at,source_revision) VALUES($1,$2,now(),$3)", release.ID, source.ID, source.Revision)
+		return err
+	}))
+	b = get("/v2/downloads", &catalog)
+	if bytes.Contains(b, []byte("objects.example.test")) || bytes.Contains(b, []byte("fixture-access")) {
+		t.Fatal("private storage configuration appeared in catalog")
+	}
+	get("/v2/downloads/"+release.ID, &links)
+	if len(links.URLs) != 2 || links.URLs[0] != "https://updates.example.test/nlroom-9.0.0.exe" {
+		t.Fatal("download source priority lost")
+	}
+	privateURL, err := url.Parse(links.URLs[1])
+	must(t, err)
+	if privateURL.Query().Get("X-Amz-Expires") != "7200" || privateURL.Query().Get("X-Amz-Signature") == "" || strings.Contains(links.URLs[1], "fixture-secret") {
+		t.Fatal("private installer URL was not safely presigned")
+	}
+	for _, id := range []string{"invalid", randomID()} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, contractRequest("GET", "/v2/downloads/"+id, nil))
+		if w.Code != 404 {
+			t.Fatalf("invalid installer %s: %d", id, w.Code)
+		}
+	}
+	for range 120 {
+		_ = s.Rate(ctx, "downloads:192.0.2.1", 120, time.Minute)
+	}
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, contractRequest("GET", "/v2/downloads/"+release.ID, nil))
+	if w.Code != 429 || w.Header().Get("Retry-After") != "60" {
+		t.Fatalf("downloads did not share IP rate limit: %d", w.Code)
+	}
+}
+
+func TestPublicDownloadsRecheckPublicationAndTrust(t *testing.T) {
+	for _, change := range []string{"draft", "paused", "withdrawn", "source-disabled", "source-revised", "replica-missing", "metadata-expired", "artifact-mismatch"} {
+		t.Run(change, func(t *testing.T) {
+			s, ca := database(t)
+			release := updateFixture(t, s)
+			ctx := context.Background()
+			links, err := s.downloadRelease(ctx, release.ID)
+			must(t, err)
+			if len(links.URLs) != 1 {
+				t.Fatal("published installer not downloadable")
+			}
+			must(t, s.Write(ctx, func(tx pgx.Tx) error {
+				switch change {
+				case "draft", "paused", "withdrawn":
+					release.State = change
+					_, err = saveRelease(ctx, tx, "admin", release)
+				case "source-disabled", "source-revised":
+					var source model.UpdateSource
+					source, err = readSource(ctx, tx, release.Sources[0], false)
+					if err != nil {
+						return err
+					}
+					if change == "source-disabled" {
+						source.Enabled = false
+					} else {
+						source.PublicURL = "https://replacement.example.test"
+					}
+					_, err = saveSource(ctx, tx, "admin", source)
+				case "replica-missing":
+					_, err = tx.Exec(ctx, "DELETE FROM update_replicas WHERE release_id=$1", release.ID)
+				case "metadata-expired":
+					repo := updateRepositoryFixture(t, time.Now().Add(-time.Minute))
+					var b []byte
+					b, err = json.Marshal(repo.Metadata)
+					if err == nil {
+						_, err = tx.Exec(ctx, "UPDATE update_repository SET metadata=$1 WHERE id=1", b)
+					}
+				case "artifact-mismatch":
+					_, err = tx.Exec(ctx, "UPDATE update_releases SET artifact=jsonb_set(artifact,'{sha256}',to_jsonb($2::text)) WHERE id=$1", release.ID, strings.Repeat("0", 64))
+				}
+				return err
+			}))
+			catalog, err := s.downloads(ctx)
+			must(t, err)
+			if len(catalog.Releases) != 0 {
+				t.Fatal("unavailable installer remained public", catalog)
+			}
+			w := httptest.NewRecorder()
+			(&Server{Store: s, CA: ca}).Handler().ServeHTTP(w, contractRequest("GET", "/v2/downloads/"+release.ID, nil))
+			var result model.Result
+			must(t, json.Unmarshal(w.Body.Bytes(), &result))
+			if w.Code != 404 || result.Code != "resource_not_found" || string(result.Data) != "null" {
+				t.Fatalf("stale download escaped recheck: %d %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestPublicDownloadsPlatformCapacity(t *testing.T) {
+	s, _ := database(t)
+	ctx := context.Background()
+	artifacts := []model.UpdateArtifact{}
+	for _, platform := range []struct {
+		os, arch string
+		count    int
+	}{{"linux", "amd64", 205}, {"linux", "arm64", 55}, {"windows", "amd64", 55}, {"windows", "arm64", 55}} {
+		for version := 1; version <= platform.count; version++ {
+			ext := ".exe"
+			if platform.os == "linux" {
+				ext = ".deb"
+			}
+			artifacts = append(artifacts, model.UpdateArtifact{Version: fmt.Sprintf("10.0.%d", version), OS: platform.os, Arch: platform.arch, Target: fmt.Sprintf("nlroom-%s-%s-%d%s", platform.os, platform.arch, version, ext)})
+		}
+	}
+	// These signed targets have invalid stored hashes; they must not consume the
+	// Windows ARM64 quota ahead of its lower-version, valid installers.
+	for version := 1; version <= 60; version++ {
+		artifacts = append(artifacts, model.UpdateArtifact{Version: fmt.Sprintf("99.0.%d", version), OS: "windows", Arch: "arm64", Target: fmt.Sprintf("mismatch-%d.exe", version)})
+	}
+	release := updateFixture(t, s, artifacts...)
+	// Unsigned newer targets must also be filtered before applying the quota.
+	for version := 1; version <= 60; version++ {
+		artifacts = append(artifacts, model.UpdateArtifact{Version: fmt.Sprintf("99.0.%d", version), OS: "windows", Arch: "amd64", Target: fmt.Sprintf("unsigned-%d.exe", version)})
+	}
+	oldest := ""
+	must(t, s.Write(ctx, func(tx pgx.Tx) error {
+		for _, a := range artifacts {
+			a.Size = int64(len("fixture"))
+			a.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("fixture")))
+			if strings.HasPrefix(a.Target, "mismatch-") {
+				a.SHA256 = strings.Repeat("0", 64)
+			}
+			b, err := json.Marshal(a)
+			if err != nil {
+				return err
+			}
+			id := randomID()
+			if oldest == "" {
+				oldest = id
+			}
+			if _, err = tx.Exec(ctx, "INSERT INTO update_releases(id,version,os,arch,artifact,notes,state) VALUES($1,$2,$3,$4,$5,'','published')", id, a.Version, a.OS, a.Arch, b); err != nil {
+				return err
+			}
+			if _, err = tx.Exec(ctx, "INSERT INTO update_replicas(release_id,source_id,verified_at,source_revision) SELECT $1,id,now(),revision FROM update_sources WHERE id=$2", id, release.Sources[0]); err != nil {
+				return err
+			}
+		}
+		_, err := savePolicy(ctx, tx, "admin", model.UpdatePolicy{OS: release.OS, Arch: release.Arch, ReleaseID: release.ID})
+		return err
+	}))
+	catalog, err := s.downloads(ctx)
+	must(t, err)
+	if len(catalog.Releases) != 200 {
+		t.Fatalf("catalog size %d, want 200", len(catalog.Releases))
+	}
+	counts := map[string]int{}
+	previous := map[string]model.DownloadRelease{}
+	foundRecommended := false
+	for _, r := range catalog.Releases {
+		platform := r.OS + "/" + r.Arch
+		counts[platform]++
+		if strings.HasPrefix(r.Target, "mismatch-") || strings.HasPrefix(r.Target, "unsigned-") {
+			t.Fatal("untrusted artifact used a platform quota", r.Target)
+		}
+		if last, ok := previous[platform]; ok && (r.Recommended || !last.Recommended && model.CompareVersion(last.Version, r.Version) < 0) {
+			t.Fatalf("wrong platform order: %s then %s", last.Version, r.Version)
+		}
+		previous[platform] = r
+		if r.ID == release.ID {
+			foundRecommended = r.Recommended && counts[platform] == 1
+		}
+	}
+	for _, platform := range []string{"windows/amd64", "windows/arm64", "linux/amd64", "linux/arm64"} {
+		if counts[platform] != 50 {
+			t.Fatalf("%s got %d entries, want 50", platform, counts[platform])
+		}
+	}
+	if !foundRecommended {
+		t.Fatal("busy Linux platform displaced the Windows recommendation")
+	}
+	links, err := s.downloadRelease(ctx, oldest)
+	must(t, err)
+	if links.Release.ID != oldest || len(links.URLs) != 1 {
+		t.Fatal("valid installer outside catalog quota lost its download")
 	}
 }

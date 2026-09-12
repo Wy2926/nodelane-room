@@ -243,6 +243,67 @@ components:
                 - state
                 - reported_at
             type: object
+        DownloadCatalog:
+            properties:
+                releases:
+                    items:
+                        $ref: '#/components/schemas/DownloadRelease'
+                    type: array
+                server_time:
+                    format: date-time
+                    type: string
+            required:
+                - server_time
+                - releases
+            type: object
+        DownloadLinks:
+            properties:
+                release:
+                    $ref: '#/components/schemas/DownloadRelease'
+                urls:
+                    items:
+                        type: string
+                    type: array
+            required:
+                - release
+                - urls
+            type: object
+        DownloadRelease:
+            properties:
+                arch:
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                id:
+                    type: string
+                notes:
+                    type: string
+                os:
+                    type: string
+                recommended:
+                    type: boolean
+                sha256:
+                    type: string
+                size:
+                    format: int64
+                    type: integer
+                target:
+                    type: string
+                version:
+                    type: string
+            required:
+                - version
+                - os
+                - arch
+                - target
+                - sha256
+                - size
+                - id
+                - notes
+                - created_at
+                - recommended
+            type: object
         Empty:
             additionalProperties: false
             properties: {}
@@ -3851,7 +3912,7 @@ paths:
                 - Admin
     /v2/admin/telemetry:
         get:
-            description: GeoIP is true only while a local MMDB is loaded. DB-IP City Lite is downloaded and refreshed automatically by default; lookups never send peer IPs to an external service. Failed updates retain the last valid cache. The browser entry is instance-local, randomly generated or configured with NODELANE_ADMIN_PATH, and available only through the local admin path command. GET / and /admin return 404 without redirects; API paths and authentication are unchanged.
+            description: GeoIP is true only while a local MMDB is loaded. DB-IP City Lite is downloaded and refreshed automatically by default; lookups never send peer IPs to an external service. Failed updates retain the last valid cache. The admin browser entry is instance-local, randomly generated or configured with NODELANE_ADMIN_PATH, and available only through the local admin path command. GET / serves the Chinese public website and GET /en serves the English website before and after initialization. Language switching preserves the current page. GET /admin returns 404 without redirects; the website does not disclose the admin entry. API paths and authentication are unchanged.
             parameters:
                 - in: header
                   name: X-NodeLane-Contract
@@ -5509,6 +5570,121 @@ paths:
             security:
                 - Bearer: []
             summary: Authenticated device service/GUI version and update result; independent of room membership
+            tags:
+                - Player
+    /v2/downloads:
+        get:
+            parameters:
+                - in: header
+                  name: X-NodeLane-Contract
+                  required: true
+                  schema:
+                    enum:
+                        - interaction-1
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: '#/components/schemas/Result'
+                                    - properties:
+                                        data:
+                                            $ref: '#/components/schemas/DownloadCatalog'
+                                      type: object
+                                x-interaction-envelope: true
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "404":
+                    $ref: '#/components/responses/Error'
+                "405":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "410":
+                    $ref: '#/components/responses/Error'
+                "413":
+                    $ref: '#/components/responses/Error'
+                "415":
+                    $ref: '#/components/responses/Error'
+                "422":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+                "500":
+                    $ref: '#/components/responses/Error'
+                "503":
+                    $ref: '#/components/responses/Error'
+                "504":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: 'Public installer catalog: at most 50 releases per OS/architecture and 200 total, after matching current signed artifacts and enabled verified sources; grouped by platform, recommendation first then numeric version descending; no-store, shared 120/IP/minute'
+            tags:
+                - Player
+    /v2/downloads/{release}:
+        get:
+            parameters:
+                - in: path
+                  name: release
+                  required: true
+                  schema:
+                    type: string
+                - in: header
+                  name: X-NodeLane-Contract
+                  required: true
+                  schema:
+                    enum:
+                        - interaction-1
+                    type: string
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: '#/components/schemas/Result'
+                                    - properties:
+                                        data:
+                                            $ref: '#/components/schemas/DownloadLinks'
+                                      type: object
+                                x-interaction-envelope: true
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "404":
+                    $ref: '#/components/responses/Error'
+                "405":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "410":
+                    $ref: '#/components/responses/Error'
+                "413":
+                    $ref: '#/components/responses/Error'
+                "415":
+                    $ref: '#/components/responses/Error'
+                "422":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+                "500":
+                    $ref: '#/components/responses/Error'
+                "503":
+                    $ref: '#/components/responses/Error'
+                "504":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: Recheck current publication, signed metadata and verified source revisions before issuing ordered HTTPS download URLs; unavailable release returns 404; no-store, shared 120/IP/minute
             tags:
                 - Player
     /v2/games:

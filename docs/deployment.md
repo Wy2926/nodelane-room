@@ -25,7 +25,7 @@ volumes:
   - ./geoip/GeoIP.mmdb:/opt/nodelane/geoip/GeoIP.mmdb:ro
 ```
 
-手动覆盖文件必须可由镜像 UID 10001 读取，且遵守对应数据库许可；指定无效文件会拒绝启动。Country 库只含国家，省州需 City 库。系统页面显示当前是否已加载可查询的库。
+手动覆盖文件必须可由镜像 UID 10001 读取，且遵守对应数据库许可；指定无效文件会拒绝启动。Country 库只含国家，省州需 City 库。“运行信息 → 部署信息”显示当前是否已加载可查询的库。
 
 源码目录本地构建后启动已有设施模板：
 
@@ -50,18 +50,39 @@ docker compose -f deploy/compose.host.yaml exec control nodelane-server admin bo
 
 反代须配置 HTTPS，保留原始 Host、Origin、Cookie、Authorization、X-CSRF-Token、Idempotency-Key、Last-Event-ID；关闭响应缓存和 SSE 缓冲，流超时至少 300 秒，公网拒绝 `/metrics`。代理存活检查使用 `/healthz`，使未初始化页面也可访问；`/readyz` 只在数据库配置和 CA 加载成功后返回 200。不要公开未加密控制端口。
 
-## 页面初始化
+## 官网与管理入口
 
-先在控制实例终端执行 `nodelane-server admin path`，用公网 HTTPS 域名加输出路径打开初始化页面。入口首次启动用 128 位随机值生成，保存在受保护的 `admin-path.bin`，保留状态卷即可在重建后继续使用。根路径、旧 `/admin` 及旧静态资源返回 404，无默认跳转；入口不出现在服务日志、公开 API 或快照中。管理员 API 仍在 `/v2/admin/*`，继续校验密码、Cookie、Origin 与 CSRF。
+公网域名默认展示中文官网：首页 `/`、产品 `/product`、下载 `/download`、帮助 `/help`、关于 `/about`、隐私 `/privacy` 和使用说明 `/terms`。英文首页为 `/en`，其余对应页面在路径前增加 `/en`，共 14 个页面入口；语言切换保留当前页面，站内导航沿用所选语言。两种语言共用 `/site-assets/*` 静态资源，并展示对应语言的应用截图。
+
+这些页面随控制程序嵌入，初始化前和数据库未就绪时仍可访问，不需要单独的 Node.js 服务。下载页通过公开 API 读取后台发布版本；未初始化时页面仍可打开，下载区域显示服务尚未就绪。反代将官网、资源及 `/v2/downloads`、`/v2/downloads/*` 交给同一控制服务，不缓存下载 API 响应；版本与下载源配置见 [官网下载](updates.md#官网下载)。
+
+两个下载 API 按控制服务看到的直连来源 IP 共享每分钟 120 次限额，不读取任意转发头作为客户端 IP；经过反代时会共享代理 IP 的配额。
+
+先在控制实例终端执行 `nodelane-server admin path`，用公网 HTTPS 域名加输出路径打开管理页面。入口首次启动用 128 位随机值生成，保存在受保护的 `admin-path.bin`，保留状态卷即可在重建后继续使用。旧 `/admin` 及旧静态资源返回 404，无默认跳转；管理入口不出现在官网、服务日志、公开 API 或快照中。管理员 API 仍在 `/v2/admin/*`，继续校验密码、Cookie、Origin 与 CSRF。
 
 可配置 `serve --admin-path /your-private-admin-entry` 或环境变量 `NODELANE_ADMIN_PATH`，格式为 `/` 加 16–128 位 ASCII 字母、数字、下划线或短横线。重建/重启后生效并持久化，旧入口随之失效；移除配置会继续使用已保存值。多实例可各用随机入口；同域负载均衡时需显式配置相同入口或按实例分配域名。使用自定义状态目录的查询命令也要传 `--state-dir`。
+
+## 管理操作划分
+
+管理台侧栏按职责分组，每页有独立的地址 hash；刷新、浏览器前进和后退保留页面位置。
+
+| 分组 | 页面与用途 |
+|---|---|
+| 工作空间 | 网络总览查看运行情况；节点管理处理部署和生命周期；房间与成员处理授权；用户管理处理账号及设备；游戏管理维护游戏目录与 LAN 规则 |
+| 发布中心 | 版本与安装包导入签名清单、创建草稿、上传校验及发布；设备版本查看分布、设备报告和安装结果 |
+| 系统设置 | 账号登录配置 OIDC；更新存储源维护下载和上传连接；更新规则设置推荐及最低版本；管理员密码修改登录凭据 |
+| 运行信息 | 部署信息只读展示公网地址、地址池、CA 和监控能力；操作记录查询管理员操作及结果 |
+
+用户和版本页面的日常操作与全局设置分开；同一设置在一个入口维护。账号登录设置见 [账号登录配置](#账号登录配置)，存储与版本规则见 [客户端更新](updates.md#存储源与更新管理)。
+
+## 页面初始化
 
 执行 `nodelane-server admin bootstrap` 获取 10 分钟初始化码；只保存码的哈希，不记录到服务日志。页面选择“创建控制面”，填写：
 
 | 配置 | 保存及用途 |
 |---|---|
 | 管理员账号、密码 | 创建唯一管理员，密码保存 Argon2id 哈希；密码 12–128 字节 |
-| PostgreSQL 连接串 | 页面填写，创建或验证当前 schema（版本 5）；初始连接串保存在数据库，实例私有目录自动保存启动定位副本 |
+| PostgreSQL 连接串 | 页面填写，创建或验证当前 schema（版本 6）；初始连接串保存在数据库，实例私有目录自动保存启动定位副本 |
 | 公网地址 | 例如 `room.nodelane.net`，自动补全 HTTPS；须与当前页面 origin 一致，用于管理授权及节点安装 |
 | 游戏地址池 | 默认 `10.203.0.0/16`，支持规范 IPv4 /16 至 /28；须避开 LAN、Docker、VPN |
 | 节点镜像仓库 | 默认 `docker.nodelane.net`，用于管理台生成的节点 Compose |
@@ -69,7 +90,7 @@ docker compose -f deploy/compose.host.yaml exec control nodelane-server admin bo
 
 连接串使用 `postgres://用户:密码@主机:5432/数据库?sslmode=disable` 形式，不包含 shell 引号。密码中的特殊字符须按 URL 编码。数据库主机是控制容器可解析的名称或地址；同一 Docker 网络可使用 PostgreSQL 容器名和内部端口，不能把容器内 localhost 当作宿主。`sslmode` 遵循数据库策略。
 
-初始化仅接受空 schema 或未使用且地址池一致的当前 schema（版本 5）；不迁移旧结构，不补建旧库的表；已有管理员、节点或旧 CA 的控制面不会被覆盖。数据库 schema、管理员、地址池、公网地址、仓库和 CA 在一个事务中提交。失败不会留下部分管理员或部分 CA；若本地连接已落盘而事务未提交，使用同一数据库重试。
+初始化仅接受空 schema 或未使用且地址池一致的当前 schema（版本 6）；不迁移旧结构，不补建旧库的表；已有管理员、节点或旧 CA 的控制面不会被覆盖。数据库 schema、管理员、地址池、公网地址、仓库和 CA 在一个事务中提交。失败不会留下部分管理员或部分 CA；若本地连接已落盘而事务未提交，使用同一数据库重试。
 
 CA 证书和私钥均保存在 PostgreSQL，控制实例按需加载，节点只能取得 CA 公钥证书。CA 和数据库密码不会出现在管理快照、事件或生成的节点 YAML 中。地址池和 CA 初始化后固定，本次不提供运行中更换。
 
@@ -190,7 +211,7 @@ CA 到期前 30/7/1 天查看管理台提醒，备份含 CA 的数据库、安�
 
 管理台“用户管理”提供按昵称或用户 ID 查询、访客/正式身份及账号状态、设备、会话和关联房间。限制/恢复创建房间、逻辑删除、撤销全部设备或单设备都要求操作原因并记录审计；删除保留外部身份关联。访客设备被撤销后无法凭昵称找回。
 
-同一页面配置一个 OIDC issuer、client ID、client secret 并启用。向 IdP 注册服务端客户端，允许 Authorization Code 与 PKCE S256，固定回调为 `<控制服务公网 origin>/v2/auth/oidc/callback`，scope 为 `openid profile`。生产 issuer 和回调使用 HTTPS，仅本机开发允许 loopback HTTP。secret 留空仅在 issuer 和 client ID 都不变时保留现值，不回显；配置变更使待完成登录失效。浏览器首次使用时会显示设备名称及标识，用户须确认自己发起的登录。IdP 不可用不会影响已获有效授权的访客，正式设备授权到期则须重新登录。
+在管理台“系统设置 → 账号登录”配置一个 OIDC issuer、client ID、client secret 并启用。向 IdP 注册服务端客户端，允许 Authorization Code 与 PKCE S256，固定回调为 `<控制服务公网 origin>/v2/auth/oidc/callback`，scope 为 `openid profile`。生产 issuer 和回调使用 HTTPS，仅本机开发允许 loopback HTTP。secret 留空仅在 issuer 和 client ID 都不变时保留现值，不回显；配置变更使待完成登录失效。浏览器首次使用时会显示设备名称及标识，用户须确认自己发起的登录。IdP 不可用不会影响已获有效授权的访客，正式设备授权到期则须重新登录。
 
 接入 `auth.nodelane.net` 的 Logto 时，在 Logto 控制台创建 [传统 Web 应用（Traditional Web）](https://docs.logto.io/quick-starts/traditional-web)。协议客户端是负责回调和令牌交换的控制服务。当前公开 [OpenID 配置](https://auth.nodelane.net/oidc/.well-known/openid-configuration) 的 issuer 为 `https://auth.nodelane.net/oidc`；将该值、Logto 的 App ID、App Secret 分别填写到本站管理台的 Issuer、Client ID、Client secret，勾选启用并保存，参数写入 PostgreSQL。授权、Token、JWKS 地址由 discovery 自动取得，无需逐项填写。Logto 的 Redirect URI 复制本站管理台显示的完整回调地址；例如控制服务位于 `https://room.nodelane.net` 时，填写 `https://room.nodelane.net/v2/auth/oidc/callback`。不需要为此次接入添加 Management API 权限。
 

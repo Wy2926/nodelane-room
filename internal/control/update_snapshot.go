@@ -7,7 +7,96 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/nodelane/nodelane-room/internal/model"
+	"github.com/nodelane/nodelane-room/internal/update"
 )
+
+func (s *Store) downloads(ctx context.Context) (model.DownloadCatalog, error) {
+	var out model.DownloadCatalog
+	err := s.Write(ctx, func(tx pgx.Tx) error {
+		var err error
+		out, err = readDownloads(ctx, tx, "")
+		return err
+	})
+	return out, err
+}
+
+func (s *Store) downloadRelease(ctx context.Context, id string) (model.DownloadLinks, error) {
+	var out model.DownloadLinks
+	err := s.Write(ctx, func(tx pgx.Tx) error {
+		catalog, err := readDownloads(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if len(catalog.Releases) == 0 {
+			return ErrNotFound
+		}
+		release, err := readRelease(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		out.Release = catalog.Releases[0]
+		out.URLs, err = releaseURLs(ctx, tx, release)
+		return err
+	})
+	return out, err
+}
+
+// The caller holds the shared update transaction lock while checking the current
+// publication, repository and verified source revisions and issuing any URLs.
+func readDownloads(ctx context.Context, tx pgx.Tx, id string) (model.DownloadCatalog, error) {
+	out := model.DownloadCatalog{Releases: []model.DownloadRelease{}}
+	if err := tx.QueryRow(ctx, "SELECT now()").Scan(&out.ServerTime); err != nil {
+		return out, err
+	}
+	repository, err := readRepository(ctx, tx)
+	if err != nil {
+		return out, err
+	}
+	root, err := controlUpdateRoot()
+	if err != nil {
+		return out, nil
+	}
+	verified, err := update.VerifyRepository(root, repository.Metadata, "")
+	if err != nil {
+		return out, nil
+	}
+	artifacts := []model.UpdateArtifact{}
+	for target := range verified.GetTopLevelTargets() {
+		artifact, err := update.Artifact(verified, target)
+		if err == nil {
+			artifacts = append(artifacts, artifact)
+		}
+	}
+	trusted, err := json.Marshal(artifacts)
+	if err != nil {
+		return out, err
+	}
+	// Match the full signed artifact before applying each platform's quota, so
+	// invalid targets and busy platforms cannot hide another platform's releases.
+	rows, err := tx.Query(ctx, `WITH eligible AS (
+		SELECT r.*,EXISTS(SELECT 1 FROM update_policies p WHERE p.release_id=r.id) AS recommended
+		FROM update_releases r JOIN jsonb_array_elements($2::jsonb) trusted(artifact) ON r.artifact=trusted.artifact
+		WHERE r.state='published' AND ($1='' OR r.id=$1) AND EXISTS(
+			SELECT 1 FROM update_replicas p JOIN update_sources s ON s.id=p.source_id
+			WHERE p.release_id=r.id AND p.source_revision=s.revision AND s.config->>'enabled'='true')),
+		ranked AS (SELECT *,row_number() OVER (PARTITION BY os,arch
+			ORDER BY recommended DESC,string_to_array(version,'.')::bigint[] DESC,created_at DESC,id) AS position FROM eligible)
+		SELECT id,artifact,notes,created_at,recommended FROM ranked WHERE position<=50
+		ORDER BY os,arch,position LIMIT 200`, id, trusted)
+	if err != nil {
+		return out, err
+	}
+	out.Releases, err = pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.DownloadRelease, error) {
+		var release model.DownloadRelease
+		var artifact []byte
+		err := row.Scan(&release.ID, &artifact, &release.Notes, &release.CreatedAt, &release.Recommended)
+		if err == nil {
+			err = json.Unmarshal(artifact, &release.UpdateArtifact)
+		}
+		return release, err
+	})
+	return out, err
+}
 
 func (s *Store) checkUpdate(ctx context.Context, version, osName, arch string, installed bool) (model.UpdateCheck, error) {
 	out := model.UpdateCheck{ServerTime: time.Now().UTC(), URLs: []string{}}

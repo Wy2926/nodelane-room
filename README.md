@@ -1,6 +1,6 @@
 # NodeLane Room V2
 
-**NodeLane**（`nodelane.net`）旗下游戏组网子产品，控制面 **0.3.0**、节点 **0.2.1**、客户端 **0.3.0**，API **/v2**。包含单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
+**NodeLane**（`nodelane.net`）旗下游戏组网子产品，控制面 **0.3.0**、节点 **0.2.1**、客户端 **0.3.0**，API **/v2**。包含公开官网、单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
 
 玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面设计见 [客户端设计](docs/client.md)，修改代码先用 [任务导航](docs/files.md#按任务读取) 定位。
 
@@ -10,9 +10,9 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 部署步骤单处维护于 [部署指南](docs/deployment.md)：启动控制实例及 HTTPS 反代 → 用实例初始化码配置数据库与 CA → 管理台创建节点并签发临时接入密钥 → 选择 [原生安装](docs/deployment.md#路径一curl-原生安装) 或 [Compose](docs/deployment.md#路径二compose--1panel) 完成登记。密钥不写入 YAML、环境变量或命令行参数。
 
-管理入口为随机私有路径，根路径和 `/admin` 返回 404。多实例接入同一 PostgreSQL 共享控制状态；配置、备份和日常节点命令均见部署指南。
+域名根路径默认打开中文官网，首页、产品、下载、帮助、关于、隐私和使用说明共 7 类页面均提供中英版本，共 14 个入口；语言切换保留当前页面。官网沿用桌面应用的暖白与珊瑚色风格并展示对应语言的应用截图，由 Go 随程序提供，初始化前也可访问。管理入口继续使用随机私有路径，`/admin` 返回 404；入口查询、管理操作划分与部署维护见 [部署指南](docs/deployment.md#官网与管理入口)。多实例接入同一 PostgreSQL 共享控制状态。
 
-客户端更新的签名发布、多源配置、强制规则和恢复流程见 [客户端更新](docs/updates.md)。控制面 0.3.0 与节点 0.2.1 双架构镜像已发布，摘要见 [镜像清单](deploy/IMAGES.txt)。客户端 0.3.0 的安装包构建与签名发布单独进行。
+官网下载页读取管理台发布的可用客户端版本，按系统和架构选择安装包；发布、存储源和推荐版本的对应关系见 [官网下载](docs/updates.md#官网下载)。客户端更新的签名发布、多源配置、强制规则和恢复流程见同一文档。控制面 0.3.0 与节点 0.2.1 双架构镜像已发布，摘要见 [镜像清单](deploy/IMAGES.txt)。客户端 0.3.0 的安装包构建与签名发布单独进行。
 
 ## Windows 客户端
 
@@ -133,7 +133,7 @@ CLI 使用 `account link` 或 `account login --server <origin> --name <昵称>` 
 
 ## 开发与构建
 
-管理台使用 React 19、TypeScript 和 Vite，Node.js 24 LTS 负责开发与构建，Go 同源提供编译后的页面与 API，生产环境无需运行 Node.js。前端位于 `internal/control/adminweb/`，依赖由 `package-lock.json` 锁定。Go 最低版本由 `go.mod` 声明，CI/容器使用 1.26.8。开发约束见 [AGENTS.md](AGENTS.md)。
+管理台使用 React 19、TypeScript 和 Vite，Node.js 24 LTS 负责开发与构建，Go 同源提供编译后的页面与 API，生产环境无需运行 Node.js。前端位于 `internal/control/adminweb/`，依赖由 `package-lock.json` 锁定。官网位于 `internal/control/siteweb/`，使用共享 Go HTML 模板和本地静态资源，随 Go 编译嵌入，无独立构建步骤。Go 最低版本由 `go.mod` 声明，CI/容器使用 1.26.8。开发约束见 [AGENTS.md](AGENTS.md)。
 
 ```sh
 npm --prefix internal/control/adminweb ci
@@ -149,7 +149,7 @@ bash scripts/build.sh
 
 `go test ./scripts/architecture` 单独检查跨平台包依赖和文件索引；索引检查覆盖 Git 已跟踪及未忽略的新文件，源码副本缺少 Git 元数据时跳过。约束见 [代码组织](docs/architecture.md#代码组织)。
 
-Go 编译前须构建前端，`go:embed` 嵌入 `internal/control/adminweb/dist/`；构建目录与 `node_modules` 不入库。发布脚本、源码 Dockerfile 与 CI 已自动执行此步骤。`npm --prefix internal/control/adminweb run dev` 启动 Vite；完整登录与初始化验收使用 Go 提供的随机管理入口，以满足已配置的同源 Origin。
+Go 编译前须构建前端，`go:embed` 嵌入 `internal/control/adminweb/dist/`；构建目录与 `node_modules` 不入库。发布脚本、源码 Dockerfile 与 CI 已自动执行此步骤。`npm --prefix internal/control/adminweb run dev` 启动 Vite，开发时可访问 `/preview.html` 查看使用演示数据的管理台；预览入口不进入生产构建。完整登录与初始化验收使用 Go 提供的随机管理入口，以满足已配置的同源 Origin。
 
 Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 

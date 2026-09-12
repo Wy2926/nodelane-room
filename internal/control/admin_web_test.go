@@ -52,7 +52,7 @@ func TestAdminPathPersistenceAndRotation(t *testing.T) {
 
 func TestAdminWebWithoutEntryFailsClosed(t *testing.T) {
 	h := (&Server{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}).Handler()
-	for _, path := range []string{"/", "/admin", "/admin/assets/app.js"} {
+	for _, path := range []string{"/admin", "/admin/assets/app.js"} {
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		if w.Code != 404 || w.Header().Get("Location") != "" {

@@ -1,0 +1,49 @@
+{{define "layout"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{.Description}}">
+  <meta name="theme-color" content="#fcfaf7">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="NodeLane Room">
+  <meta property="og:title" content="{{.Title}}">
+  <meta property="og:description" content="{{.Description}}">
+  <meta property="og:locale" content="{{if .English}}en_US{{else}}zh_CN{{end}}">
+  <title>{{.Title}}</title>
+  <link rel="alternate" hreflang="zh-CN" href="{{if .English}}{{.SwitchPath}}{{else}}{{.Path}}{{end}}">
+  <link rel="alternate" hreflang="en" href="{{if .English}}{{.Path}}{{else}}{{.SwitchPath}}{{end}}">
+  <link rel="alternate" hreflang="x-default" href="{{if .English}}{{.SwitchPath}}{{else}}{{.Path}}{{end}}">
+  <link rel="icon" type="image/png" href="/site-assets/brand-mark.png">
+  <link rel="stylesheet" href="/site-assets/site.css">
+</head>
+<body>
+  <a class="skip" href="#content">{{if .English}}Skip to main content{{else}}跳到主要内容{{end}}</a>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="{{if .English}}/en{{else}}/{{end}}" aria-label="{{if .English}}NodeLane Room home{{else}}NodeLane Room 官网首页{{end}}"><img src="/site-assets/brand-mark.png" width="38" height="38" alt=""><span>NodeLane <strong>Room</strong></span></a>
+      <nav class="desktop-nav" aria-label="{{if .English}}Main navigation{{else}}主导航{{end}}">
+        <a href="{{.Prefix}}/product" {{if eq .PagePath "/product"}}aria-current="page"{{end}}>{{if .English}}Product{{else}}产品{{end}}</a>
+        <a href="{{.Prefix}}/download" {{if eq .PagePath "/download"}}aria-current="page"{{end}}>{{if .English}}Download{{else}}下载{{end}}</a>
+        <a href="{{.Prefix}}/help" {{if eq .PagePath "/help"}}aria-current="page"{{end}}>{{if .English}}Help center{{else}}帮助中心{{end}}</a>
+        <a href="{{.Prefix}}/about" {{if eq .PagePath "/about"}}aria-current="page"{{end}}>{{if .English}}About us{{else}}关于我们{{end}}</a>
+      </nav>
+      <div class="header-actions">
+        <a class="language-switch" href="{{.SwitchPath}}" lang="{{if .English}}zh-CN{{else}}en{{end}}" aria-label="{{if .English}}切换为简体中文{{else}}Switch to English{{end}}">{{if .English}}中文{{else}}EN{{end}}</a>
+        <a class="button primary header-cta" href="{{.Prefix}}/download">{{if .English}}Get the app{{else}}获取客户端{{end}} <span aria-hidden="true">↗</span></a>
+        <details class="mobile-menu"><summary>{{if .English}}Menu{{else}}菜单{{end}}</summary><nav aria-label="{{if .English}}Mobile navigation{{else}}移动导航{{end}}"><a href="{{if .English}}/en{{else}}/{{end}}">{{if .English}}Home{{else}}首页{{end}}</a><a href="{{.Prefix}}/product">{{if .English}}Product{{else}}产品{{end}}</a><a href="{{.Prefix}}/download">{{if .English}}Download{{else}}下载客户端{{end}}</a><a href="{{.Prefix}}/help">{{if .English}}Help center{{else}}帮助中心{{end}}</a><a href="{{.Prefix}}/about">{{if .English}}About us{{else}}关于我们{{end}}</a></nav></details>
+      </div>
+    </div>
+  </header>
+  <main id="content">{{template "content" .}}</main>
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <div><a class="brand" href="{{if .English}}/en{{else}}/{{end}}"><img src="/site-assets/brand-mark.png" width="32" height="32" alt=""><span>NodeLane <strong>Room</strong></span></a><p>{{if .English}}Far apart. In the same room.<br>Built for LAN games with friends.{{else}}相隔再远，也能在同一个房间。<br>为朋友之间的局域网游戏而生。{{end}}</p></div>
+      <nav aria-label="{{if .English}}Product resources{{else}}产品资源{{end}}"><h2>{{if .English}}Product{{else}}产品{{end}}</h2><a href="{{.Prefix}}/product">{{if .English}}Features{{else}}功能与体验{{end}}</a><a href="{{.Prefix}}/download">{{if .English}}Download{{else}}下载客户端{{end}}</a><a href="{{.Prefix}}/download#releases">{{if .English}}Releases{{else}}版本发布{{end}}</a></nav>
+      <nav aria-label="{{if .English}}Support resources{{else}}支持资源{{end}}"><h2>{{if .English}}Support{{else}}支持{{end}}</h2><a href="{{.Prefix}}/help">{{if .English}}Help center{{else}}帮助中心{{end}}</a><a href="https://github.com/Wy2926/nodelane-room/issues">{{if .English}}Report an issue{{else}}问题反馈{{end}}</a><a href="https://github.com/Wy2926/nodelane-room/blob/main/docs/deployment.md">{{if .English}}Deployment guide{{else}}部署文档{{end}}</a></nav>
+      <nav aria-label="{{if .English}}About and information{{else}}关于与说明{{end}}"><h2>NodeLane</h2><a href="{{.Prefix}}/about">{{if .English}}About us{{else}}关于我们{{end}}</a><a href="{{.Prefix}}/privacy">{{if .English}}Privacy{{else}}隐私说明{{end}}</a><a href="{{.Prefix}}/terms">{{if .English}}Usage guidelines{{else}}使用说明{{end}}</a></nav>
+    </div>
+    <div class="container footer-bottom"><span>© 2026 NodeLane Room</span><span>{{if .English}}Get back to the joy of playing together.{{else}}让联机，回到一起玩的快乐。{{end}}</span><a href="https://github.com/Wy2926/nodelane-room">GitHub ↗</a></div>
+  </footer>
+</body>
+</html>{{end}}

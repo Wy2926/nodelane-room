@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"time"
@@ -10,6 +11,8 @@ import (
 )
 
 func (s *Server) registerUpdates(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v2/downloads", s.publicDownloads)
+	mux.HandleFunc("GET /v2/downloads/{release}", s.publicDownloads)
 	mux.HandleFunc("GET /v2/updates/check", s.publicUpdateCheck)
 	mux.HandleFunc("POST /v2/client/report", s.playerMutation(s.playerReportClient))
 	mux.HandleFunc("GET /v2/admin/updates", s.adminHandler(s.adminUpdates))
@@ -20,6 +23,31 @@ func (s *Server) registerUpdates(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /v2/admin/updates/policies", s.adminWrite(s.adminMutation(s.adminUpdatePolicy)))
 	mux.HandleFunc("PUT /v2/admin/updates/releases/{release}/sources/{source}", s.adminWrite(s.adminReplica))
 	mux.HandleFunc("POST /v2/admin/updates/releases/{release}/sources/{source}", s.adminWrite(s.adminReplica))
+}
+
+func (s *Server) publicDownloads(w http.ResponseWriter, r *http.Request) {
+	if s.Store == nil || s.Store.Pool == nil {
+		s.fail(w, model.Failure("system_unavailable"))
+		return
+	}
+	id := r.PathValue("release")
+	if id != "" && !validResourceID(id) {
+		s.fail(w, ErrNotFound)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.Store.Rate(ctx, "downloads:"+requestIP(r), 120, time.Minute); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if id != "" {
+		out, err := s.Store.downloadRelease(ctx, id)
+		s.result(w, out, err)
+		return
+	}
+	out, err := s.Store.downloads(ctx)
+	s.result(w, out, err)
 }
 
 func (s *Server) playerReportClient(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {

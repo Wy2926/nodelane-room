@@ -1,79 +1,26 @@
-import {
-  StrictMode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type FormEvent,
-} from "react";
+import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { makeAPI, watchAdmin, businessMessage } from "./api";
 import { PendingOperations } from "./operations";
 import { Auth } from "./auth";
-import {
-  Action,
-  Badge,
-  Card,
-  Details,
-  Field,
-  Modal,
-  Table,
-  date,
-} from "./components";
+import { Action, Badge, Card, Details, Modal, Table, date } from "./components";
 import { NodeEditor, NodePanel, NodeTable, states } from "./nodes";
 import { RoomPanel, RoomTable } from "./rooms";
-import { Users, OIDCSettings } from "./users";
+import { Users } from "./users";
+import { OIDCSettings, Password } from "./settings";
+import { Navigation, pages, useAdminPage } from "./navigation";
+import { UpdateSources } from "./update-sources";
+import { UpdatePolicies } from "./update-policies";
+import { UpdateDevices } from "./update-devices";
 import { Games } from "./games";
-import { Updates } from "./updates";
-import type { API, Room, Session, Snapshot, Telemetry } from "./types";
+import { Releases } from "./updates";
+import type { Room, Session, Snapshot, Telemetry } from "./types";
 import "./style.css";
 
-function Password({ api, done }: { api: API; done: () => void }) {
-  const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api("/password", Object.fromEntries(new FormData(e.currentTarget)));
-      done();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <form onSubmit={submit}>
-      <Field
-        label="当前密码"
-        type="password"
-        name="current"
-        autoComplete="current-password"
-        required
-      />
-      <Field
-        label="新密码（12–128 字节）"
-        type="password"
-        name="password"
-        autoComplete="new-password"
-        minLength={12}
-        maxLength={128}
-        required
-      />
-      <button className="primary" disabled={busy}>
-        保存新密码
-      </button>
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
-    </form>
-  );
-}
-function App() {
+export function App() {
+  const tab = useAdminPage();
+  const page = pages.find((page) => page.id === tab)!;
+  const monitored = ["overview", "nodes", "rooms"].includes(tab);
   const [session, setSession] = useState<Session>(),
     [restored, setRestored] = useState(false),
     [setup, setSetup] = useState(false),
@@ -82,12 +29,17 @@ function App() {
     [telemetry, setTelemetry] = useState<Telemetry>(),
     [received, setReceived] = useState(0),
     [tick, setTick] = useState(Date.now()),
-    [tab, setTab] = useState("overview"),
     [connection, setConnection] = useState("正在同步"),
     [monitorError, setMonitorError] = useState(""),
     [nodeID, setNodeID] = useState(""),
     [room, setRoom] = useState<Room>(),
     [addNode, setAddNode] = useState(false);
+  useEffect(() => {
+    setNodeID("");
+    setRoom(undefined);
+    setAddNode(false);
+    document.title = `${page.label} · NodeLane Room 管理台`;
+  }, [tab, page.label]);
   const signedOut = useCallback(() => {
     setSession(undefined);
     setData(undefined);
@@ -209,16 +161,6 @@ function App() {
   const names = new Map((data?.nodes || []).map((n) => [n.device_id, n.name]));
   const nodeDevices = new Set((data?.nodes || []).map((n) => n.device_id));
   const selectedNode = data?.nodes.find((n) => n.id === nodeID);
-  const tabs: Record<string, string> = {
-    users: "用户管理",
-    updates: "更新管理",
-    overview: "网络总览",
-    nodes: "节点管理",
-    rooms: "房间与成员",
-    games: "游戏管理",
-    events: "操作记录",
-    system: "系统设置",
-  };
   if (!restored)
     return <div className="loading">{message || "正在连接控制端…"}</div>;
   if (!session)
@@ -237,27 +179,17 @@ function App() {
   return (
     <div className="app">
       <aside>
-        <a className="brand" href={window.location.pathname}>
+        <a className="brand" href="#overview">
           <b>N</b>
           <span>
             NodeLane<small>ROOM CONTROL</small>
           </span>
         </a>
-        <p className="eyebrow">工作空间</p>
-        <nav aria-label="主导航">
-          {Object.entries(tabs).map(([key, label], i) => (
-            <button
-              key={key}
-              className={tab === key ? "selected" : ""}
-              aria-current={tab === key ? "page" : undefined}
-              onClick={() => setTab(key)}
-            >
-              <span>{["◎", "◈", "▤", "◫", "◇", "≡", "⚙"][i]}</span>
-              {label}
-            </button>
-          ))}
-        </nav>
+        <Navigation current={tab} />
         <div className="sidebar-foot">
+          <a className="sidebar-site" href="/">
+            访问官网 ↗
+          </a>
           <Badge kind={connection === "控制端已连接" ? "good" : "warn"}>
             {connection}
           </Badge>
@@ -280,28 +212,33 @@ function App() {
       </aside>
       <main>
         <PendingOperations api={api} refresh={refresh} />
-        {data?.truncated && Object.values(data.truncated).some(Boolean) && (
-          <p role="status">
-            部分列表仅显示最近记录；缺项不代表已删除或操作未执行，请按编号查询。
-          </p>
-        )}
+        {data?.truncated &&
+          ((["overview", "rooms"].includes(tab) && data.truncated.rooms) ||
+            (tab === "events" &&
+              (data.truncated.operations || data.truncated.events))) && (
+            <p role="status">
+              部分列表仅显示最近记录；缺项不代表已删除或操作未执行，请按编号查询。
+            </p>
+          )}
         <header>
           <div>
             <p className="eyebrow">NODELANE / CONTROL CENTER</p>
-            <h1>{tabs[tab]}</h1>
-            <p className="muted">实时掌握每一段连接。</p>
+            <h1>{page.label}</h1>
+            <p className="muted">{page.description}</p>
           </div>
-          <div className="header-status">
-            <Badge kind="good">内存窗口 · 60 秒</Badge>
-            <small>每 5 秒更新 · {date(telemetry?.server_time)}</small>
-          </div>
+          {monitored && (
+            <div className="header-status">
+              <Badge kind="good">内存窗口 · 60 秒</Badge>
+              <small>每 5 秒更新 · {date(telemetry?.server_time)}</small>
+            </div>
+          )}
         </header>
         {message && (
           <p className="error" role="alert">
             {message}
           </p>
         )}
-        {monitorError && (
+        {monitored && monitorError && (
           <p className="error" role="alert">
             监控读取失败：{monitorError}。过期样本将停止显示。
           </p>
@@ -387,13 +324,14 @@ function App() {
                 />
               </Card>
             )}
-            {tab === "users" && (
-              <>
-                <Users api={api} />
-                <OIDCSettings api={api} publicURL={data.public_url} />
-              </>
+            {tab === "users" && <Users api={api} />}
+            {tab === "oidc" && (
+              <OIDCSettings api={api} publicURL={data.public_url} />
             )}
-            {tab === "updates" && <Updates api={api} />}
+            {tab === "sources" && <UpdateSources api={api} />}
+            {tab === "policies" && <UpdatePolicies api={api} />}
+            {tab === "devices" && <UpdateDevices api={api} />}
+            {tab === "releases" && <Releases api={api} />}
             {tab === "games" && (
               <Games games={data.games} api={api} refresh={refresh} />
             )}
@@ -449,50 +387,52 @@ function App() {
                 </Card>
               </>
             )}
-            {tab === "system" && (
-              <>
-                <Card title="部署信息">
-                  <Details
-                    values={{
-                      版本: data.version,
-                      部署身份: data.deployment_id,
-                      公网地址: data.public_url,
-                      节点镜像仓库: data.registry,
-                      游戏地址池: data.network,
-                      "CA 到期": date(data.ca_expires_at),
-                      "GeoIP 数据库": telemetry?.geoip
-                        ? "已加载本地数据库"
-                        : "尚未就绪；自动下载成功后显示归属地",
-                      数据库: "PostgreSQL 共享控制状态",
-                      实时监控: "当前控制实例内存保留 60 秒，重启清空",
-                    }}
-                  />
-                  <p className="notice">
-                    多个控制实例各自持有接收到的监控样本；请通过固定实例查看完整窗口。公网
-                    IP 归属地由本地 GeoIP 数据库提供，IP 不发送给第三方服务。
-                  </p>
-                </Card>
-                <Card title="修改管理员密码">
-                  <Password
-                    api={api}
-                    done={() => {
-                      signedOut();
-                      setMessage("密码已修改，请重新登录。");
-                    }}
-                  />
-                </Card>
-              </>
+            {tab === "deployment" && (
+              <Card title="部署信息">
+                <Details
+                  values={{
+                    版本: data.version,
+                    部署身份: data.deployment_id,
+                    公网地址: data.public_url,
+                    节点镜像仓库: data.registry,
+                    游戏地址池: data.network,
+                    "CA 到期": date(data.ca_expires_at),
+                    "GeoIP 数据库": telemetry?.geoip
+                      ? "已加载本地数据库"
+                      : "尚未就绪；自动下载成功后显示归属地",
+                    数据库: "PostgreSQL 共享控制状态",
+                    实时监控: "当前控制实例内存保留 60 秒，重启清空",
+                  }}
+                />
+                <p className="notice">
+                  多个控制实例各自持有接收到的监控样本；请通过固定实例查看完整窗口。公网
+                  IP 归属地由本地 GeoIP 数据库提供，IP 不发送给第三方服务。
+                </p>
+              </Card>
+            )}
+            {tab === "password" && (
+              <Card title="修改管理员密码">
+                <Password
+                  api={api}
+                  done={() => {
+                    signedOut();
+                    setMessage("密码已修改，请重新登录。");
+                  }}
+                />
+              </Card>
             )}
             {Date.parse(data.ca_expires_at) - now < 30 * 86400000 && (
               <p className="notice">Nebula CA 将在 30 天内到期，请安排维护。</p>
             )}
-            <footer>
-              — 表示缺少有效采样。连接类型来自 Nebula
-              隧道，延迟与丢包来自实际探测。
-              {!telemetry?.geoip
-                ? " IP 归属库尚未就绪，自动下载成功后显示。"
-                : ""}
-            </footer>
+            {monitored && (
+              <footer>
+                — 表示缺少有效采样。连接类型来自 Nebula
+                隧道，延迟与丢包来自实际探测。
+                {!telemetry?.geoip
+                  ? " IP 归属库尚未就绪，自动下载成功后显示。"
+                  : ""}
+              </footer>
+            )}
           </>
         )}
         {selectedNode && data && (
@@ -536,8 +476,10 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+const root = document.getElementById("root");
+if (root)
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
