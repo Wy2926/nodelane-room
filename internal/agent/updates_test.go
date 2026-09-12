@@ -14,6 +14,7 @@ import (
 
 	"github.com/nodelane/nodelane-room/internal/client"
 	"github.com/nodelane/nodelane-room/internal/device"
+	"github.com/nodelane/nodelane-room/internal/localapi"
 	"github.com/nodelane/nodelane-room/internal/model"
 )
 
@@ -81,5 +82,59 @@ func TestVersionReportWithoutRoomAndOnGUIChange(t *testing.T) {
 	}
 	if got := <-reports; got.GUIVersion != model.ClientVersion {
 		t.Fatalf("wrong GUI version %+v", got)
+	}
+}
+
+func TestUpdateConsentAndCancellation(t *testing.T) {
+	r := &Runtime{updateWake: make(chan struct{}, 1), updateState: model.UpdateStatus{State: "available", Release: &model.UpdateRelease{ID: "release1"}}}
+	if _, err := r.updateAction(context.Background(), localapi.Request{Action: "update-download", Target: "stale"}); err == nil {
+		t.Fatal("accepted a different release")
+	}
+	if _, err := r.updateAction(context.Background(), localapi.Request{Action: "update-download", Target: "release1"}); err != nil {
+		t.Fatal(err)
+	}
+	if r.updateRequested != "release1" {
+		t.Fatal("missing explicit consent")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.updateCancel = cancel
+	r.updateState.State = "downloading"
+	if _, err := r.updateAction(context.Background(), localapi.Request{Action: "update-cancel"}); err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Err() == nil || r.updateRequested != "" {
+		t.Fatal("download or installation consent survived cancellation")
+	}
+	if _, err := r.updateAction(context.Background(), localapi.Request{Action: "update-install"}); err == nil {
+		t.Fatal("unverified download was installable")
+	}
+}
+
+func TestUpdateCancelStopsInFlightRequest(t *testing.T) {
+	started := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		close(started)
+		<-req.Context().Done()
+	}))
+	defer srv.Close()
+	r := &Runtime{identity: device.Identity{Server: srv.URL}, updateState: model.UpdateStatus{State: "checking"}}
+	done := make(chan struct{})
+	go func() { defer close(done); r.updateStep(context.Background()) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("check did not start")
+	}
+	if _, err := r.updateAction(context.Background(), localapi.Request{Action: "update-cancel"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancel did not stop network request")
+	}
+	if s := r.updateStatus(); s.State != "available" || s.ErrorCode != "" {
+		t.Fatalf("cancel reported failure: %+v", s)
 	}
 }

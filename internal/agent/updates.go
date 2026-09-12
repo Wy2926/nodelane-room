@@ -51,6 +51,20 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	if r.nodeMode {
 		return
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	r.updateMu.Lock()
+	r.updateCancel = cancel
+	r.updateMu.Unlock()
+	defer func() {
+		r.updateMu.Lock()
+		if ctx.Err() != nil && r.updateState.State != "installing" {
+			r.updateState.State, r.updateState.ErrorCode = "available", ""
+		}
+		r.updateCancel = nil
+		r.updateRequested = ""
+		r.updateMu.Unlock()
+		cancel()
+	}()
 	r.op.Lock()
 	server := r.identity.Server
 	r.op.Unlock()
@@ -109,8 +123,9 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	previousStatus := r.updateStatus()
 	r.updateMu.Lock()
 	r.updateState.Release = check.Release
+	requested := r.updateRequested == check.Release.ID
 	r.updateMu.Unlock()
-	if job, e := update.LoadJob(r.dir); e == nil && job.Release.ID == check.Release.ID && (job.State == "failed" || job.State == "rolled_back") && previousStatus.State != "checking" {
+	if job, e := update.LoadJob(r.dir); e == nil && job.Release.ID == check.Release.ID && (job.State == "failed" || job.State == "rolled_back") && !requested && previousStatus.State != "checking" {
 		return
 	}
 	root, err := update.TrustedRoot()
@@ -139,6 +154,13 @@ func (r *Runtime) updateStep(ctx context.Context) {
 	a, err := update.Artifact(u, check.Release.Target)
 	if err != nil || a != check.Release.UpdateArtifact || a.OS != runtime.GOOS || a.Arch != runtime.GOARCH || model.CompareVersion(a.Version, model.ClientVersion) <= 0 {
 		r.setUpdateState("failed", "local_update_package_invalid")
+		return
+	}
+	if !requested {
+		if previousStatus.State == "ready" && previousStatus.Release != nil && previousStatus.Release.ID == check.Release.ID {
+			return
+		}
+		r.setUpdateState("available", "")
 		return
 	}
 	keep := []model.UpdateArtifact{a}
@@ -201,19 +223,14 @@ func (r *Runtime) updateStep(ctx context.Context) {
 		r.setUpdateState("failed", "local_update_release_changed")
 		return
 	}
+	if ctx.Err() != nil {
+		return
+	}
 	if err = update.SaveJob(r.dir, job); err != nil {
 		r.setUpdateState("failed", "local_update_storage_failed")
 		return
 	}
 	r.setUpdateState("ready", "")
-	if runtime.GOOS == "linux" && update.SupportedInstall(r.dir) {
-		r.op.Lock()
-		idle := r.identity.RoomID == ""
-		r.op.Unlock()
-		if idle || requiredLocally(check.Policy) {
-			_, _ = r.installUpdate(ctx)
-		}
-	}
 }
 
 func (r *Runtime) fetchUpdate(ctx context.Context, server string, installed bool) (model.UpdateCheck, error) {
@@ -282,6 +299,38 @@ func (r *Runtime) installUpdate(ctx context.Context) (any, error) {
 
 func (r *Runtime) updateAction(ctx context.Context, in localapi.Request) (any, error) {
 	if in.Action == "update-status" {
+		return r.updateStatus(), nil
+	}
+	if in.Action == "update-cancel" {
+		r.updateMu.Lock()
+		r.updateRequested = ""
+		if r.updateCancel != nil {
+			r.updateCancel()
+		}
+		r.updateMu.Unlock()
+		return r.updateStatus(), nil
+	}
+	if in.Action == "update-download" {
+		r.updateMu.Lock()
+		if r.updateState.Release == nil || in.Target != r.updateState.Release.ID || r.updateState.State == "installing" {
+			r.updateMu.Unlock()
+			return nil, localapi.Failure("local_update_not_ready", "update is not ready")
+		}
+		if r.updateState.State == "downloading" || r.updateRequested != "" {
+			r.updateMu.Unlock()
+			return r.updateStatus(), nil
+		}
+		if r.updateCancel != nil {
+			r.updateMu.Unlock()
+			return nil, localapi.Failure("local_busy", "update check is still running")
+		}
+		r.updateRequested = in.Target
+		r.updateState.State, r.updateState.ErrorCode, r.updateState.Downloaded = "checking", "", 0
+		r.updateMu.Unlock()
+		select {
+		case r.updateWake <- struct{}{}:
+		default:
+		}
 		return r.updateStatus(), nil
 	}
 	if in.Action == "update-install" {

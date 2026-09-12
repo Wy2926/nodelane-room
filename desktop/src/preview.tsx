@@ -5,62 +5,55 @@ import { clientVersion } from "./native/api";
 import { App } from "./app/App";
 import type { Game, Request, Room, Status } from "./shared/model";
 import "./styles/index.css";
-import { t, useLanguage, setLanguage } from "./i18n";
+import { t, useLanguage, setLanguage, languageStorageKey } from "./i18n";
 
 if (!import.meta.env.DEV)
   throw new Error("UI preview is only available in development");
 const scenario = new URLSearchParams(location.search).get("state");
-setLanguage(
-  new URLSearchParams(location.search).get("lang") === "en-US"
-    ? "en-US"
-    : "zh-CN",
-);
+if (scenario === "language") localStorage.removeItem(languageStorageKey);
+else
+  setLanguage(
+    new URLSearchParams(location.search).get("lang") === "en-US"
+      ? "en-US"
+      : "zh-CN",
+  );
 const games: Game[] = [
-  [
-    "892970",
-    "英灵神殿",
-    "穿过迷雾，驶向未知的海岸。与朋友建造家园，探索属于你们的北欧世界。",
-  ],
-  [
-    "413150",
-    "星露谷物语",
-    "把平凡的日子过成喜欢的样子。耕种、垂钓，与朋友分享农场的每一个季节。",
-  ],
-  [
-    "105600",
-    "泰拉瑞亚",
-    "挖掘，战斗，探索，建造。和朋友一起发现地下世界的无限可能。",
-  ],
-  [
-    "322330",
-    "饥荒联机版",
-    "夜幕将至，篝火已燃起。与伙伴一起，在奇妙而危险的荒野中生存。",
-  ],
-  ["108600", "僵尸毁灭工程", "集结伙伴，寻找物资，建立你们的生存据点。"],
-  ["custom", "通用游戏", "使用服务端配置的游戏规则。"],
-].map(([id, name, summary]) => ({
-  network: { version: 1, broadcast: true, multicast: true, ethernet_types: [] },
-  id,
-  name,
-  summary,
-  enabled: true,
-  revision: 1,
-  source_url: "",
-  cover_url: id === "custom" ? "" : "preview",
-  background_url: id === "custom" ? "" : "preview",
-  ports: id === "custom" ? [] : [{ protocol: "udp", port: 2456 }],
-}));
-const owned = [
-  makeRoom("周末的冒险小队", games[2]),
-  makeRoom("今天也要种地", games[1]),
+  {
+    id: "custom",
+    name: "通用房间",
+    summary: "和朋友一起玩。",
+    network: {
+      version: 1,
+      broadcast: true,
+      multicast: true,
+      ethernet_types: [],
+    },
+    enabled: true,
+    revision: 1,
+    source_url: "",
+    cover_url: "",
+    background_url: "",
+    ports: [
+      { protocol: "tcp", port: 1, port_end: 65535 },
+      { protocol: "udp", port: 1, port_end: 65535 },
+    ],
+  },
 ];
-let game = games[2];
+const owned = [
+  makeRoom("周末的冒险小队", games[0]),
+  makeRoom("今晚一起玩", games[0]),
+];
+let game = games[0];
 let room: Room | undefined = ["room", "metrics"].includes(scenario || "")
   ? owned[0]
   : undefined;
 let connected = !!room;
-let initialized = scenario !== "setup";
+let initialized = !["setup", "login", "language"].includes(scenario || "");
+let updateState = scenario === "update" ? "available" : "idle";
+let updateStarted = 0;
 let autoStart = false;
+let playerName = "旅人";
+let loginState = scenario === "login" ? "waiting" : "none";
 function makeRoom(name: string, selected: Game): Room {
   return {
     id: crypto.randomUUID(),
@@ -82,19 +75,25 @@ function status(): Status {
       scenario === "restricted"
         ? { allowed: false, reason: "account_disabled" }
         : { allowed: true },
-    user: initialized
-      ? {
-          id: "preview-user",
-          name: "旅人",
-          kind: "guest",
-          state: scenario === "restricted" ? "disabled" : "active",
-          created_at: new Date().toISOString(),
-        }
-      : undefined,
+    user:
+      initialized && scenario !== "signed-out"
+        ? {
+            id: "preview-user",
+            name: playerName,
+            kind: scenario === "account" ? "registered" : "guest",
+            state: scenario === "restricted" ? "disabled" : "active",
+            created_at: new Date().toISOString(),
+          }
+        : undefined,
     service_instance_id: "preview",
     status_seq: ++statusSequence,
     service: "ready",
-    identity: initialized ? "active" : "unconfigured",
+    identity:
+      scenario === "signed-out"
+        ? "signed_out"
+        : initialized
+          ? "active"
+          : "unconfigured",
     operation: "idle",
     membership: {
       state: connected ? "active" : "none",
@@ -125,7 +124,7 @@ function status(): Status {
     protocol_version: 3,
     lan_version: 1,
     server: "https://room.nodelane.net",
-    name: "旅人",
+    name: playerName,
     device_id: initialized ? "preview-player" : "",
     control: "online",
     engine: measured ? "running" : "stopped",
@@ -151,7 +150,7 @@ function status(): Status {
           {
             device_id: "preview-player",
             user_id: "preview-user",
-            name: "旅人",
+            name: playerName,
             ip: "10.203.0.2",
             last_seen: new Date().toISOString(),
           },
@@ -188,8 +187,6 @@ mockIPC(
     if (command === "plugin:window|is_maximized") return false;
     if (command.startsWith("plugin:window|"))
       throw { code: "preview", error: "窗口控制仅在桌面应用中生效。" };
-    if (command === "game_image")
-      return `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${payload?.game}/${payload?.kind === "background" ? "library_hero.jpg" : "library_600x900.jpg"}`;
     if (command === "plugin:autostart|is_enabled") return autoStart;
     if (command === "plugin:autostart|enable") {
       autoStart = true;
@@ -213,11 +210,12 @@ mockIPC(
         throw { code: "local_service_unavailable", error: "预览服务故障" };
       switch (request.action) {
         case "account-poll":
-          return { state: "none" };
+          return { state: loginState };
         case "status":
           return status();
         case "init":
           initialized = true;
+          playerName = request.name || playerName;
           return {};
         case "games":
           return games;
@@ -287,10 +285,33 @@ mockIPC(
         case "account-status":
           return { user: status().user, room_creation: status().room_creation };
         case "account-devices":
-          return [];
+          return [
+            { device_id: "preview-player", name: "我的电脑", revoked: false },
+            { device_id: "preview-laptop", name: "游戏笔记本", revoked: false },
+            { device_id: "preview-old", name: "旧电脑", revoked: true },
+          ];
+        case "account-login":
+        case "account-link":
+          loginState = "waiting";
+          return {};
+        case "account-cancel":
+          loginState = "none";
+          return {};
         case "update-status":
         case "update-check":
-          return { state: "idle", required: false };
+          if (updateState === "downloading" && Date.now() - updateStarted >= 15000) updateState = "ready";
+          return { state: updateState, required: false, downloaded: updateState === "downloading" ? Math.min(125829120, Math.floor((Date.now() - updateStarted) / 15000 * 125829120)) : 0,
+            release: scenario === "update" ? { id: "preview-release", version: "0.4.0", size: 125829120, notes: "改进房间连接体验\n优化网络稳定性，修复已知问题。" } : undefined };
+        case "update-download":
+          updateState = "downloading";
+          updateStarted = Date.now();
+          return {};
+        case "update-cancel":
+          updateState = "available";
+          return {};
+        case "update-install":
+          updateState = "installing";
+          return {};
         case "network-stop":
         case "network-retry":
           return {};

@@ -163,6 +163,8 @@ export type Action =
   | "update-check"
   | "update-status"
   | "update-install"
+  | "update-download"
+  | "update-cancel"
   | "account-login"
   | "account-link"
   | "account-poll"

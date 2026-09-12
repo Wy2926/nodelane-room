@@ -80,14 +80,15 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
   src/ 客户端界面、样式与本机调用
     assets/ 新界面静态素材
       brand-mark.png 从选定设计提取的珊瑚色品牌图形
+      generic-room.png 暖白珊瑚色双手柄通用房间封面
     main.tsx 正式客户端挂载
     preview.tsx 独立开发预览夹具，模拟交互并明确无真实网络
     test-setup.ts DOM 测试环境与对话框模拟
     app/ 应用编排与系统导航
       App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
-      App.test.tsx 房间流程、诊断实测与脱敏、离线设置和本机更新错误测试
+      App.test.tsx 房间置顶、首次语言、诊断自动刷新与旧回复隔离及离线设置测试
       RenderBoundary.tsx 页面渲染故障隔离与恢复入口
-      Shell.tsx 常驻顶栏与底栏、独立滚动内容、个人资料菜单及关闭窗口
+      Shell.tsx 客户端版本顶栏、常规三段与全窗口引导布局、个人菜单和关闭窗口
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
       OperationFeedback.tsx 页面与弹窗共用的接管、未决查询和执行进度
@@ -98,7 +99,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       use-actions.test.ts 未决写互斥、接管子步骤与跨服务实例旧回复测试
     i18n/ 客户端语言选择与翻译
       index.ts 语言偏好持久化、订阅与字典插值
-      LanguageSelection.tsx 沿用三段窗口布局的首次语言选择界面
+      LanguageSelection.tsx 全窗口首次语言选择与偏好保存
       i18n.test.ts 字典键、插值、日期与源码文案边界检查
       locales/ 按语言独立维护的界面及原生文案
         zh-CN.json 简体中文客户端字典
@@ -125,31 +126,31 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         PortList.tsx 授权端口列表
     features/ 按玩家流程组织的页面
       catalog/ 服务端游戏目录与本机游戏图片
-        Artwork.tsx 本机游戏封面展示与缺图状态
+        Artwork.tsx 本地通用房间封面、本机游戏图片与缺图状态
         artwork-loader.ts 有界图像请求和缓存
         use-catalog.ts 目录、管理房间与陈旧状态加载
       rooms/ 联机房间与成员
-        RoomPage.tsx 房间列表、入房侧栏、建房限制与详情导航
-        RoomHero.tsx 房间标题、主要动作与连接状态
+        RoomPage.tsx 当前房间置顶列表、入房侧栏、满宽封面与详情导航
+        RoomHero.tsx 封面下方的房间标题、主要动作与连接状态
         Members.tsx 对齐成员表、虚拟 IP、最近 30 秒实测与管理菜单
         Connection.tsx LAN 就绪、游戏连接说明与后端只读配置
         use-room.ts 当前房间、管理快照与新鲜度判断
         dialogs/ 房间交互弹窗
           types.ts 弹窗状态类型
           RoomDialogs.tsx 房间弹窗调度与错误反馈
-          CreateRoom.tsx 游戏选择、房间名称与建房许可表单
+          CreateRoom.tsx 固定通用房间、名称与服务端建房许可表单
           Invitation.tsx 临时邀请码及复制
           Confirmation.tsx 权限操作和离房退出确认
       device/ 初始化与桌面偏好
-        Updates.tsx 本机更新状态、进度与安装确认
-        Updates.test.tsx 强制下载状态与安装确认边界测试
-        Setup.tsx 固定线上控制端、访客昵称与首次使用
-        Account.tsx 访客绑定、浏览器登录、设备切换与退出账号
+        Updates.tsx 版本页面、启动更新提示、跳过版本、下载进度与取消及自动安装
+        Updates.test.tsx 启动提示、跳过持久化、下载取消与自动安装及离线展示测试
+        Setup.tsx 简洁登录主入口、次级访客昵称与首次使用
+        Account.tsx 账号资料、共用登录操作与授权设备管理
         use-account.ts 登录能力、事务与账号设备查询
         use-account.test.ts 身份切换与旧登录回复回归
-        Settings.tsx 分类偏好、设备信息与本机更新入口
+        Settings.tsx 独立账号分类、桌面偏好、设备信息与本机更新入口
       diagnostics/ 真实网络诊断
-        Diagnostics.tsx 连接与授权状态、本机系统检查
+        Diagnostics.tsx 连接与授权状态、进入页面自动执行本机系统检查
   src-tauri/ 原生窗口、托盘与受限本机 IPC 桥接
     Cargo.toml 原生依赖与程序信息
     Cargo.lock Rust 精确依赖锁定
@@ -204,7 +205,7 @@ internal/ 产品内部实现
     interaction.go 独立暂停与恢复网络、账号和邀请只读查询
     operations.go 受保护操作账本、同键重放与收据对账
     operations_test.go 原始字节持久化、状态非阻塞与暂停恢复测试
-    updates_test.go 无房间版本上报与 GUI 版本变化回归
+    updates_test.go 无房间版本上报、GUI 版本变化与更新同意及请求取消回归
     updates.go 更新轮询、缓存策略、下载调度与设备版本上报
     account.go 受保护的登录事务、本机账号切换与退出
     health.go 存活与就绪检查

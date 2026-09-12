@@ -47,6 +47,8 @@ pub enum Action {
     UpdateStatus,
     UpdateCheck,
     UpdateInstall,
+    UpdateDownload,
+    UpdateCancel,
     AccountLogin,
     AccountLink,
     AccountPoll,

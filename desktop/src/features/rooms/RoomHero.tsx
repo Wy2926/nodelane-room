@@ -4,7 +4,6 @@ import type { Status, Invitation } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
 import type { ConnectionView, Recovery } from "../../app/experience";
 import type { RoomView } from "./use-room";
-import { Art } from "../catalog/Artwork";
 import { formatTime } from "../../shared/time";
 
 export function RoomHero({
@@ -22,16 +21,11 @@ export function RoomHero({
   connection: ConnectionView;
   onRecover: (action: Recovery) => void;
 }) {
-  const { room, game, isCurrent, owner, canManage } = view;
+  const { room, isCurrent, owner, canManage } = view;
   if (!room) return null;
   return (
     <section className="room-heading">
       <div className="room-heading-title">
-        {game && (
-          <div className="room-art small">
-            <Art game={game} />
-          </div>
-        )}
         <div>
           <p>{room.game_name || room.game}</p>
           <h2>{room.name}</h2>

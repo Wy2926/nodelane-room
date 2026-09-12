@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Users,
-  GameController,
-  Info,
-} from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Users, Info } from "@phosphor-icons/react";
 import { failure } from "../../native/api";
 import { t } from "../../i18n";
 import type { Status, Room } from "../../shared/model";
@@ -49,10 +43,9 @@ export function RoomPage({
     const content = workspace.current?.closest("main");
     if (content) content.scrollTop = 0;
   }, [details, selected, status.selected_room]);
-  const rooms =
-    activeRoom && !catalog.rooms.some((r) => r.id === activeRoom.id)
-      ? [activeRoom, ...catalog.rooms]
-      : catalog.rooms;
+  const rooms = activeRoom
+    ? [activeRoom, ...catalog.rooms.filter((r) => r.id !== activeRoom.id)]
+    : catalog.rooms;
   const visible = rooms.filter(
     (r) => !ownedOnly || r.owner_user_id === status.user?.id,
   );
@@ -61,11 +54,15 @@ export function RoomPage({
     !status.selected_room &&
     !status.update?.required &&
     status.update?.state !== "installing";
+  const genericAvailable = catalog.games.some(
+    (game) => game.id === "custom" && game.enabled,
+  );
   const creationAllowed =
     joiningAllowed &&
     status.room_creation?.allowed === true &&
     !catalog.gamesError &&
-    !catalog.loading;
+    !catalog.loading &&
+    genericAvailable;
   const restriction = !status.room_creation?.allowed
     ? status.room_creation?.reason
     : undefined;
@@ -159,15 +156,20 @@ export function RoomPage({
                 {visible.map((r) => {
                   const artwork = catalog.games.find((g) => g.id === r.game);
                   return (
-                    <article className="room-row" key={r.id}>
+                    <article
+                      className="room-row"
+                      data-current={activeRoom?.id === r.id}
+                      key={r.id}
+                    >
                       <div className="room-art">
-                        {artwork ? (
-                          <Art game={artwork} />
-                        ) : (
-                          <GameController size={38} aria-hidden="true" />
-                        )}
+                        <Art game={artwork || { id: r.game, cover_url: "" }} />
                       </div>
                       <div className="room-row-copy">
+                        {activeRoom?.id === r.id && (
+                          <span className="room-current-label">
+                            {t("roomPage.joined")}
+                          </span>
+                        )}
                         <h3>{r.name}</h3>
                         <p>{r.game_name || r.game}</p>
                         <span className="room-capacity">
@@ -175,9 +177,6 @@ export function RoomPage({
                           {activeRoom?.id === r.id
                             ? `${status.members.length} / ${r.capacity}`
                             : t("desk.capacity", { count: r.capacity })}
-                          {activeRoom?.id === r.id && (
-                            <small>{t("roomPage.joined")}</small>
-                          )}
                         </span>
                       </div>
                       <button
@@ -211,13 +210,29 @@ export function RoomPage({
           </>
         )}
       </section>
-      <aside className="room-join" aria-label={t(details ? "desk.roomInformation" : "desk.roomActions")}>
+      <aside
+        className="room-join"
+        aria-label={t(details ? "desk.roomInformation" : "desk.roomActions")}
+      >
         {details ? (
           <>
-            <RoomHero
-              {...{ view, status, actions, usable, connection, onRecover }}
-            />
-            <Connection {...{ view, status }} />
+            {room && (
+              <div className="room-cover">
+                <Art game={game || { id: room.game, cover_url: "" }} />
+              </div>
+            )}
+            <div className="room-sidebar-content">
+              <RoomHero
+                {...{ view, status, actions, usable, connection, onRecover }}
+              />
+              <Connection {...{ view, status }} />
+              {selected && (
+                <div className="context-note">
+                  <Info size={18} aria-hidden="true" />
+                  <p>{t("desk.roomContext")}</p>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <>
@@ -291,10 +306,19 @@ export function RoomPage({
                   t("desk.leaveFirst")
                 ) : !status.room_creation?.allowed ? (
                   t("desk.checkingPermission")
+                ) : !catalog.loading &&
+                  !catalog.gamesError &&
+                  !genericAvailable ? (
+                  t("createRoom.unavailable")
                 ) : (
                   t("desk.createIntro")
                 )}
               </p>
+              {!genericAvailable && !catalog.loading && !catalog.gamesError && (
+                <button className="text-button" onClick={refreshAll}>
+                  {t("roomPage.refresh")}
+                </button>
+              )}
               {restriction && (
                 <details className="restriction-details">
                   <summary>
@@ -328,12 +352,6 @@ export function RoomPage({
               )}
             </section>
           </>
-        )}
-        {details && selected && (
-          <div className="context-note">
-            <Info size={18} aria-hidden="true" />
-            <p>{t("desk.roomContext")}</p>
-          </div>
         )}
       </aside>
     </div>

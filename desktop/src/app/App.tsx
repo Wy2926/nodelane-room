@@ -10,6 +10,7 @@ import type { Page } from "./navigation";
 import { Empty } from "../shared/ui/Empty";
 import { Setup } from "../features/device/Setup";
 import { Account } from "../features/device/Account";
+import { UpdatePrompt } from "../features/device/Updates";
 import { Settings } from "../features/device/Settings";
 import { Diagnostics } from "../features/diagnostics/Diagnostics";
 import { useCatalog } from "../features/catalog/use-catalog";
@@ -40,7 +41,7 @@ function Client() {
   const [page, setPage] = useState<Page>("rooms");
   const [reload, setReload] = useState(0);
   const [settingsSection, setSettingsSection] = useState<
-    "preferences" | "device" | "updates"
+    "preferences" | "account" | "device" | "updates"
   >("preferences");
   const refreshAll = () => {
     service.refresh();
@@ -70,7 +71,7 @@ function Client() {
       setPage("doctor");
       return;
     }
-    setSettingsSection(action === "account" ? "device" : "updates");
+    setSettingsSection(action === "account" ? "account" : "updates");
     setPage("settings");
   };
   const serviceError =
@@ -86,12 +87,17 @@ function Client() {
       page={page}
       setPage={setPage}
       openProfile={() => {
-        setSettingsSection("device");
+        setSettingsSection("account");
         setPage("settings");
       }}
       service={service}
       actions={actions}
+      onboarding={
+        (!service.status?.device_id || identityNeedsAttention) &&
+        !systemPage
+      }
     >
+      <UpdatePrompt enabled={!unavailable} />
       <Feedback
         service={service}
         actions={actions}
@@ -110,7 +116,9 @@ function Client() {
         !service.status.device_id &&
         !serviceError &&
         page !== "settings" &&
-        page !== "doctor" && <Setup actions={actions} />}
+        page !== "doctor" && (
+          <Setup actions={actions} status={service.status} />
+        )}
       {page === "settings" && (
         <Settings
           status={service.status}
@@ -121,12 +129,7 @@ function Client() {
         />
       )}
       {page === "doctor" && (
-        <Diagnostics
-          status={service.status}
-          actions={actions}
-          usable={!!service.status && !unavailable && !actions.busy}
-          serviceError={serviceError}
-        />
+        <Diagnostics status={service.status} serviceError={serviceError} />
       )}
       {service.status &&
         (!service.status.device_id || identityNeedsAttention) && (

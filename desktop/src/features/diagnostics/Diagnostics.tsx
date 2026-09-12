@@ -1,7 +1,6 @@
 import { t, getLanguage, type MessageKey } from "../../i18n";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  ArrowClockwise,
   CheckCircle,
   CircleDashed,
   Network,
@@ -9,7 +8,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import type { Status, Failure, Diagnostic } from "../../shared/model";
-import type { Actions } from "../../app/use-actions";
+import { useQuery } from "../../native/use-query";
 import { connectionView } from "../../app/experience";
 
 type Tone = "ok" | "warning" | "neutral";
@@ -46,27 +45,25 @@ function CheckState({ tone, children }: { tone: Tone; children: ReactNode }) {
 
 export function Diagnostics({
   status,
-  actions,
-  usable,
   serviceError,
 }: {
   status?: Status;
-  actions: Actions;
-  usable: boolean;
   serviceError?: Failure;
 }) {
-  const { perform, busy } = actions;
-  const [report, setReport] = useState<{ data: Diagnostic; at: number }>();
+  const available = !!status && !serviceError;
+  const report = useQuery<Diagnostic>({ action: "doctor" }, 0, {
+    enabled: available,
+    scope: `${status?.service_instance_id}:${status?.device_id}`,
+  });
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const available = !!status && !serviceError;
   const expiry = Date.parse(
     status?.ip && status.selected_room ? status.lease_expires_at || "" : "",
   );
-  const data = report?.data;
+  const data = report.data;
   const platform = data?.platform;
   const driver =
     platform?.os === "windows"
@@ -82,13 +79,6 @@ export function Diagnostics({
     available &&
     status.membership.state === "active" &&
     authorizationExpiry > now;
-  useEffect(() => setReport(undefined), [status?.service_instance_id]);
-  const run = () =>
-    void perform<Diagnostic>(
-      t("diagnostics.runDiagnostics"),
-      { action: "doctor" },
-      (value) => setReport({ data: value, at: Date.now() }),
-    );
   return (
     <div className="diagnostics">
       <div className="page-intro section-head">
@@ -96,18 +86,6 @@ export function Diagnostics({
           <h2>{t("navigation.diagnostics")}</h2>
           <p>{t("diagnostics.intro")}</p>
         </div>
-        <button className="primary" disabled={!usable} onClick={run}>
-          <ArrowClockwise
-            size={21}
-            className={
-              busy === t("diagnostics.runDiagnostics") ? "spinning" : undefined
-            }
-            aria-hidden="true"
-          />
-          {busy === t("diagnostics.runDiagnostics")
-            ? t("diagnostics.checking")
-            : t("diagnostics.runDiagnostics")}
-        </button>
       </div>
       <div
         className="connection-state diagnostic-summary"
@@ -183,20 +161,30 @@ export function Diagnostics({
         >
           <div className="diagnostic-section-head">
             <h3 id="system-check-title">{t("diagnostics.systemChecks")}</h3>
-            {report && (
+            {data && (
               <span className="hint">
                 {t("diagnostics.checkedAt", {
-                  time: new Date(report.at).toLocaleTimeString(getLanguage(), {
-                    hour12: false,
-                  }),
+                  time: new Date(report.updatedAt).toLocaleTimeString(
+                    getLanguage(),
+                    {
+                      hour12: false,
+                    },
+                  ),
                 })}
               </span>
             )}
           </div>
-          {!report ? (
-            <div className="diagnostic-empty">
+          {report.error && <p role="alert">{report.error.error}</p>}
+          {!data ? (
+            <div className="diagnostic-empty" role="status">
               <ShieldCheck size={34} weight="light" aria-hidden="true" />
-              <h4>{t("diagnostics.giveYourConnectionACheckup")}</h4>
+              <h4>
+                {t(
+                  report.loading
+                    ? "diagnostics.checking"
+                    : "diagnostics.notAvailable",
+                )}
+              </h4>
               <p>{t("diagnostics.systemCheckHelp")}</p>
             </div>
           ) : (
@@ -258,7 +246,7 @@ export function Diagnostics({
                   {t("diagnostics.reportProblem")}
                 </p>
               )}
-              {(!available || now - report.at > 30000) && (
+              {(!available || now - report.updatedAt > 30000) && (
                 <p className="hint">{t("diagnostics.reportExpired")}</p>
               )}
             </>

@@ -11,13 +11,14 @@ import {
   Sun,
   Power,
   SlidersHorizontal,
+  UserCircle,
 } from "@phosphor-icons/react";
 import { Updates } from "./Updates";
 import type { Status } from "../../shared/model";
 import type { Actions } from "../../app/use-actions";
-import { clientVersion } from "../../native/api";
 
 const categories = [
+  { id: "account", title: "account.title", icon: UserCircle },
   {
     id: "preferences",
     title: "settings.desktopPreferences",
@@ -77,6 +78,13 @@ export function Settings({
           ))}
         </nav>
         <div className="settings-content">
+          {category === "account" && (
+            <Account
+              status={status}
+              actions={actions}
+              unavailable={serviceUnavailable}
+            />
+          )}
           {category === "preferences" && (
             <section aria-labelledby="preferences-title">
               <div className="settings-section-head">
@@ -168,11 +176,6 @@ export function Settings({
                 <h3 id="device-title">{t("settings.deviceInformation")}</h3>
                 <p>{t("settings.deviceHelp")}</p>
               </div>
-              <Account
-                status={status}
-                actions={actions}
-                unavailable={serviceUnavailable}
-              />
               <dl className="device-details">
                 <div>
                   <dt>{t("settings.deviceNickname")}</dt>
@@ -201,42 +204,10 @@ export function Settings({
                     </button>
                   </dd>
                 </div>
-                <div>
-                  <dt>{t("settings.serviceVersion")}</dt>
-                  <dd className="mono">
-                    {status?.version || t("settings.unavailable")}
-                  </dd>
-                </div>
               </dl>
             </section>
           )}
-          {category === "updates" && (
-            <section aria-labelledby="updates-title">
-              <div className="settings-section-head">
-                <h3 id="updates-title">{t("settings.versionAndUpdates")}</h3>
-                <p>{t("settings.updatesHelp")}</p>
-              </div>
-              <div className="update-version">
-                <span className="update-icon">
-                  <DownloadSimple size={36} weight="light" aria-hidden="true" />
-                </span>
-                <div>
-                  <span className="muted">NodeLane Room</span>
-                  <h4>
-                    {t("settings.currentVersion")}
-                    <span className="mono">{clientVersion}</span>
-                  </h4>
-                  <p>
-                    {t("settings.serviceVersion")}
-                    <span className="mono">
-                      {status?.version || t("settings.unavailable")}
-                    </span>
-                  </p>
-                </div>
-              </div>
-              <Updates />
-            </section>
-          )}
+          {category === "updates" && <Updates />}
         </div>
       </div>
     </div>

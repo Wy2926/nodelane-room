@@ -32,6 +32,8 @@ type Runtime struct {
 	updateMu          sync.Mutex
 	updateState       model.UpdateStatus
 	updateWake        chan struct{}
+	updateCancel      context.CancelFunc
+	updateRequested   string
 	guiVersion        string
 	versionReportedAt time.Time
 	lastVersionReport model.ClientReport

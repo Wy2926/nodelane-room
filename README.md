@@ -16,7 +16,7 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 ## Windows 客户端
 
-桌面玩家使用 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`（按当前源码构建；正式发布前完成代码签名）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。GUI 使用 `https://room.nodelane.net`，不提供服务端地址设置；填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
+桌面玩家使用 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`（按当前源码构建；正式发布前完成代码签名）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。GUI 使用 `https://room.nodelane.net`，不提供服务端地址设置；登录账号或填写访客昵称后即可建房、输入邀请码加入和管理成员；进入网络诊断页自动检查。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
 
 安装包使用 NSIS 3 Modern UI 2，由原生 `nlroom-update.exe` 完成安装、升级与卸载，不执行 PowerShell。助手在提权前取得玩家 SID，检查版本、架构、完整包摘要与权限，并通过受限 Named Pipe 回传结果。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，包含程序、`Uninstall.exe`、构建信息、许可和供启动时使用的 `drivers/tap/`。GUI 保持普通用户运行，后台独立运行。WebView2 作为现有系统环境前提，安装器不检测、下载或安装运行时。
 
@@ -127,7 +127,7 @@ nlroom-cli --state-dir /state/client status --json
 
 ## 玩家账号
 
-首次使用填写昵称创建访客。设置 → 设备信息可绑定账号、登录已有账号、断开其他设备联机或退出正式账号；登录使用系统浏览器，凭据不进入桌面页面。未绑定访客丢失本机身份或切换账号后无法凭昵称找回，建议先绑定。窗口退出和账号退出分别处理。
+首次使用选择语言，再登录账号或填写昵称创建访客。设置 → 账号可绑定账号、登录已有账号、断开其他设备联机或退出正式账号；登录使用系统浏览器，凭据不进入桌面页面。未绑定访客丢失本机身份或切换账号后无法凭昵称找回，建议先绑定。窗口退出和账号退出分别处理。
 
 CLI 使用 `account link` 或 `account login --server <origin> --name <昵称>` 获取登录地址，在浏览器完成并确认设备后运行 `account poll`；`account cancel` 停止等待，`account logout` 撤销正式账号当前设备，`account takeover` 断开此账号其他设备的房间连接。账号绑定和服务端用户管理见 [账号登录配置](docs/deployment.md#账号登录配置)。
 
@@ -165,7 +165,7 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 构建后用 `python scripts/check-release.py dist` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
 
-桌面前端用 `npm --prefix desktop ci` 安装依赖，`npm --prefix desktop run dev` 启动；`http://127.0.0.1:1420/preview.html?state=room/setup/error` 提供标明示例的预览。`npm --prefix desktop run build` 构建后，可用 `cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked --release --features custom-protocol` 仅构建 GUI。
+桌面前端用 `npm --prefix desktop ci` 安装依赖，`npm --prefix desktop run dev` 启动；`http://127.0.0.1:1420/preview.html?state=room/setup/login/account/signed-out/error` 提供标明示例的预览。`npm --prefix desktop run build` 构建后，可用 `cargo build --manifest-path desktop/src-tauri/Cargo.toml --locked --release --features custom-protocol` 仅构建 GUI。
 
 桌面完整包需要 Rust 1.95、Node.js 24、Windows NSIS 或 Linux WebKitGTK 4.1 系统依赖。Windows 打包会下载并校验固定的 TAP 驱动、网卡工具及对应源码，缓存位于 `.local/desktop-drivers`；Linux 交叉打包另需 `msitools`，构建镜像已包含。GUI、Rust、Go 和传入发布目录的版本必须一致；构建器校验架构并记录摘要，产物附带 SHA256。在对应平台执行：
 

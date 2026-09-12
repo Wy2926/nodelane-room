@@ -18,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { PlayerAvatar } from "../shared/ui/PlayerAvatar";
 import brandMark from "../assets/brand-mark.png";
+import { clientVersion } from "../native/api";
 import type { useService } from "../native/use-service";
 import { titles, type Page } from "./navigation";
 import type { Actions } from "./use-actions";
@@ -28,6 +29,7 @@ export function Shell({
   openProfile,
   service,
   actions,
+  onboarding,
   children,
 }: {
   page: Page;
@@ -35,6 +37,7 @@ export function Shell({
   openProfile: () => void;
   service: ReturnType<typeof useService>;
   actions: Actions;
+  onboarding: boolean;
   children: ReactNode;
 }) {
   const { status, error, stale } = service;
@@ -56,7 +59,10 @@ export function Shell({
     if (content.current) content.current.scrollTop = 0;
   }, [page]);
   return (
-    <div className="shell" data-page={page}>
+    <div
+      className={`shell${onboarding ? " shell-onboarding" : ""}`}
+      data-page={page}
+    >
       <a className="skip-link" href="#main-content">
         {t("shell.skipToMainContent")}
       </a>
@@ -70,10 +76,12 @@ export function Shell({
           <span>
             NodeLane <b>Room</b>
           </span>
+          <small className="brand-version">v{clientVersion}</small>
         </button>
         <div className="titlebar-space" data-tauri-drag-region />
         <nav aria-label={t("shell.mainNavigation")}>
           <button
+            title={t(titles.doctor)}
             aria-current={page === "doctor" ? "page" : undefined}
             onClick={() => setPage("doctor")}
           >
@@ -81,6 +89,7 @@ export function Shell({
             {t(titles.doctor)}
           </button>
           <button
+            title={t(titles.settings)}
             aria-current={page === "settings" ? "page" : undefined}
             onClick={() => setPage("settings")}
           >
@@ -88,71 +97,73 @@ export function Shell({
             {t(titles.settings)}
           </button>
         </nav>
-        <details
-          className="profile-menu"
-          ref={profile}
-          onToggle={(e) => setProfileOpen(e.currentTarget.open)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              closeProfile();
-              profile.current?.querySelector("summary")?.focus();
-            }
-          }}
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget)) closeProfile();
-          }}
-        >
-          <summary className="identity" aria-label={t("shell.profile")}>
-            <PlayerAvatar name={status?.name || "N"} size="small" />
-            <span>{status?.name || t("shell.localPlayer")}</span>
-            <CaretDown size={14} aria-hidden="true" />
-          </summary>
-          <div className="profile-options" hidden={!profileOpen}>
-            <button
-              onClick={() => {
+        {!onboarding && (
+          <details
+            className="profile-menu"
+            ref={profile}
+            onToggle={(e) => setProfileOpen(e.currentTarget.open)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
                 closeProfile();
-                openProfile();
-              }}
-            >
-              {t("settings.deviceInformation")}
-            </button>
-            <p>{t("settings.exitAndConnection")}</p>
-            <button
-              disabled={!!actions.busy}
-              onClick={() => {
-                closeProfile();
-                void actions.quit();
-              }}
-            >
-              {t("settings.exitAppStayConnected")}
-              <small>{t("desk.exitKeepsNetwork")}</small>
-            </button>
-            <button
-              className="danger"
-              disabled={
-                !status ||
-                !!error ||
-                stale ||
-                !!actions.busy ||
-                !!actions.pending
+                profile.current?.querySelector("summary")?.focus();
               }
-              onClick={() => {
-                closeProfile();
-                if (status?.selected_room)
-                  actions.confirm(
-                    t("useActions.leaveRoomAndExit"),
-                    t("settings.disconnectThisDeviceAndExitTheApp"),
-                    { action: "leave" },
-                    true,
-                  );
-                else void actions.quit();
-              }}
-            >
-              {t("useActions.leaveRoomAndExit")}
-              <small>{t("desk.exitLeavesRoom")}</small>
-            </button>
-          </div>
-        </details>
+            }}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) closeProfile();
+            }}
+          >
+            <summary className="identity" aria-label={t("shell.profile")}>
+              <PlayerAvatar name={status?.name || "N"} size="small" />
+              <span>{status?.name || t("shell.localPlayer")}</span>
+              <CaretDown size={14} aria-hidden="true" />
+            </summary>
+            <div className="profile-options" hidden={!profileOpen}>
+              <button
+                onClick={() => {
+                  closeProfile();
+                  openProfile();
+                }}
+              >
+                {t("account.title")}
+              </button>
+              <p>{t("settings.exitAndConnection")}</p>
+              <button
+                disabled={!!actions.busy}
+                onClick={() => {
+                  closeProfile();
+                  void actions.quit();
+                }}
+              >
+                {t("settings.exitAppStayConnected")}
+                <small>{t("desk.exitKeepsNetwork")}</small>
+              </button>
+              <button
+                className="danger"
+                disabled={
+                  !status ||
+                  !!error ||
+                  stale ||
+                  !!actions.busy ||
+                  !!actions.pending
+                }
+                onClick={() => {
+                  closeProfile();
+                  if (status?.selected_room)
+                    actions.confirm(
+                      t("useActions.leaveRoomAndExit"),
+                      t("settings.disconnectThisDeviceAndExitTheApp"),
+                      { action: "leave" },
+                      true,
+                    );
+                  else void actions.quit();
+                }}
+              >
+                {t("useActions.leaveRoomAndExit")}
+                <small>{t("desk.exitLeavesRoom")}</small>
+              </button>
+            </div>
+          </details>
+        )}
         {isTauri() && <WindowControls />}
       </header>
       <main
@@ -166,31 +177,33 @@ export function Shell({
         </h1>
         {children}
       </main>
-      <footer className="app-status" aria-label={t("desk.connectionStatus")}>
-        <span>
-          <Circle
-            size={11}
-            weight="fill"
-            data-online={online}
-            aria-hidden="true"
-          />
-          {t(
-            error
-              ? "shell.serviceUnavailable"
-              : stale
-                ? "experience.stale"
-                : online
-                  ? "desk.serviceOnline"
-                  : "experience.reconnecting",
-          )}
-        </span>
-        <span>
-          <Users size={18} aria-hidden="true" />
-          {status?.selected_room
-            ? status.room?.name || t("roomPage.syncingRoom")
-            : t("shell.noRoomJoined")}
-        </span>
-      </footer>
+      {!onboarding && (
+        <footer className="app-status" aria-label={t("desk.connectionStatus")}>
+          <span>
+            <Circle
+              size={11}
+              weight="fill"
+              data-online={online}
+              aria-hidden="true"
+            />
+            {t(
+              error
+                ? "shell.serviceUnavailable"
+                : stale
+                  ? "experience.stale"
+                  : online
+                    ? "desk.serviceOnline"
+                    : "experience.reconnecting",
+            )}
+          </span>
+          <span>
+            <Users size={18} aria-hidden="true" />
+            {status?.selected_room
+              ? status.room?.name || t("roomPage.syncingRoom")
+              : t("shell.noRoomJoined")}
+          </span>
+        </footer>
+      )}
     </div>
   );
 }

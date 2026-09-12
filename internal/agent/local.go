@@ -117,7 +117,7 @@ func (r *Runtime) dispatch(ctx context.Context, in localapi.Request) (any, error
 	case "capabilities", "invite-info", "account-devices", "account-status":
 		return r.readInteraction(ctx, in)
 
-	case "update-check", "update-status", "update-install", "update-cancel-install":
+	case "update-check", "update-status", "update-install", "update-download", "update-cancel", "update-cancel-install":
 		out, err = r.updateAction(ctx, in)
 	case "account-login", "account-link", "account-poll", "account-cancel", "account-logout", "account-takeover", "revoke-device":
 		out, err = r.accountAction(ctx, in)

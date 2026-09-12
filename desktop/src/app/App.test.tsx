@@ -1,8 +1,14 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "./App";
-import { rpc, exitApp, copyText } from "../native/api";
+import { rpc, exitApp, copyText, clientVersion } from "../native/api";
 import { useService } from "../native/use-service";
 import type { Game, Status } from "../shared/model";
 import { languageStorageKey, setLanguage } from "../i18n";
@@ -20,7 +26,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 const game: Game = {
   network: { version: 1, broadcast: true, multicast: true, ethernet_types: [] },
-  id: "configured",
+  id: "custom",
   name: "测试游戏",
   summary: "介绍",
   cover_url: "",
@@ -129,7 +135,7 @@ test("Chinese choice enters initialization and settings can switch to English", 
   render(<App />);
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "继续" }));
-  expect(screen.getByLabelText("设备昵称")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "登录 / 注册" })).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "设置" }));
   await user.selectOptions(screen.getByRole("combobox"), "en-US");
   expect(
@@ -138,8 +144,9 @@ test("Chinese choice enters initialization and settings can switch to English", 
   await user.click(screen.getByRole("button", { name: "Device information" }));
   expect(screen.getByText("Device nickname")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "My rooms" }));
-  await user.type(screen.getByLabelText("Device nickname"), "Traveler");
-  await user.click(screen.getByRole("button", { name: "Start your journey" }));
+  await user.click(screen.getByRole("button", { name: "Continue as a guest" }));
+  await user.type(screen.getByLabelText("Nickname"), "Traveler");
+  await user.click(screen.getByRole("button", { name: "Start playing" }));
   expect(rpc).toHaveBeenCalledWith({
     action: "init",
     server: "https://room.nodelane.net",
@@ -190,37 +197,58 @@ test("catalog failure explains why creation is unavailable", async () => {
   ).toBe(false);
 });
 
-test("creation form can select every server game", async () => {
-  const games = Array.from({ length: 10 }, (_, index) => ({
-    ...game,
-    id: `game-${index}`,
-    name: `冒险 ${index}`,
-  }));
+test("creation always uses the server general game revision without a selector", async () => {
+  const games = [
+    { ...game, id: "other", name: "Another game" },
+    { ...game, revision: 7 },
+  ];
   vi.mocked(rpc).mockImplementation(
     async (request) =>
       (request.action === "games" ? games : defaultReply(request)) as never,
   );
   render(<App />);
+  const create = screen.getByRole("button", { name: "创建房间" });
   await waitFor(() =>
-    expect(
-      (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false),
+    expect((create as HTMLButtonElement).disabled).toBe(false),
   );
-  await userEvent.click(screen.getByRole("button", { name: "创建房间" }));
-  await userEvent.selectOptions(screen.getByRole("combobox"), "game-9");
-  expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe(
-    "game-9",
-  );
-  await userEvent.type(screen.getByLabelText("房间名称"), "最后一个游戏");
+  await userEvent.click(create);
+  expect(screen.queryByRole("combobox")).toBeNull();
+  expect(document.activeElement).toBe(screen.getByLabelText("房间名称"));
+  await userEvent.type(screen.getByLabelText("房间名称"), "周末一起玩");
   await userEvent.click(screen.getByRole("button", { name: "创建并连接" }));
   expect(rpc).toHaveBeenCalledWith(
     expect.objectContaining({
       action: "create",
-      body: { game: "game-9", name: "最后一个游戏", expected_game_revision: 1 },
+      body: { game: "custom", name: "周末一起玩", expected_game_revision: 7 },
     }),
   );
 });
+
+test.each([false, true])(
+  "general game unavailable does not fall back to another game: disabled=%s",
+  async (disabled) => {
+    const games = [
+      { ...game, id: "other" },
+      ...(disabled ? [{ ...game, enabled: false }] : []),
+    ];
+    vi.mocked(rpc).mockImplementation(
+      async (request) =>
+        (request.action === "games" ? games : defaultReply(request)) as never,
+    );
+    render(<App />);
+    expect(
+      await screen.findByText("通用房间暂不可用，请刷新后重试。"),
+    ).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "创建房间" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "加入房间" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  },
+);
 
 test("creation restriction preserves invitation joining and recovers without login", async () => {
   status.user!.state = "disabled";
@@ -278,10 +306,15 @@ test("first use uses the online control endpoint without a server setting", asyn
   status.device_id = "";
   status.server = "";
   const { container } = render(<App />);
-  expect(container.querySelector('input[type="url"], input[name="server"]')).toBeNull();
+  expect(
+    container.querySelector('input[type="url"], input[name="server"]'),
+  ).toBeNull();
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText("设备昵称"), "旅人");
-  await user.click(screen.getByRole("button", { name: "开始旅程" }));
+  await user.click(
+    screen.getByRole("button", { name: "暂不登录，以访客开始" }),
+  );
+  await user.type(screen.getByLabelText("昵称"), "旅人");
+  await user.click(screen.getByRole("button", { name: "开始联机" }));
   expect(rpc).toHaveBeenCalledWith({
     action: "init",
     server: "https://room.nodelane.net",
@@ -289,17 +322,108 @@ test("first use uses the online control endpoint without a server setting", asyn
   });
 });
 
+test("welcome signs in directly without first creating a guest", async () => {
+  status.device_id = "";
+  status.user = undefined;
+  render(<App />);
+  expect(screen.queryByRole("textbox")).toBeNull();
+  const login = screen.getByRole("button", { name: "登录 / 注册" });
+  await waitFor(() =>
+    expect((login as HTMLButtonElement).disabled).toBe(false),
+  );
+  await userEvent.click(login);
+  expect(rpc).toHaveBeenCalledWith({
+    action: "account-login",
+    server: "https://example.test",
+    name: "玩家",
+  });
+  expect(
+    vi.mocked(rpc).mock.calls.some(([request]) => request.action === "init"),
+  ).toBe(false);
+});
+
+test("welcome waiting state offers resume and cancel without guest initialization", async () => {
+  status.device_id = "";
+  status.user = undefined;
+  vi.mocked(rpc).mockImplementation(
+    async (request) =>
+      (request.action === "account-poll"
+        ? { state: "waiting" }
+        : defaultReply(request)) as never,
+  );
+  render(<App />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "打开登录页面" }),
+  );
+  expect(rpc).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "account-login" }),
+  );
+  expect(
+    screen.queryByRole("button", { name: "暂不登录，以访客开始" }),
+  ).toBeNull();
+  expect(screen.queryByRole("textbox")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "取消等待" }));
+  expect(rpc).toHaveBeenCalledWith({ action: "account-cancel" });
+});
+
+test("registered account separates device access and confirms revocation", async () => {
+  status.user!.kind = "registered";
+  vi.mocked(rpc).mockImplementation(
+    async (request) =>
+      (request.action === "account-devices"
+        ? [
+            { device_id: "owner", name: "本机", revoked: false },
+            { device_id: "laptop", name: "笔记本", revoked: false },
+            { device_id: "old", name: "旧电脑", revoked: true },
+          ]
+        : defaultReply(request)) as never,
+  );
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "账号" }));
+  const panel = screen.getByRole("region", { name: "账号" });
+  expect(within(panel).getByText("账号信息").closest("details")!.open).toBe(
+    false,
+  );
+  const devices = await within(panel).findByText("已授权设备");
+  expect(devices.closest("details")!.open).toBe(false);
+  await userEvent.click(devices);
+  expect(within(panel).getByText("当前设备")).toBeTruthy();
+  expect(within(panel).getByText("已撤销授权")).toBeTruthy();
+  const revoke = within(panel).getAllByRole("button", { name: "撤销设备授权" });
+  expect(revoke).toHaveLength(1);
+  await userEvent.click(revoke[0]);
+  expect(screen.getByRole("dialog").textContent).toContain("笔记本");
+  expect(
+    vi
+      .mocked(rpc)
+      .mock.calls.some(([request]) => request.action === "revoke-device"),
+  ).toBe(false);
+  await userEvent.click(
+    screen.getByRole("button", { name: "确认撤销设备授权" }),
+  );
+  expect(rpc).toHaveBeenCalledWith(
+    expect.objectContaining({ action: "revoke-device", target: "laptop" }),
+  );
+});
+
 test("account login has no server setting and uses the existing identity server", async () => {
   const { container } = render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "设置" }));
-  await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
-  expect(container.querySelector('input[type="url"], input[name="server"]')).toBeNull();
-  await waitFor(() => expect(rpc).toHaveBeenCalledWith({
-    action: "capabilities",
-    server: "https://example.test",
-  }));
+  await userEvent.click(screen.getByRole("button", { name: "账号" }));
+  expect(
+    container.querySelector('input[type="url"], input[name="server"]'),
+  ).toBeNull();
+  await waitFor(() =>
+    expect(rpc).toHaveBeenCalledWith({
+      action: "capabilities",
+      server: "https://example.test",
+    }),
+  );
   await userEvent.click(screen.getByRole("button", { name: "登录已有账号" }));
-  await userEvent.click(screen.getByRole("button", { name: "确认登录已有账号" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "确认登录已有账号" }),
+  );
   expect(rpc).toHaveBeenCalledWith({
     action: "account-login",
     server: "https://example.test",
@@ -313,11 +437,11 @@ test("settings and diagnostics work before identity initialization", async () =>
   await userEvent.click(screen.getByRole("button", { name: "设置" }));
   await userEvent.click(screen.getByRole("button", { name: "版本与更新" }));
   expect(screen.getByText(/当前版本/)).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "开始旅程" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "开始联机" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "网络诊断" }));
-  expect(screen.queryByRole("button", { name: "开始旅程" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "开始联机" })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "我的房间" }));
-  expect(screen.getByRole("button", { name: "开始旅程" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "登录 / 注册" })).toBeTruthy();
 });
 
 test("renewed invitation uses the actual standalone invitation response", async () => {
@@ -419,7 +543,7 @@ test("leave failure keeps the app running", async () => {
   expect(screen.getByRole("dialog")).toBeTruthy();
 });
 
-test("creating a room submits the selected server game once and retains invitation only in memory", async () => {
+test("creating a room submits the general server game once and retains invitation only in memory", async () => {
   let complete!: (value: unknown) => void;
   vi.mocked(rpc).mockImplementation(async (request) => {
     if (request.action === "create")
@@ -535,7 +659,7 @@ test("English room actions and diagnostics use complete translated messages", as
   ).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   await user.click(screen.getByRole("button", { name: "Diagnostics" }));
-  await user.click(screen.getByRole("button", { name: "Run diagnostics" }));
+  expect(screen.queryByRole("button", { name: "Run diagnostics" })).toBeNull();
   expect(await screen.findByText("Windows")).toBeTruthy();
   expect(
     screen.queryByRole("button", { name: "Copy redacted diagnostics" }),
@@ -642,10 +766,8 @@ test("offline startup keeps updates reachable and reports the local service fail
   expect(rpc).toHaveBeenCalledWith({ action: "update-check" });
   await user.click(screen.getByRole("button", { name: "网络诊断" }));
   expect(screen.getAllByText("无法连接本机服务").length).toBeGreaterThan(0);
-  expect(
-    (screen.getByRole("button", { name: "运行诊断" }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(true);
+  expect(screen.queryByRole("button", { name: "运行诊断" })).toBeNull();
+  expect(rpc).not.toHaveBeenCalledWith({ action: "doctor" });
 });
 
 test("diagnostics shows system checks without interfaces, peer data, or raw reports", async () => {
@@ -680,7 +802,7 @@ test("diagnostics shows system checks without interfaces, peer data, or raw repo
   render(<App />);
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "网络诊断" }));
-  await user.click(screen.getByRole("button", { name: "运行诊断" }));
+  expect(screen.queryByRole("button", { name: "运行诊断" })).toBeNull();
   expect(await screen.findByText("Windows")).toBeTruthy();
   expect(screen.getByText("未找到")).toBeTruthy();
   expect(screen.getByText("1.11.1")).toBeTruthy();
@@ -765,7 +887,7 @@ test("an idle device with a zero lease does not display an expired authorization
 test("guest binding preserves the current account and does not offer logout", async () => {
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "设置" }));
-  await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
+  await userEvent.click(screen.getByRole("button", { name: "账号" }));
   expect(screen.queryByRole("button", { name: "退出账号" })).toBeNull();
   await waitFor(() =>
     expect(
@@ -805,8 +927,8 @@ test("profile menu opens account settings and closes with Escape", async () => {
   expect(profile.closest("details")!.open).toBe(false);
   expect(document.activeElement).toBe(profile);
   await userEvent.click(profile);
-  await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
-  expect(screen.getByRole("heading", { name: "设备信息" })).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "账号" }));
+  expect(screen.getByRole("region", { name: "账号" })).toBeTruthy();
 });
 
 test("a signed out account exposes login without exposing room creation", async () => {
@@ -815,18 +937,18 @@ test("a signed out account exposes login without exposing room creation", async 
   status.user = undefined;
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "我的房间" }));
-  expect(screen.getByRole("button", { name: "登录已有账号" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "登录 / 注册" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "创建房间" })).toBeNull();
   await waitFor(() =>
     expect(
       (
         screen.getByRole("button", {
-          name: "登录已有账号",
+          name: "登录 / 注册",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(false),
   );
-  await userEvent.click(screen.getByRole("button", { name: "登录已有账号" }));
+  await userEvent.click(screen.getByRole("button", { name: "登录 / 注册" }));
   expect(rpc).toHaveBeenCalledWith(
     expect.objectContaining({ action: "account-login" }),
   );
@@ -846,4 +968,75 @@ test("room detail reserves the sidebar for game information and actions", () => 
   expect(
     screen.getByRole("button", { name: "邀请朋友" }).closest("aside"),
   ).toBeTruthy();
+});
+
+test("client version is shown in the header and service version is absent from settings", async () => {
+  status.version = "99.88.77";
+  render(<App />);
+  expect(
+    within(screen.getByRole("banner")).getByText(`v${clientVersion}`),
+  ).toBeTruthy();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "设置" }));
+  for (const category of ["设备信息", "版本与更新"]) {
+    await user.click(screen.getByRole("button", { name: category }));
+    expect(screen.queryByText("后台版本")).toBeNull();
+    expect(screen.queryByText("99.88.77")).toBeNull();
+  }
+});
+
+test("current room is first even when owned catalog order differs, with no duplicate", async () => {
+  joinedParty();
+  const current = status.room!;
+  vi.mocked(rpc).mockImplementation(async (request) => {
+    if (request.action === "rooms")
+      return {
+        rooms: [
+          { ...current, id: "other", name: "另一间房间" },
+          { ...current, name: "旧快照房名" },
+        ],
+        truncated: false,
+      } as never;
+    return defaultReply(request) as never;
+  });
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "返回我的房间" }));
+  const rooms = await screen.findAllByRole("article");
+  expect(rooms).toHaveLength(2);
+  expect(within(rooms[0]).getByRole("heading").textContent).toBe(current.name);
+  expect(rooms[0].getAttribute("data-current")).toBe("true");
+  expect(rooms[1].getAttribute("data-current")).toBe("false");
+  expect(screen.queryByText("旧快照房名")).toBeNull();
+});
+
+test("diagnostics refreshes on entry and ignores a previous service response", async () => {
+  let finishOld: (value: unknown) => void = () => {};
+  let count = 0;
+  vi.mocked(rpc).mockImplementation(async (request) => {
+    if (request.action === "doctor") {
+      count++;
+      if (count === 1)
+        return (await new Promise<unknown>((resolve) => {
+          finishOld = resolve;
+        })) as never;
+      return {
+        platform: { os: "linux", arch: "amd64", tun_device_present: true },
+      } as never;
+    }
+    return defaultReply(request) as never;
+  });
+  const app = render(<App />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "网络诊断" }));
+  expect(count).toBe(1);
+  expect(screen.getByText("正在检查…")).toBeTruthy();
+  status = { ...status, service_instance_id: "replacement" };
+  app.rerender(<App />);
+  expect(await screen.findByText("Linux")).toBeTruthy();
+  finishOld({ platform: { os: "windows" } });
+  await user.click(screen.getByRole("button", { name: "我的房间" }));
+  await user.click(screen.getByRole("button", { name: "网络诊断" }));
+  expect(await screen.findByText("Linux")).toBeTruthy();
+  expect(screen.queryByText("Windows")).toBeNull();
+  expect(count).toBe(3);
 });

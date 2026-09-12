@@ -8714,6 +8714,8 @@ x-local-api:
                         - account-takeover
                         - update-status
                         - update-check
+                        - update-download
+                        - update-cancel
                         - update-install
                         - status
                         - games
@@ -8779,7 +8781,11 @@ x-local-api:
                 $ref: '#/components/schemas/RoomPage'
             status:
                 $ref: '#/components/schemas/Status'
+            update-cancel:
+                $ref: '#/components/schemas/UpdateStatus'
             update-check:
+                $ref: '#/components/schemas/UpdateStatus'
+            update-download:
                 $ref: '#/components/schemas/UpdateStatus'
             update-install:
                 additionalProperties: false

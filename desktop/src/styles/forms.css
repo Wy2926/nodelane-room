@@ -1,10 +1,105 @@
-dialog { width: min(520px, calc(100% - 40px)); max-height: calc(100dvh - 48px); border: 1px solid var(--line); border-radius: 12px; padding: 28px; color: var(--ink); background: var(--paper); box-shadow: 0 20px 80px #34251b28; }
-dialog::backdrop { background: #201c184f; }
-.dialog-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 25px; }
-.dialog-head h2 { font-size: 24px; margin: 0; }
-.dialog-head button { background: transparent; border: 0; }
-.selected-game { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-block: 1px solid var(--line); }
-.selected-game .hint { margin-top: 6px; }
-.invitation { padding: 22px; margin: 20px 0; background: var(--paper-side); border: 1px dashed #c4b7a7; border-radius: var(--radius-control); font-family: var(--font-code); font-size: 20px; overflow-wrap: anywhere; }
-.port-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
-.port-list > * { padding: 3px 8px; border-radius: 4px; background: var(--paper-side); color: var(--ink-secondary); font-size: 12px; }
+dialog {
+  width: min(520px, calc(100% - 40px));
+  max-height: calc(100dvh - 48px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 28px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: 0 20px 80px #34251b28;
+}
+dialog::backdrop {
+  background: #201c184f;
+}
+.dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 25px;
+}
+.dialog-head h2 {
+  font-size: 24px;
+  margin: 0;
+}
+.dialog-head button {
+  background: transparent;
+  border: 0;
+}
+.create-room-cover {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  background: var(--paper-side);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+.create-room-cover .room-art.small {
+  width: 84px;
+  height: 84px;
+}
+.create-room-cover strong {
+  font-size: 18px;
+}
+.create-room-cover .hint {
+  margin-top: 5px;
+}
+.invitation {
+  padding: 22px;
+  margin: 20px 0;
+  background: var(--paper-side);
+  border: 1px dashed #c4b7a7;
+  border-radius: var(--radius-control);
+  font-family: var(--font-code);
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.port-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.port-list > * {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--paper-side);
+  color: var(--ink-secondary);
+  font-size: 12px;
+}
+
+.update-prompt {
+  display: grid;
+  gap: 16px;
+}
+.update-prompt p {
+  margin: 0;
+}
+.update-version {
+  color: var(--coral);
+  font-size: 32px;
+  font-weight: 700;
+}
+.update-prompt .update-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.update-download {
+  display: grid;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.update-download progress {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  accent-color: var(--coral);
+}
+.update-prompt-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
