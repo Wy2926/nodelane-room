@@ -11,13 +11,12 @@ import (
 )
 
 func (s *Store) downloads(ctx context.Context) (model.DownloadCatalog, error) {
-	var out model.DownloadCatalog
-	err := s.Write(ctx, func(tx pgx.Tx) error {
-		var err error
-		out, err = readDownloads(ctx, tx, "")
-		return err
-	})
-	return out, err
+	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return model.DownloadCatalog{}, err
+	}
+	defer tx.Rollback(ctx)
+	return readDownloads(ctx, tx, "")
 }
 
 func (s *Store) downloadRelease(ctx context.Context, id string) (model.DownloadLinks, error) {
@@ -41,8 +40,8 @@ func (s *Store) downloadRelease(ctx context.Context, id string) (model.DownloadL
 	return out, err
 }
 
-// The caller holds the shared update transaction lock while checking the current
-// publication, repository and verified source revisions and issuing any URLs.
+// Catalogs use a consistent read snapshot. URL issuance also holds the shared
+// write lock while checking publication, trust and verified source revisions.
 func readDownloads(ctx context.Context, tx pgx.Tx, id string) (model.DownloadCatalog, error) {
 	out := model.DownloadCatalog{Releases: []model.DownloadRelease{}}
 	if err := tx.QueryRow(ctx, "SELECT now()").Scan(&out.ServerTime); err != nil {
@@ -155,7 +154,7 @@ func (s *Store) updateOverview(ctx context.Context, after string) (model.UpdateO
 	if after != "" && !validResourceID(after) && len(after) != 64 {
 		return out, ErrInvalid
 	}
-	err := s.Write(ctx, func(tx pgx.Tx) error {
+	err := pgx.BeginTxFunc(ctx, s.Pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, "SELECT id FROM update_sources ORDER BY id")
 		if err != nil {
 			return err
@@ -171,20 +170,13 @@ func (s *Store) updateOverview(ctx context.Context, after string) (model.UpdateO
 			}
 			out.Sources = append(out.Sources, src)
 		}
-		rows, err = tx.Query(ctx, "SELECT id FROM update_releases ORDER BY created_at DESC LIMIT 200")
+		rows, err = tx.Query(ctx, "SELECT "+updateReleaseColumns+" FROM update_releases r ORDER BY r.created_at DESC LIMIT 200")
 		if err != nil {
 			return err
 		}
-		ids, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		out.Releases, err = pgx.CollectRows(rows, scanUpdateRelease)
 		if err != nil {
 			return err
-		}
-		for _, id := range ids {
-			v, e := readRelease(ctx, tx, id)
-			if e != nil {
-				return e
-			}
-			out.Releases = append(out.Releases, v)
 		}
 		for _, osName := range []string{"windows", "linux"} {
 			for _, arch := range []string{"amd64", "arm64"} {
@@ -243,10 +235,7 @@ func (s *Store) updateOverview(ctx context.Context, after string) (model.UpdateO
 			e := row.Scan(&a.DeviceID, &a.ReleaseID, &a.State, &a.ErrorCode, &a.UpdatedAt)
 			return a, e
 		})
-		if err != nil {
-			return err
-		}
-		return nil
+		return err
 	})
 	return out, err
 }

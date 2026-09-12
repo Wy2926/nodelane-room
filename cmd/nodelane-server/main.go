@@ -82,7 +82,9 @@ func command() *cobra.Command {
 			<-ctx.Done()
 			c, finish := context.WithTimeout(context.Background(), 10*time.Second)
 			defer finish()
-			_ = srv.Shutdown(c)
+			if err := shutdownHTTP(c, srv); err != nil {
+				log.Warn("HTTP shutdown required forced connection closure")
+			}
 		}()
 		log.Info("control API listening", "address", listen, "nebula", model.NebulaVersion)
 		if tlsCert != "" {
@@ -161,4 +163,11 @@ func command() *cobra.Command {
 	}})
 	root.AddCommand(admin)
 	return root
+}
+
+func shutdownHTTP(ctx context.Context, srv *http.Server) error {
+	if err := srv.Shutdown(ctx); err != nil {
+		return errors.Join(err, srv.Close())
+	}
+	return nil
 }

@@ -50,6 +50,8 @@ docker compose -f deploy/compose.host.yaml exec control nodelane-server admin bo
 
 反代须配置 HTTPS，保留原始 Host、Origin、Cookie、Authorization、X-CSRF-Token、Idempotency-Key、Last-Event-ID；关闭响应缓存和 SSE 缓冲，流超时至少 300 秒，公网拒绝 `/metrics`。代理存活检查使用 `/healthz`，使未初始化页面也可访问；`/readyz` 只在数据库配置和 CA 加载成功后返回 200。不要公开未加密控制端口。
 
+控制面收到停止信号后停止接收新请求，最多等待 10 秒让在途请求完成；超时关闭剩余 HTTP 连接，再停止后台维护并释放数据库连接池。Compose 预留 20 秒停止时间；中断的 SSE 由客户端携带游标重连恢复。
+
 ## 官网与管理入口
 
 公网域名默认展示中文官网：首页 `/`、产品 `/product`、下载 `/download`、帮助 `/help`、关于 `/about`、隐私 `/privacy` 和使用说明 `/terms`。英文首页为 `/en`，其余对应页面在路径前增加 `/en`，共 14 个页面入口；语言切换保留当前页面，站内导航沿用所选语言。两种语言共用 `/site-assets/*` 静态资源，并展示对应语言的应用截图。

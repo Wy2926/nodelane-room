@@ -84,22 +84,23 @@ func saveRepository(ctx context.Context, tx pgx.Tx, actor string, in model.Updat
 	return map[string]int64{"revision": in.Revision}, err
 }
 
-func readRelease(ctx context.Context, tx pgx.Tx, id string) (model.UpdateRelease, error) {
+const updateReleaseColumns = `r.id,r.artifact,r.notes,r.state,r.revision,r.created_at,
+	ARRAY(SELECT p.source_id FROM update_replicas p JOIN update_sources s ON s.id=p.source_id
+		WHERE p.release_id=r.id AND p.source_revision=s.revision ORDER BY s.config->>'priority',p.source_id)`
+
+func scanUpdateRelease(row pgx.CollectableRow) (model.UpdateRelease, error) {
 	var r model.UpdateRelease
-	var b []byte
-	err := tx.QueryRow(ctx, "SELECT id,artifact,notes,state,revision,created_at FROM update_releases WHERE id=$1", id).Scan(&r.ID, &b, &r.Notes, &r.State, &r.Revision, &r.CreatedAt)
-	if err != nil {
-		return r, noRows(err)
-	}
-	if err = json.Unmarshal(b, &r.UpdateArtifact); err != nil {
-		return r, err
-	}
-	rows, err := tx.Query(ctx, `SELECT p.source_id FROM update_replicas p JOIN update_sources s ON s.id=p.source_id WHERE release_id=$1 AND p.source_revision=s.revision ORDER BY s.config->>'priority',p.source_id`, id)
-	if err != nil {
-		return r, err
-	}
-	r.Sources, err = pgx.CollectRows(rows, pgx.RowTo[string])
+	err := row.Scan(&r.ID, &r.UpdateArtifact, &r.Notes, &r.State, &r.Revision, &r.CreatedAt, &r.Sources)
 	return r, err
+}
+
+func readRelease(ctx context.Context, tx pgx.Tx, id string) (model.UpdateRelease, error) {
+	rows, err := tx.Query(ctx, "SELECT "+updateReleaseColumns+" FROM update_releases r WHERE r.id=$1", id)
+	if err != nil {
+		return model.UpdateRelease{}, err
+	}
+	r, err := pgx.CollectOneRow(rows, scanUpdateRelease)
+	return r, noRows(err)
 }
 
 func saveRelease(ctx context.Context, tx pgx.Tx, actor string, in model.UpdateRelease) (any, error) {

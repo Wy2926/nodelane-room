@@ -136,6 +136,21 @@ func TestHTTPRouteBoundaries(t *testing.T) {
 	}
 }
 
+func TestHTTPContractRejectionUsesCommonResponseHandling(t *testing.T) {
+	s := &Server{}
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v2/downloads", nil))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d", w.Code)
+	}
+	if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("contract rejection omitted common response headers: %v", w.Header())
+	}
+	if s.requests.Load() != 1 || s.failures.Load() != 1 {
+		t.Errorf("contract rejection counted %d requests and %d failures", s.requests.Load(), s.failures.Load())
+	}
+}
+
 func TestHTTPContractRequiresAuthentication(t *testing.T) {
 	source, err := os.ReadFile("../../docs/openapi.yaml")
 	must(t, err)

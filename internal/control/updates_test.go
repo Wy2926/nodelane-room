@@ -232,7 +232,7 @@ func TestUpdatePolicyRevisionAndSourceAvailability(t *testing.T) {
 
 func TestUpdateManagementAuthenticationAndOverview(t *testing.T) {
 	s, a := newAdmin(t)
-	_ = updateFixture(t, s)
+	release := updateFixture(t, s)
 	status, _ := a.request("PUT", "/updates/sources", model.UpdateSource{Name: "mirror", Kind: "https", PublicURL: "https://example.com", Enabled: true}, true, false)
 	if status != 403 {
 		t.Fatal("source update accepted without CSRF", status)
@@ -246,8 +246,58 @@ func TestUpdateManagementAuthenticationAndOverview(t *testing.T) {
 	if len(view.Releases) != 1 || len(view.Sources) != 1 || view.RepositoryRevision != 1 {
 		t.Fatalf("overview %+v", view)
 	}
+	got := view.Releases[0]
+	if got.ID != release.ID || got.UpdateArtifact != release.UpdateArtifact || got.Revision != release.Revision || got.State != "published" || !got.CreatedAt.Equal(release.CreatedAt) || len(got.Sources) != 1 || got.Sources[0] != release.Sources[0] {
+		t.Fatal("overview lost published release details", got)
+	}
 	if bytes.Contains(b, []byte("secret_key")) || bytes.Contains(b, []byte("access_key")) {
 		t.Fatal("overview included credentials")
+	}
+}
+
+func TestUpdateCatalogReadsDoNotWaitForWrites(t *testing.T) {
+	s, _ := database(t)
+	release := updateFixture(t, s)
+	ctx := context.Background()
+	tx, err := s.Pool.Begin(ctx)
+	must(t, err)
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1313817669)")
+	must(t, err)
+	_, err = tx.Exec(ctx, "UPDATE update_releases SET state='paused' WHERE id=$1", release.ID)
+	must(t, err)
+	t.Run("public catalog", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		catalog, err := s.downloads(ctx)
+		must(t, err)
+		if len(catalog.Releases) != 1 || catalog.Releases[0].ID != release.ID {
+			t.Fatal("catalog did not retain the committed publication")
+		}
+	})
+	t.Run("admin overview", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		view, err := s.updateOverview(ctx, "")
+		must(t, err)
+		if len(view.Releases) != 1 || view.Releases[0].State != "published" || len(view.Releases[0].Sources) != 1 {
+			t.Fatal("overview did not retain the committed publication")
+		}
+	})
+	// URL issuance must still serialize with publication and source changes.
+	waitCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	if _, err := s.downloadRelease(waitCtx, release.ID); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("URL issuance bypassed an in-flight publication change: %v", err)
+	}
+	must(t, tx.Commit(ctx))
+	catalog, err := s.downloads(ctx)
+	must(t, err)
+	if len(catalog.Releases) != 0 {
+		t.Fatal("new catalog retained a paused publication")
+	}
+	if _, err := s.downloadRelease(ctx, release.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("paused publication remained downloadable: %v", err)
 	}
 }
 

@@ -52,6 +52,17 @@ func (s *Server) Handler() http.Handler {
 	s.registerInstall(mux)
 	s.registerUpdates(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.requests.Add(1)
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		defer func() {
+			if v := recover(); v != nil {
+				if s.Log != nil {
+					s.Log.Error("HTTP handler panic")
+				}
+				s.fail(w, errors.New("internal failure"))
+			}
+		}()
 		if strings.HasPrefix(r.URL.Path, "/v2/") {
 			cw := &contractWriter{ResponseWriter: w, requestID: randomID(), operationID: r.Header.Get("Idempotency-Key")}
 			if s.Store != nil && s.Store.Pool != nil {
@@ -71,18 +82,6 @@ func (s *Server) Handler() http.Handler {
 				return
 			}
 		}
-		s.requests.Add(1)
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		defer func() {
-			if v := recover(); v != nil {
-				if s.Log != nil {
-					s.Log.Error("HTTP handler panic")
-				}
-				s.fail(w, errors.New("internal failure"))
-			}
-		}()
-
 		if strings.HasPrefix(r.URL.Path, "/v2/") {
 			_, pattern := mux.Handler(r)
 			if pattern == "" {

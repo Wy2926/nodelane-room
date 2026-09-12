@@ -43,7 +43,8 @@ cmd/ 可执行程序入口
   nlroom-service/ Windows/Linux 玩家网络后台
     main.go 后台生命周期与 Windows 服务管理入口
   nodelane-server/ Linux 控制面命令
-    main.go 控制实例启动、隐藏入口查询、初始化码与管理员恢复
+    main.go 控制实例启动与限时停机、隐藏入口查询、初始化码与管理员恢复
+    main_test.go 在途 HTTP 请求正常结束与超时长连接关闭测试
 deploy/ 部署模板与测试环境
   nlroom-update.timer Linux 开机未完成更新恢复
   nlroom-update.service 独立 root 更新单元与包管理器生命周期
@@ -268,7 +269,7 @@ internal/ 产品内部实现
     updates_http.go 更新管理、包上传、官网下载、公开检查与版本上报的 HTTP 适配
     updates.go 签名发布、版本规则与强制授权撤销事务
     update_storage.go 加密凭据、更新源连接、包上传与副本校验提交
-    update_snapshot.go 公开下载签名与来源核对、更新检查及管理更新总览查询
+    update_snapshot.go 公开下载与更新总览只读快照、下载地址复查与更新检查
     admin_audit.go 管理事件持久化与失败写操作审计
     admin_auth.go 管理员密码、登录与会话事务
     admin_events_http.go 管理台总览与事件流接口
