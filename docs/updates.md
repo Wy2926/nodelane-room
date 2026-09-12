@@ -14,10 +14,10 @@
 go run ./scripts/updates -mode init -keys /secure/nlroom-signing -out dist/update-repository
 ```
 
-把生成的初始 `root.json` 作为公开信任文件固定保存。构建所有客户端程序时注入同一初始根：
+初始化只用于新发行渠道。NodeLane 生产公开根固定在 `deploy/update-root.json`（不含私钥）；后续官方构建继续使用该根，不能重新初始化替换已有客户端信任。自建渠道将下方 `-UpdateRoot` 指向自己生成并固定保存的初始 `root.json`：
 
 ```powershell
-./scripts/build.ps1 -Components client -UpdateRoot ./dist/update-repository/root.json
+./scripts/build.ps1 -Components client -UpdateRoot ./deploy/update-root.json
 ```
 
 Linux 开发构建通过 `NODELANE_UPDATE_ROOT=/secure/bootstrap-root.json sh scripts/build.sh` 注入。完整桌面包仍按 README 的打包流程构建。没有根的开发构建明确显示“未配置更新信任”，不会安装远程包。客户端更新完整包必须保留既有初始根或经过已发布轮换链的新根。

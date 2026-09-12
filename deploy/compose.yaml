@@ -2,7 +2,7 @@
 name: nodelane-room
 services:
   control:
-    image: docker.nodelane.net/nodelane-room-control:${NODELANE_CONTROL_VERSION:-0.3.0}
+    image: docker.nodelane.net/nodelane-room-control:${NODELANE_CONTROL_VERSION:-0.3.1}
     command: [serve, --listen, '0.0.0.0:8080', --behind-proxy]
     environment:
       NODELANE_ADMIN_PATH: ${NODELANE_ADMIN_PATH:-}

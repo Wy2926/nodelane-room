@@ -1,6 +1,6 @@
 # NodeLane Room V2
 
-**NodeLane**（`nodelane.net`）旗下游戏组网子产品，控制面 **0.3.0**、节点 **0.2.1**、客户端 **0.3.0**，API **/v2**。包含公开官网、单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
+**NodeLane**（`nodelane.net`）旗下游戏组网子产品，控制面 **0.3.1**、节点 **0.2.1**、客户端 **0.3.0**，API **/v2**。包含公开官网、单管理员 Web 管理台、PostgreSQL 共享控制状态、独立基础设施节点和 Go 客户端。数据面固定为 Nebula v1.11.1 与已授权的握手缓存补丁 `d929786cba7f`，设备身份与短期隧道证书分离。
 
 玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面设计见 [客户端设计](docs/client.md)，修改代码先用 [任务导航](docs/files.md#按任务读取) 定位。
 
@@ -12,7 +12,7 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 域名根路径默认打开中文官网，首页、产品、下载、帮助、关于、隐私和使用说明共 7 类页面均提供中英版本，共 14 个入口；语言切换保留当前页面。官网沿用桌面应用的暖白与珊瑚色风格并展示对应语言的应用截图，由 Go 随程序提供，初始化前也可访问。管理入口继续使用随机私有路径，`/admin` 返回 404；入口查询、管理操作划分与部署维护见 [部署指南](docs/deployment.md#官网与管理入口)。多实例接入同一 PostgreSQL 共享控制状态。
 
-官网下载页读取管理台发布的可用客户端版本，按系统和架构选择安装包；发布、存储源和推荐版本的对应关系见 [官网下载](docs/updates.md#官网下载)。客户端更新的签名发布、多源配置、强制规则和恢复流程见同一文档。控制面 0.3.0 与节点 0.2.1 双架构镜像已发布，摘要见 [镜像清单](deploy/IMAGES.txt)。客户端 0.3.0 的安装包构建与签名发布单独进行。
+官网下载页读取管理台发布的可用客户端版本，按系统和架构选择安装包；发布、存储源和推荐版本的对应关系见 [官网下载](docs/updates.md#官网下载)。客户端更新的签名发布、多源配置、强制规则和恢复流程见同一文档。控制面 0.3.1 与节点 0.2.1 双架构镜像已发布，摘要见 [镜像清单](deploy/IMAGES.txt)。Windows/Linux amd64 客户端 0.3.0 完整包已通过 TUF 签名发布至官网下载页；Windows 包尚未配置 Authenticode 发布者签名。
 
 ## Windows 客户端
 
@@ -192,6 +192,6 @@ python scripts/desktop/build.py --platform linux --arch amd64 --release dist/cli
 
 每次运行创建唯一 Compose 项目。临时密钥、身份和数据库保存在容器临时存储中，只有 HTTPS 公钥证书共享给客户端；邀请码和登记令牌不写入日志。退出时清理该次容器、网络、证书卷和带本次唯一标签的测试镜像，检查结果与构建/验证日志保存在 `.local/nodelane-test-*/`。源码配置位于 `deploy/test/`，不会放入发布包。
 
-部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/control/0.3.0/nodelane-room-control-0.3.0-linux-amd64 --node-root dist/node/0.2.1/nodelane-room-node-0.2.1-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。`--extended` 额外验证真实十分钟证书续签与断控到期。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
+部署模板冒烟使用 `python scripts/test-deploy.py`；加 `--host` 测试复用现有设施的精简编排。可加 `--root dist/control/0.3.1/nodelane-room-control-0.3.1-linux-amd64 --node-root dist/node/0.2.1/nodelane-room-node-0.2.1-linux-amd64` 验证发布包，或 `--images --pull` 验证仓库发布镜像。`--extended` 额外验证真实十分钟证书续签与断控到期。它测试单实例页面初始化、数据库与 CA 保存、Caddy 内部测试 HTTPS、令牌签发、节点登记、真实 TUN、持久化身份和控制容器重建恢复，不开放宿主端口；不代替宿主网关/端口连通性、现有反代配置、公网证书和 Windows 真机验收。
 
 源码入口见 [文件索引](docs/files.md)，调用方与权限分工见 [架构说明](docs/architecture.md)，接口见 [OpenAPI](docs/openapi.yaml)。当前不包含支付、多账号合并、管理员 OIDC、多管理员角色、TOTP 或云资源自动创建；LAN 兼容范围和游戏验收要求见游戏网络文档。

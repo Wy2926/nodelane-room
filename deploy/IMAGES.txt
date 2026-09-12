@@ -1,23 +1,27 @@
 NodeLane Room component releases
-Control: 0.3.0
+Control: 0.3.1
 Node: 0.2.1
-Client source: 0.3.0（本次未发布桌面安装包）
+Client source: 0.3.0（Windows/Linux amd64 完整包已发布）
 
-2026-09-12 已发布，远端 OCI manifest index 摘要及双架构已核对。
-构建源码提交：10e10ef10cb55a4f41aafa40d1b1829461d54604
+2026-09-12 发布：官网与管理台调整、控制面读取/停机重构及正式更新信任配置。
+源码基线：7035c65，加本次版本、公开信任根及 Linux 归档权限修正。
 数据库结构 6，API /v2，本机 IPC 3，interaction-1，统一 Ethernet LAN。
 
-docker.nodelane.net/nodelane-room-control:0.3.0
-docker.nodelane.net/nodelane-room-control@sha256:650f8bc8696fca9130da0eeb86409235127244f9d750913fe521e98fb424ece6
+docker.nodelane.net/nodelane-room-control:0.3.1
+docker.nodelane.net/nodelane-room-control@sha256:c314c34431fc2e80b3322bdaec624d021d15fea59f7fa1a48bfabf6e6f36dbc0
 
 docker.nodelane.net/nodelane-room-node:0.2.1
-docker.nodelane.net/nodelane-room-node@sha256:cb455d04c9ef465a19daea0b026b44e4ff9f0b95ab5ea88f93fd0c7906edc32b
+docker.nodelane.net/nodelane-room-node@sha256:9170a580b07535aa0d0698a2b08c0710381d0a875fe95847205e0d90cbdb32c9
 
-两份镜像均包含 linux/amd64、linux/arm64；四个程序的版本及 SHA256 与发布包一致。
-Node 0.2.1 同名标签已更新为本次源码构建；按摘要引用的历史镜像不变。
-Node.js 24.21.0 构建管理台；发布包、镜像及隔离部署检查见 docs/validation.md。
-本次未创建 latest、未更新线上容器；客户端安装包及在线更新签名发布单独处理。
+两份镜像均包含 linux/amd64、linux/arm64；四个程序 SHA256 与本次发布归档一致。
+Node 0.2.1 同名标签已同步本次构建，历史摘要仍可固定引用。
+正式客户端完整包经 TUF 签名后上传 Cloudflare R2；官网下载：https://room.nodelane.net/download
+Windows 包尚无 Authenticode 发布者签名；部署与实际检查见 docs/validation.md。
 自行构建使用 scripts/build-images.ps1；只有显式 -Push 才推送。
+
+历史 2026-09-12 首次发布，源码 10e10ef：
+control 0.3.0: sha256:650f8bc8696fca9130da0eeb86409235127244f9d750913fe521e98fb424ece6
+node 0.2.1: sha256:cb455d04c9ef465a19daea0b026b44e4ff9f0b95ab5ea88f93fd0c7906edc32b
 
 历史 2026-09-11 控制面 0.2.2 / 节点 0.2.1：
 control: sha256:d979e84c6b6ce84798cc76053ecd7e2497322319ae478224369d729930fa5a4c

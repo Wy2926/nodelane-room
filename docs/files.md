@@ -61,6 +61,7 @@ deploy/ 部署模板与测试环境
   Dockerfile.registry 从多架构发布包构建仓库镜像
   Dockerfile.release 从 Linux 发布包构建运行镜像
   IMAGES.txt 发布镜像版本与摘要
+  update-root.json 客户端更新初始公开信任根（不含私钥）
   nlroom-node.service 原生节点 systemd 单元
   nlroom-service.service Linux 玩家后台的 root 服务、目录保护与停止等待
   node.sh Linux 原生节点安装脚本
