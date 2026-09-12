@@ -5,6 +5,8 @@ import type { Actions } from "../../../app/use-actions";
 import type { Dialog } from "./types";
 import type { Status, Failure, InviteInfo } from "../../../shared/model";
 import { formatTime } from "../../../shared/time";
+import { invitationLink } from "../invitation-link";
+import { Loading } from "../../../shared/ui/Loading";
 export function Invitation({
   dialog,
   actions,
@@ -18,9 +20,11 @@ export function Invitation({
 }) {
   const { copy } = actions;
   const [valid, setValid] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [code, setCode] = useState(dialog.invitation.code);
   useEffect(() => {
     let stopped = false;
+    setChecking(true);
     let timer: ReturnType<typeof setTimeout>;
     const clear = () => {
       setValid(false);
@@ -33,6 +37,7 @@ export function Invitation({
     };
     async function check() {
       if (Date.parse(dialog.invitation.expires_at) <= Date.now()) {
+        setChecking(false);
         clear();
         return;
       }
@@ -51,6 +56,8 @@ export function Invitation({
         }
       } catch {
         if (!stopped) setValid(false);
+      } finally {
+        if (!stopped) setChecking(false);
       }
       if (!stopped) timer = setTimeout(check, 2000);
     }
@@ -71,7 +78,7 @@ export function Invitation({
         {dialog.room.name} · {dialog.room.game_name}
       </p>
       <div className="invitation selectable">
-        {valid ? code : failure({ code: "invite_changed" }).error}
+        {checking ? <Loading label={t("experience.working")} /> : valid ? invitationLink(code) : failure({ code: "invite_changed" }).error}
       </div>
       <p className="muted">
         {t("invitation.validUntil", {
@@ -80,7 +87,7 @@ export function Invitation({
       </p>
       <button
         className="primary"
-        onClick={() => void copy(code)}
+        onClick={() => void copy(invitationLink(code))}
         disabled={!valid || !code}
       >
         {t("invitation.copyInviteCode")}

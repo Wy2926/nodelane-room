@@ -4,6 +4,7 @@ import { clientVersion, failure, rpc } from "../../native/api";
 import type { UpdateStatus } from "../../shared/model";
 import { Modal } from "../../shared/ui/Modal";
 import { formatTime } from "../../shared/time";
+import { Loading, Spinner } from "../../shared/ui/Loading";
 
 const stateLabels: Record<string, MessageKey> = {
   idle: "updates.idle",
@@ -33,6 +34,7 @@ export function Updates() {
   const [error, setError] = useState("");
   const [readError, setReadError] = useState("");
   const [busy, setBusy] = useState(false);
+  const requestPending = useRef(false);
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -55,6 +57,8 @@ export function Updates() {
     };
   }, []);
   async function act(action: "update-check") {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setBusy(true);
     setError("");
     try {
@@ -65,6 +69,7 @@ export function Updates() {
     } catch (e) {
       setError(failure(e).error);
     } finally {
+      requestPending.current = false;
       setBusy(false);
     }
   }
@@ -78,6 +83,7 @@ export function Updates() {
   const available = value?.state === "available";
   const pending =
     busy ||
+    (!value && !readError) ||
     ["checking", "downloading", "installing"].includes(value?.state || "");
   const release =
     value && !["idle", "succeeded", "unconfigured"].includes(value.state)
@@ -90,9 +96,12 @@ export function Updates() {
           <p className="muted">{t("settings.currentVersion")}</p>
           <h3 id="updates-title">v{clientVersion}</h3>
           <p className="update-status" role="status">
-            {value
-              ? t(stateLabels[value.state] || "updates.unknown")
-              : t(readError ? "updates.unknown" : "updates.checking")}
+            {pending && <Spinner />}
+            {busy
+              ? t("updates.checking")
+              : value
+                ? t(stateLabels[value.state] || "updates.unknown")
+                : t(readError ? "updates.unknown" : "updates.checking")}
           </p>
         </div>
         <button
@@ -161,6 +170,7 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
   const [value, setValue] = useState<UpdateStatus>();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const requestPending = useRef(false);
   const [error, setError] = useState("");
   const [readError, setReadError] = useState("");
   const [speed, setSpeed] = useState(0);
@@ -217,15 +227,17 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
           armed.current = "";
           setError(t("updates.changed"));
         }
-        if (next.state === "ready" && armed.current) {
+        if (next.state === "ready" && armed.current && !requestPending.current) {
           armed.current = "";
+          requestPending.current = true;
           setBusy(true);
           try {
             await rpc({ action: "update-install" });
           } catch (e) {
             if (!stopped) setError(failure(e).error);
           } finally {
-            if (!stopped) setBusy(false);
+            requestPending.current = false;
+            setBusy(false);
           }
         }
         if (["failed", "unconfigured", "rolled_back"].includes(next.state))
@@ -251,6 +263,8 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
   const downloading = value?.state === "downloading" || !!armed.current;
   const installing = value?.state === "installing";
   async function cancel(skip = false) {
+    if (requestPending.current || installing) return;
+    requestPending.current = true;
     armed.current = "";
     setBusy(true);
     try {
@@ -271,11 +285,13 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
     } catch (e) {
       setError(failure(e).error);
     } finally {
+      requestPending.current = false;
       setBusy(false);
     }
   }
   async function start() {
-    if (!release) return;
+    if (!release || requestPending.current || installing) return;
+    requestPending.current = true;
     setBusy(true);
     setError("");
     try {
@@ -288,6 +304,7 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
       armed.current = "";
       setError(failure(e).error);
     } finally {
+      requestPending.current = false;
       setBusy(false);
     }
   }
@@ -319,6 +336,7 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
           </p>
         )}
         <p className="hint">{t("updates.autoInstallHelp")}</p>
+        {busy && !installing && <Loading label={t("experience.working")} />}
         {downloading && (
           <div className="update-download" role="status">
             <label>
@@ -335,7 +353,7 @@ export function UpdatePrompt({ enabled = true }: { enabled?: boolean }) {
             {percent === 100 && <p>{t("updates.preparing")}</p>}
           </div>
         )}
-        {installing && <p role="status">{t("updates.installing")}</p>}
+        {installing && <Loading label={t("updates.installing")} />}
         {value.error_code && (
           <p role="alert">{failure({ code: value.error_code }).error}</p>
         )}

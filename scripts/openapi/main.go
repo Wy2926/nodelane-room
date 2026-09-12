@@ -104,7 +104,7 @@ func run() error {
 	schemas = components["schemas"].(map[string]any)
 
 	generated = map[string]bool{}
-	for _, v := range []any{model.Result{}, model.RoomResult{}, model.MemberRequest{}, model.AccountStatus{}, model.RoomPage{}, model.InviteInfo{}, model.TakeoverRequest{}, model.Operation{}} {
+	for _, v := range []any{model.Result{}, model.RoomResult{}, model.MemberRequest{}, model.AccountStatus{}, model.RoomPage{}, model.InviteInfo{}, control.InvitationPreview{}, model.TakeoverRequest{}, model.Operation{}} {
 		schema(reflect.TypeOf(v))
 	}
 	schema(reflect.TypeOf(model.NetworkSample{}))
@@ -175,6 +175,7 @@ func run() error {
 	add("/v2/me", "get", "Current account, distinct from the device and paid entitlements", "Bearer", nil, ref("User"), false)
 	add("/v2/client/report", "post", "Authenticated device service/GUI version and update result; independent of room membership", "Bearer", ref("ClientReport"), ok, true)
 	add("/v2/updates/check", "get", "Public update policy, signed TUF metadata and ordered HTTPS package URLs; no-store, 120/IP/minute", "", nil, ref("UpdateCheck"), false)
+	add("/v2/invitations/preview", "post", "Anonymous invitation holder preview: room name, game, member count, capacity and expiries only; invitation supplied in JSON body, no-store; shared 240/IP/minute", "", ref("JoinRequest"), ref("InvitationPreview"), false)
 	add("/v2/downloads", "get", "Public installer catalog: at most 50 releases per OS/architecture and 200 total, after matching current signed artifacts and enabled verified sources; grouped by platform, recommendation first then numeric version descending; no-store, shared 120/IP/minute", "", nil, ref("DownloadCatalog"), false)
 	add("/v2/downloads/{release}", "get", "Recheck current publication, signed metadata and verified source revisions before issuing ordered HTTPS download URLs; unavailable release returns 404; no-store, shared 120/IP/minute", "", nil, ref("DownloadLinks"), false)
 	paths["/v2/updates/check"].(M)["get"].(M)["parameters"] = []any{M{"name": "version", "in": "query", "required": true, "schema": str}, M{"name": "os", "in": "query", "required": true, "schema": M{"type": "string", "enum": []string{"windows", "linux"}}}, M{"name": "arch", "in": "query", "required": true, "schema": M{"type": "string", "enum": []string{"amd64", "arm64"}}}, M{"name": "installed", "in": "query", "schema": M{"type": "string", "enum": []string{"1"}}, "description": "Retrieve the exact installed release for a verified Linux rollback package; includes published and paused releases."}}
@@ -293,7 +294,7 @@ func run() error {
 	add("/v2/rooms/{room}/invite", "get", "Current invitation metadata only; no code or hash", "Bearer", nil, ref("InviteInfo"), false)
 	add("/v2/rooms/{room}/invite/revoke", "post", "Invalidate the invitation with the confirmed room revision", "Bearer", ref("MemberRequest"), ref("Room"), true)
 	add("/v2/rooms/{room}/join", "post", "Owner joins by room ID subject to the same capacity, ban, game and account checks", "Bearer", ref("MemberRequest"), ref("RoomResult"), true)
-	add("/v2/rooms/{room}/heartbeat", "post", "Accept LAN heartbeat; replay never extends membership authorization", "Bearer", ref("HeartbeatRequest"), object(M{"accepted_at": M{"type": "string", "format": "date-time"}, "membership_valid_until": M{"type": "string", "format": "date-time"}}, "accepted_at", "membership_valid_until"), true)
+	add("/v2/rooms/{room}/heartbeat", "post", "Accept LAN heartbeat; replay never extends membership authorization. In the final hour, a live member renews the room from its existing expiry by 24 hours, once per threshold; expired/closed rooms never renew. Existing invitations and certificates keep their expiry.", "Bearer", ref("HeartbeatRequest"), object(M{"accepted_at": M{"type": "string", "format": "date-time"}, "membership_valid_until": M{"type": "string", "format": "date-time"}}, "accepted_at", "membership_valid_until"), true)
 	add("/v2/admin/operations/{operation}", "get", "Read the current administrator's mutation receipt", "AdminCookie", nil, ref("Operation"), false)
 	add("/v2/admin/nodes/{node}/operations/{operation}", "get", "Exact node execution status; independent from acceptance of an admin mutation", "AdminCookie", nil, ref("NodeOperation"), false)
 	for _, path := range []string{"/v2/admin/nodes/{node}/actions", "/v2/admin/rooms/{room}/actions"} {

@@ -288,11 +288,49 @@ func (s *Store) heartbeat(ctx context.Context, tx pgx.Tx, room, device string, i
 	if err != nil {
 		return nil, err
 	}
+	if err = renewRooms(ctx, tx, room); err != nil {
+		return nil, err
+	}
 	var accepted, valid time.Time
 	if err = tx.QueryRow(ctx, `SELECT now(),LEAST(now()+interval '45 seconds',r.expires_at,COALESCE(d.expires_at,r.expires_at)) FROM rooms r CROSS JOIN user_devices d WHERE r.id=$1 AND d.device_id=$2`, room, device).Scan(&accepted, &valid); err != nil {
 		return nil, err
 	}
 	return map[string]any{"accepted_at": accepted, "membership_valid_until": valid}, nil
+}
+
+// Renew only rooms with a currently authorized online member. The shared write
+// transaction makes the expiry, revision and events visible together on replicas.
+func renewRooms(ctx context.Context, tx pgx.Tx, room string) error {
+	rows, err := tx.Query(ctx, `UPDATE rooms r SET expires_at=r.expires_at+interval '24 hours'
+		WHERE ($1='' OR r.id=$1) AND NOT r.closed AND r.expires_at>now() AND r.expires_at<=now()+interval '1 hour'
+		AND EXISTS (SELECT 1 FROM members m JOIN user_devices d ON d.device_id=m.device_id JOIN users u ON u.id=m.user_id
+			WHERE m.room_id=r.id AND m.active AND m.last_seen+interval '45 seconds'>now()
+			AND NOT d.revoked AND (d.expires_at IS NULL OR d.expires_at>now()) AND u.state IN ('active','disabled'))
+		RETURNING r.id,r.expires_at`, room)
+	if err != nil {
+		return err
+	}
+	type renewedRoom struct {
+		id      string
+		expires time.Time
+	}
+	renewed, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (renewedRoom, error) {
+		var r renewedRoom
+		err := row.Scan(&r.id, &r.expires)
+		return r, err
+	})
+	if err != nil {
+		return err
+	}
+	for _, r := range renewed {
+		if err = bump(ctx, tx, r.id, "room_renewed"); err != nil {
+			return err
+		}
+		if err = adminEvent(ctx, tx, "control", "room.renewed", r.id, map[string]any{"room_id": r.id, "expires_at": r.expires}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Store) roomAction(ctx context.Context, tx pgx.Tx, room, device, action string, in model.MemberRequest) (any, error) {

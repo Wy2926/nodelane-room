@@ -9,6 +9,10 @@ OutFile "${OUTPUT}"
 RequestExecutionLevel user
 ManifestDPIAware true
 SetCompressor /SOLID lzma
+!ifdef SIGNED_BUILD
+  ; NSIS 3.08+ exposes the generated uninstaller before embedding it.
+  !uninstfinalize '"${PYTHON}" "${SIGN_SCRIPT}" "%1"' = 0
+!endif
 BrandingText "$(Branding)"
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=2052 "ProductName" "NodeLane Room"

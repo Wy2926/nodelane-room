@@ -6,6 +6,7 @@ import { formatTime } from "../shared/time";
 import { connectionView, type Recovery } from "./experience";
 import { Problem, RecoveryButton } from "./Problem";
 import { OperationFeedback } from "./OperationFeedback";
+import { Spinner } from "../shared/ui/Loading";
 
 export function Feedback({ service, actions, refreshAll, onRecover }: {
   service: ReturnType<typeof useService>; actions: Actions; refreshAll: () => void; onRecover: (action: Recovery) => void;
@@ -19,7 +20,7 @@ export function Feedback({ service, actions, refreshAll, onRecover }: {
         {error && <p>{failure(error).error}</p>}
         {updatedAt > 0 && <small>{t("experience.lastChecked", { time: formatTime(new Date(updatedAt).toISOString()) })}</small>}
       </div>
-      <div className="actions"><button disabled={refreshing} onClick={refreshAll}>{t(refreshing ? "experience.checking" : "feedback.checkAgain")}</button><RecoveryButton recovery="diagnostics" onRecover={onRecover} /></div>
+      <div className="actions"><button disabled={refreshing} onClick={refreshAll}>{refreshing && <Spinner />}{t(refreshing ? "experience.checking" : "feedback.checkAgain")}</button><RecoveryButton recovery="diagnostics" onRecover={onRecover} /></div>
     </section>}
     {!interrupted && ["account", "removed", "update", "reconnecting"].includes(view.kind) && <section className="service-notice" data-tone={view.tone} role="status">
       <div><strong>{t(view.title)}</strong><p>{t(view.help)}</p></div>

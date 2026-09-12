@@ -66,6 +66,10 @@ try {
         $filename = $command
         if ($env:GOOS -eq 'windows') { $filename += '.exe' }
         Invoke-Go build -trimpath -buildvcs=false -ldflags $buildFlags -o (Join-Path $bundle $filename) "./cmd/$command"
+        if ($role -eq 'client' -and $env:GOOS -eq 'windows') {
+          & python (Join-Path $root 'scripts/desktop/versioninfo.py') --version $Version (Join-Path $bundle $filename)
+          if ($LASTEXITCODE -ne 0) { throw 'Windows client version resources failed' }
+        }
       }
       $packagePaths = @($commands | ForEach-Object { "./cmd/$_" })
       $moduleList = Invoke-Go list -deps -f '{{if .Module}}{{if .Module.Replace}}{{.Module.Replace.Path}}|{{.Module.Replace.Version}}{{else}}{{.Module.Path}}|{{.Module.Version}}{{end}}|{{.Module.Dir}}{{end}}' @packagePaths | Where-Object { $_ -ne '' } | Sort-Object -Unique
@@ -96,6 +100,7 @@ try {
       Invoke-Go version | Set-Content -LiteralPath (Join-Path $bundle 'BUILD.txt') -Encoding utf8
       "Component: $role`nVersion: $Version`nTarget: $target`nNebula: $nebulaModule`nCGO_ENABLED: 0" | Add-Content -LiteralPath (Join-Path $bundle 'BUILD.txt') -Encoding utf8
       New-Item -ItemType Directory -Force -Path $licenses | Out-Null
+      Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $licenses 'NodeLaneRoom-LICENSE') -Force
       Copy-Item -LiteralPath (Join-Path $goRoot 'LICENSE') -Destination (Join-Path $licenses 'Go-LICENSE') -Force
       $moduleList | ForEach-Object { $m = $_.Split('|'); "$($m[0]) $($m[1])" } | Set-Content -LiteralPath (Join-Path $licenses 'modules.txt') -Encoding utf8
       foreach ($line in $moduleList) {

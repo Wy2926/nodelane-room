@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   ArrowRight,
-  ArrowSquareOut,
   Copy,
   Desktop,
   UserCircle,
@@ -9,6 +8,7 @@ import {
 import { t } from "../../i18n";
 import { useAccount } from "./use-account";
 import { PlayerAvatar } from "../../shared/ui/PlayerAvatar";
+import { Loading, Spinner } from "../../shared/ui/Loading";
 import type { Actions } from "../../app/use-actions";
 import type { Status } from "../../shared/model";
 
@@ -182,9 +182,10 @@ export function AccountAccess({
   }
   return (
     <div className="account-access">
+      {account.loading && !waiting && <Loading label={t("experience.checking")} />}
       {waiting ? (
         <div className="account-waiting">
-          <ArrowSquareOut size={25} weight="light" aria-hidden="true" />
+          <Spinner />
           <p role="status">{t("account.waiting")}</p>
           <div className="account-actions">
             <button

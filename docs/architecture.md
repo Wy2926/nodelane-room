@@ -82,6 +82,10 @@ HTTP JSON 与 IPC 使用 `interaction-1` 统一响应，包含 `code/message/ori
 
 SSE 首先重放游标之后最多 256 个持久 `change` 通知，再发送完整 `snapshot`，然后每 5 秒发送一次权威快照。过老、非法或未来游标先发 `reset` 再发完整快照；成员或身份终止发 `terminal` 后关闭，不能在已建立流中追加 HTTP 错误体。通知只是失效提示，消费者以完整快照为准，不能用通知载荷直接修改授权。流最长五分钟，然后客户端携带最近 revision 重连；服务端每轮检查会话。
 
+### 房间自动续期事务
+
+有效心跳及 Sweep 在现有 PostgreSQL 事务锁内检查剩余期限；未关闭、未到期且剩余不超过一小时，并有 `last_seen + 45s > now()` 的有效成员时，条件更新 `expires_at = expires_at + 24h`。更新、`room_renewed` 房间事件和 `room.renewed` 审计同事务提交；并发实例重查条件不会叠加续期。Sweep 先执行强制版本授权撤销，再续期、清理到期房间。续期不修改邀请、旧证书或设备身份期限，也不延长离线成员授权。
+
 ## 数据面
 
 固定 Nebula 完成基础设施 TUN、Noise 握手、证书校验、UDP 打洞、原生 relay 和 UDP 重绑定监控。生产启用 `punchy.punch`、`punchy.respond`；终端连接多个 lighthouse，NodeLane 更新静态入口和 relay 候选，无 relay 时仍可直连。强制中继限制仅用于回归，不进入生产。没有 TURN、WebRTC、HTTP 数据中继或公网 TCP 回退；完全封禁 UDP 的网络无法联机。

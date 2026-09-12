@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from package import source_version
+from signing import load_signer
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -22,7 +23,12 @@ def main():
     parser.add_argument('--arch', choices=['amd64', 'arm64'], default='amd64')
     parser.add_argument('--release', type=Path, required=True, help='Matching Go release directory')
     parser.add_argument('--skip-web', action='store_true', help='Use frontend assets already built and checked')
+    parser.add_argument('--allow-unsigned', action='store_true', help='Windows development package only; never publish')
     args = parser.parse_args()
+    if args.allow_unsigned and args.platform != 'windows':
+        parser.error('--allow-unsigned is only valid for Windows')
+    if args.platform == 'windows':
+        load_signer(args.allow_unsigned)
     version = source_version()
     npm = 'npm.cmd' if os.name == 'nt' else 'npm'
     if not args.skip_web:
@@ -47,7 +53,10 @@ def main():
         'version': version, 'platform': args.platform, 'arch': args.arch,
         'sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
     }, indent=2) + '\n', encoding='utf-8')
-    run([sys.executable, 'scripts/desktop/package.py', '--platform', args.platform, '--arch', args.arch, '--gui', str(output), '--release', str(args.release)])
+    package = [sys.executable, 'scripts/desktop/package.py', '--platform', args.platform, '--arch', args.arch, '--gui', str(output), '--release', str(args.release)]
+    if args.allow_unsigned:
+        package.append('--allow-unsigned')
+    run(package)
 
 
 if __name__ == '__main__':

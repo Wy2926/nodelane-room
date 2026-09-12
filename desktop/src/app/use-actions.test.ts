@@ -13,6 +13,57 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 beforeEach(() => vi.resetAllMocks());
 
+test.each([false, true])("a waiting action remains busy, rejects duplicate clicks, and ends after settlement (failed: %s)", async (failed) => {
+  let complete!: (value: unknown) => void;
+  let reject!: (reason: unknown) => void;
+  vi.mocked(rpc).mockImplementationOnce(() => new Promise((resolve, fail) => {
+    complete = resolve;
+    reject = fail;
+  }));
+  const view = renderHook(() => useActions(vi.fn(), "service-a"));
+  let pending!: Promise<boolean>;
+  act(() => { pending = view.result.current.perform("Joining", { action: "join" }); });
+  expect(view.result.current.busy).toBe("Joining");
+  await act(async () => {
+    expect(await view.result.current.perform("Joining", { action: "join" })).toBe(false);
+  });
+  expect(rpc).toHaveBeenCalledOnce();
+  await act(async () => {
+    if (failed) reject({ code: "room_full" });
+    else complete({ room: { id: "joined" } });
+    expect(await pending).toBe(!failed);
+  });
+  expect(view.result.current.busy).toBe("");
+  expect(view.result.current.error?.code).toBe(failed ? "room_full" : undefined);
+});
+
+test("a late pause response cannot hide a new service's pause progress", async () => {
+  let completeOld!: (value: unknown) => void;
+  let rejectNew!: (reason: unknown) => void;
+  vi.mocked(rpc)
+    .mockImplementationOnce(() => new Promise((resolve) => { completeOld = resolve; }))
+    .mockImplementationOnce(() => new Promise((_, reject) => { rejectNew = reject; }));
+  const view = renderHook(({ instance }) => useActions(vi.fn(), instance), {
+    initialProps: { instance: "old" },
+  });
+  let old!: Promise<boolean>;
+  let next!: Promise<boolean>;
+  act(() => { old = view.result.current.perform("Pausing", { action: "network-stop" }); });
+  view.rerender({ instance: "new" });
+  act(() => { next = view.result.current.perform("Pausing", { action: "network-stop" }); });
+  await act(async () => {
+    completeOld({});
+    await old;
+  });
+  expect(view.result.current.pausing).toBe(true);
+  await act(async () => {
+    rejectNew({ code: "local_service_unavailable" });
+    await next;
+  });
+  expect(view.result.current.pausing).toBe(false);
+  expect(view.result.current.error?.code).toBe("local_service_unavailable");
+});
+
 test("uncertain writes block new intents while pause and original receipt remain available", async () => {
   vi.mocked(rpc)
     .mockRejectedValueOnce({

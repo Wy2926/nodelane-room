@@ -31,6 +31,39 @@ go run ./scripts/updates -mode sign -keys /secure/nlroom-signing -out dist/updat
 
 每次签署保留已有 targets；相同文件名不可覆盖成不同内容。元数据默认有效七天，可用 `-days 1..30` 调整。到期前运行不带 `-package` 的 `-mode sign` 续签并导入管理台；过期后客户端拒绝安装。根默认一年有效，使用 `-mode rotate-root` 生成旧根和新根双签的下一版，导入包含完整轮换链的清单。保留所有已发布根；当前实现最多携带 64 次轮换，总元数据不超过 2 MiB。轮换后需验证从最早仍受支持客户端的初始根可以更新。签名工具输出的是文件，不会上传或发布。
 
+## Windows 发布者签名
+
+已配置 Windows 证书私钥提供程序后，在构建进程设置以下变量（不要写入仓库）：
+
+```powershell
+$env:NLROOM_SIGN_CERT_SHA1 = '<My 证书存储中的40位指纹>'
+$env:NLROOM_SIGN_TIMESTAMP_URL = '<证书服务商的RFC3161时间戳地址>'
+$env:NLROOM_SIGN_CERT_STORE_LOCATION = 'CurrentUser' # 或 LocalMachine
+# 可选 NLROOM_SIGNTOOL_PATH，默认从 Windows SDK 查找 signtool.exe
+python scripts/desktop/build.py --platform windows --arch amd64 --release dist/client/0.3.1/nodelane-room-client-0.3.1-windows-amd64
+```
+
+构建先更新自有 EXE 的产品版本，再签 GUI、CLI、后台和更新助手，计算安装 payload 摘要，签卸载器，最后签完整安装包；各签名均采用 SHA256、RFC3161 时间戳及 `signtool verify /pa /all /tw` 验证。第三方驱动和工具保持原发布者签名。最终安装包完成 Authenticode 后，才能进入上述 TUF 签署和上传流程。
+
+缺少签名配置时正式 Windows 打包提前失败。仅开发验收可显式添加 `--allow-unsigned`，生成带 `-unsigned-setup.exe` 后缀的包，不能作为正式版本上传。SignPath Foundation 属于云端审核签名，不提供本地证书指纹；获批后必须按其 GitHub 构建来源和人工审批要求接入，不能用上述本地签名配置冒充云签名。
+
+## Code signing policy
+
+Windows 正式发行须使用可验证的 Authenticode 发布者签名。使用 [SignPath Foundation](https://signpath.org/) 免费签名服务前，须通过项目审核并完成签名账户、可信构建和发布审批配置；本政策不代表已获批准或已签署任何安装包，实际发行以包内签名及其验证结果为准。服务条件见 [官方条款](https://signpath.org/terms.html)。
+
+| 角色 | 负责人 |
+|---|---|
+| 提交与代码审查（Committers and reviewers） | 仓库维护者 [Wy2926](https://github.com/Wy2926) |
+| 签名审批（Approvers） | 仓库所有者 [Wy2926](https://github.com/Wy2926) |
+
+外部贡献须由维护者审查，签名相关源码、构建脚本和 CI 配置同样纳入审查。相关账户须启用 GitHub 与 SignPath 多因素认证；每次发行由审批人核对源码、构建结果和目标版本后人工批准签名。
+
+采用 SignPath 时，待签文件须从本仓库可追溯提交在 GitHub 托管 runner 上构建，签名前上传为 GitHub Actions artifact，按 [官方 GitHub 集成](https://docs.signpath.io/trusted-build-systems/github) 核验来源。被签自有二进制的产品名称统一为 `NodeLane Room`，同次构建使用一致产品版本；第三方程序保留上游签名，不使用本项目签名身份重新签署。全部 Authenticode 签名完成后，再执行本文的 TUF 元数据签署与发布流程。
+
+项目获批且安装包实际使用该服务签名后，主页和下载页应链接本节，并注明“Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)”。该服务使用 Foundation 名下的证书，发布者名称并非 NodeLane 或维护者个人。
+
+客户端的账号与房间控制、更新查询与下载、联机状态上报涉及网络通讯，数据处理和相关服务说明见 [隐私政策](https://room.nodelane.net/privacy)（[English](https://room.nodelane.net/en/privacy)）；自建服务另由实际运营者说明其数据处理规则。
+
 ## 控制面配置
 
 控制面配置以下环境变量，所有连接同一数据库的实例保持一致：

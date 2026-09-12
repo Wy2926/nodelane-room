@@ -478,6 +478,32 @@ components:
                 - code
                 - expires_at
             type: object
+        InvitationPreview:
+            properties:
+                capacity:
+                    format: int64
+                    type: integer
+                game_name:
+                    type: string
+                invite_expires_at:
+                    format: date-time
+                    type: string
+                member_count:
+                    format: int64
+                    type: integer
+                name:
+                    type: string
+                room_expires_at:
+                    format: date-time
+                    type: string
+            required:
+                - name
+                - game_name
+                - member_count
+                - capacity
+                - room_expires_at
+                - invite_expires_at
+            type: object
         InviteInfo:
             properties:
                 active:
@@ -2053,7 +2079,7 @@ components:
 info:
     description: 'Fresh database schema version 6 and identities required; API remains /v2. No old data migration. Device Ed25519 proofs sign UTF-8 nodelane-auth-v2:<scope>:<challenge-id>: followed by raw challenge nonce; scope is guest, player, node, or enrollment. Device identity and Nebula X25519 keys are separate. Byte fields use standard base64. Temporary enrollment keys contain 32 random bytes encoded as 64 hex characters, expire after 30 minutes and are consumed transactionally once. Never log credentials.'
     title: NodeLane Room V2
-    version: 0.3.1
+    version: 0.3.2
 openapi: 3.0.3
 paths:
     /healthz:
@@ -5802,6 +5828,67 @@ paths:
             summary: Downloaded public game artwork; image is cover or background
             tags:
                 - Player
+    /v2/invitations/preview:
+        post:
+            parameters:
+                - in: header
+                  name: X-NodeLane-Contract
+                  required: true
+                  schema:
+                    enum:
+                        - interaction-1
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/JoinRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                allOf:
+                                    - $ref: '#/components/schemas/Result'
+                                    - properties:
+                                        data:
+                                            $ref: '#/components/schemas/InvitationPreview'
+                                      type: object
+                                x-interaction-envelope: true
+                    description: Success
+                "400":
+                    $ref: '#/components/responses/Error'
+                "401":
+                    $ref: '#/components/responses/Error'
+                "403":
+                    $ref: '#/components/responses/Error'
+                "404":
+                    $ref: '#/components/responses/Error'
+                "405":
+                    $ref: '#/components/responses/Error'
+                "409":
+                    $ref: '#/components/responses/Error'
+                "410":
+                    $ref: '#/components/responses/Error'
+                "413":
+                    $ref: '#/components/responses/Error'
+                "415":
+                    $ref: '#/components/responses/Error'
+                "422":
+                    $ref: '#/components/responses/Error'
+                "429":
+                    $ref: '#/components/responses/Error'
+                "500":
+                    $ref: '#/components/responses/Error'
+                "503":
+                    $ref: '#/components/responses/Error'
+                "504":
+                    $ref: '#/components/responses/Error'
+            security: []
+            summary: 'Anonymous invitation holder preview: room name, game, member count, capacity and expiries only; invitation supplied in JSON body, no-store; shared 240/IP/minute'
+            tags:
+                - Player
     /v2/me:
         get:
             parameters:
@@ -7193,7 +7280,7 @@ paths:
                     $ref: '#/components/responses/Error'
             security:
                 - Bearer: []
-            summary: Accept LAN heartbeat; replay never extends membership authorization
+            summary: Accept LAN heartbeat; replay never extends membership authorization. In the final hour, a live member renews the room from its existing expiry by 24 hours, once per threshold; expired/closed rooms never renew. Existing invitations and certificates keep their expiry.
             tags:
                 - Player
     /v2/rooms/{room}/invite:

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { LanguageSelection } from "../i18n/LanguageSelection";
 import { useService } from "../native/use-service";
+import { useInvitation } from "../native/use-invitation";
 import { useActions, type Actions } from "./use-actions";
 import { Shell } from "./Shell";
 import { Feedback } from "./Feedback";
@@ -38,7 +39,11 @@ export function App() {
 
 function Client() {
   const service = useService();
+  const incoming = useInvitation();
   const [page, setPage] = useState<Page>("rooms");
+  useEffect(() => {
+    if (incoming.invitation) setPage("rooms");
+  }, [incoming.invitation, incoming.revision]);
   const [reload, setReload] = useState(0);
   const [settingsSection, setSettingsSection] = useState<
     "preferences" | "account" | "device" | "updates"
@@ -108,7 +113,7 @@ function Client() {
         !serviceError &&
         page !== "settings" &&
         page !== "doctor" && (
-          <Empty title={t("app.connectingToTheLocalService")}>
+          <Empty loading title={t("app.connectingToTheLocalService")}>
             <p>{t("app.readingDeviceAndRoomStatus")}</p>
           </Empty>
         )}
@@ -152,6 +157,7 @@ function Client() {
       )}
       {service.status?.device_id && !identityNeedsAttention && (
         <Session
+          incoming={incoming}
           key={`${service.status.service_instance_id}:${service.status.device_id}:${service.status.user?.id}`}
           status={service.status}
           serviceError={serviceError}
@@ -168,6 +174,7 @@ function Client() {
 }
 
 function Session({
+  incoming,
   status,
   serviceError,
   page,
@@ -177,6 +184,7 @@ function Session({
   refreshAll,
   onRecover,
 }: {
+  incoming: ReturnType<typeof useInvitation>;
   status: Status;
   serviceError?: Failure;
   page: Page;
@@ -204,6 +212,7 @@ function Session({
     <>
       {page === "rooms" && (
         <RoomPage
+          incoming={incoming}
           {...{
             view,
             status,

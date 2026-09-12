@@ -10,6 +10,7 @@ import {
 import type { Status, Failure, Diagnostic } from "../../shared/model";
 import { useQuery } from "../../native/use-query";
 import { connectionView } from "../../app/experience";
+import { Spinner } from "../../shared/ui/Loading";
 
 type Tone = "ok" | "warning" | "neutral";
 const controlLabels: Record<string, MessageKey> = {
@@ -177,7 +178,11 @@ export function Diagnostics({
           {report.error && <p role="alert">{report.error.error}</p>}
           {!data ? (
             <div className="diagnostic-empty" role="status">
-              <ShieldCheck size={34} weight="light" aria-hidden="true" />
+              {report.loading ? (
+                <Spinner />
+              ) : (
+                <ShieldCheck size={34} weight="light" aria-hidden="true" />
+              )}
               <h4>
                 {t(
                   report.loading

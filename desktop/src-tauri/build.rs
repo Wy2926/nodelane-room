@@ -6,6 +6,7 @@ fn main() {
             "exit_app",
             "notify_state",
             "set_language",
+            "take_invitation",
         ]),
     ))
     .expect("desktop build configuration is invalid");

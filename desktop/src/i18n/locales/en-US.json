@@ -217,10 +217,10 @@
   "createRoom.roomName": "Room name",
   "createRoom.giveThisSessionAName": "Give this session a name",
   "createRoom.createAndConnect": "Create and connect",
-  "invitation.copyInviteCode": "Copy invite code",
-  "invitation.storageHelp": "The invite code is kept only in this window, with no local history saved.",
-  "joinRoom.inviteCode": "Invite code",
-  "joinRoom.pasteInviteCode": "Paste invite code",
+  "invitation.copyInviteCode": "Copy invite link",
+  "invitation.storageHelp": "The invitation link is kept only in this window, with no local history saved.",
+  "joinRoom.inviteCode": "Invitation link",
+  "joinRoom.pasteInviteCode": "Paste invitation link",
   "joinRoom.joinAndConnect": "Join and connect",
   "roomDialogs.inviteFriendsToPlay": "Invite friends to play",
   "language.choose": "Choose your language",
@@ -517,5 +517,6 @@
   "updates.transfer": "{downloaded} / {total} MB · {speed} MB/s",
   "updates.preparing": "Verifying the package and preparing installation…",
   "updates.changed": "The recommended version changed. Please confirm the update again.",
-  "updates.skipSession": "Could not save your preference. This version will be hidden for this session."
+  "updates.skipSession": "Could not save your preference. This version will be hidden for this session.",
+  "experience.working": "Working…"
 }

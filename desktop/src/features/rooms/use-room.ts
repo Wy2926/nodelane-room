@@ -52,6 +52,7 @@ export function useRoom(
     roomFresh,
     owner,
     canManage,
+    loading: management.loading,
     managementError: isCurrent ? undefined : management.error,
   };
 }

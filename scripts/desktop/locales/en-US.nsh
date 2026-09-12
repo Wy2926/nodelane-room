@@ -2,7 +2,13 @@
 LangString Branding ${LANG_ENGLISH} "NodeLane · Play in the same room"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "NodeLane Room Setup and Maintenance"
 LangString WelcomeTitle ${LANG_ENGLISH} "Welcome to$\r$\nNodeLane Room"
-LangString WelcomeText ${LANG_ENGLISH} "Play in the same room with friends.$\r$\n$\r$\nThis wizard installs the game client and network service, or maintains an existing installation.$\r$\n$\r$\nVersion ${VERSION} · ${ARCH}$\r$\nDevelopment build · Not code signed$\r$\n$\r$\nRun from your everyday Windows gaming account. Windows will request administrator approval when installation starts."
+!ifdef SIGNED_BUILD
+  !define SIGNING_NOTICE ""
+!else
+  !define SIGNING_NOTICE "$\r$\nDevelopment build · Not code signed"
+!endif
+LangString WelcomeText ${LANG_ENGLISH} "Play in the same room with friends.$\r$\n$\r$\nThis wizard installs the game client and network service, or maintains an existing installation.$\r$\n$\r$\nVersion ${VERSION} · ${ARCH}${SIGNING_NOTICE}$\r$\n$\r$\nRun from your everyday Windows gaming account. Windows will request administrator approval when installation starts."
+!undef SIGNING_NOTICE
 LangString InstallingTitle ${LANG_ENGLISH} "Configuring NodeLane Room"
 LangString InstallingSubtitle ${LANG_ENGLISH} "Please wait while files are verified and the network service is configured."
 LangString FinishTitle ${LANG_ENGLISH} "NodeLane Room is ready"

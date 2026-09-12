@@ -16,6 +16,8 @@ var siteWebFiles embed.FS
 // Only named pages and exact asset files are public; unknown paths stay 404.
 func registerSiteWeb(mux *http.ServeMux) {
 	for _, page := range []struct{ Path, Title, Description string }{
+		{"/join", "房间邀请 · NodeLane Room", "查看房间信息，打开或下载客户端，与朋友一起玩。"},
+		{"/en/join", "Room invitation · NodeLane Room", "Preview your room and open or download the app to play with friends."},
 		{"/", "NodeLane Room · 让朋友回到同一个局域网", "为朋友之间的游戏联机而生。创建房间、邀请好友，在熟悉的游戏局域网中相聚。"},
 		{"/product", "产品功能 · NodeLane Room", "了解 NodeLane Room 的游戏房间、好友邀请、连接状态和桌面体验。"},
 		{"/download", "下载客户端 · NodeLane Room", "获取 NodeLane Room 客户端，了解 Windows 与 Linux 的安装和使用要求。"},
@@ -61,6 +63,10 @@ func registerSiteWeb(mux *http.ServeMux) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			if data.PagePath == "/join" {
+				w.Header().Set("Referrer-Policy", "no-referrer")
+				w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Content-Language", data.Lang)
 			if r.Method != http.MethodHead {

@@ -52,7 +52,8 @@ export function useActions(
   const busyRef = useRef(false);
   const [error, setError] = useState<Failure>();
   const [notice, setNotice] = useState(false);
-  const pauseRef = useRef(false);
+  const pauseRef = useRef<object>(undefined);
+  const [pausing, setPausing] = useState(false);
   const [retryAt, setRetryAt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const { hasPending, track, followup, ...operations } = useOperations({
@@ -74,10 +75,13 @@ export function useActions(
     setTakeover(undefined);
     setDialog(undefined);
     setBusy("");
+    pauseRef.current = undefined;
+    setPausing(false);
     setError(undefined);
     setRetryAt(0);
     return () => {
       scope.current = {};
+      pauseRef.current = undefined;
     };
   }, [instance]);
   useEffect(() => {
@@ -119,7 +123,9 @@ export function useActions(
     const sourceScope = scope.current;
     if (request.action === "network-stop") {
       if (pauseRef.current) return false;
-      pauseRef.current = true;
+      const ticket = {};
+      pauseRef.current = ticket;
+      setPausing(true);
       try {
         await rpc(request);
         if (scope.current !== sourceScope) return false;
@@ -129,7 +135,10 @@ export function useActions(
         if (scope.current === sourceScope) setError(failure(e));
         return false;
       } finally {
-        pauseRef.current = false;
+        if (pauseRef.current === ticket) {
+          pauseRef.current = undefined;
+          setPausing(false);
+        }
       }
     }
     if (optionsRef.current?.unavailable) {
@@ -160,7 +169,7 @@ export function useActions(
       return false;
     }
     if (retryAt > Date.now()) return false;
-    if (busyRef.current) return false;
+    if (busyRef.current || pauseRef.current) return false;
     if (
       hasPending() &&
       !["get-operation", "network-retry", "ping", "doctor"].includes(
@@ -312,6 +321,7 @@ export function useActions(
     dialog,
     setDialog,
     busy,
+    pausing,
     setBusy,
     error,
     setError,

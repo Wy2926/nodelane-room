@@ -1,6 +1,6 @@
 package model
 
 // Components are released independently; protocol versions are separate.
-const ControlVersion = "0.3.1"
+const ControlVersion = "0.3.2"
 const NodeVersion = "0.2.1"
-const ClientVersion = "0.3.0"
+const ClientVersion = "0.3.1"

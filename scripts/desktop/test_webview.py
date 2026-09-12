@@ -95,7 +95,7 @@ def main():
         button('生成新邀请码')
         renewed = wait(lambda: script("return document.querySelector('.invitation')?.textContent"), 'renewed invitation')
         if first == renewed: raise RuntimeError('Invitation was not rotated')
-        button('复制邀请码')
+        button('复制邀请链接')
         wait(lambda: contains('已复制'), 'native clipboard')
         click('dialog button[aria-label="关闭对话框"]')
         button('离开房间')

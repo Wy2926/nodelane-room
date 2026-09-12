@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -10,10 +11,12 @@ import userEvent from "@testing-library/user-event";
 import { App } from "./App";
 import { rpc, exitApp, copyText, clientVersion } from "../native/api";
 import { useService } from "../native/use-service";
+import { useInvitation } from "../native/use-invitation";
 import type { Game, Status } from "../shared/model";
 import { languageStorageKey, setLanguage } from "../i18n";
 
 vi.mock("../native/use-service", () => ({ useService: vi.fn() }));
+vi.mock("../native/use-invitation", () => ({ useInvitation: vi.fn() }));
 vi.mock("../native/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../native/api")>()),
   rpc: vi.fn(),
@@ -53,6 +56,11 @@ function defaultReply(request: { action: string }) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(useInvitation).mockReturnValue({
+    invitation: "",
+    revision: 0,
+    clearInvitation: vi.fn(),
+  });
   setLanguage("zh-CN");
   status = {
     room_creation: { allowed: true },
@@ -261,10 +269,10 @@ test("creation restriction preserves invitation joining and recovers without log
   expect(screen.getAllByText(/当前账号暂不可创建房间/).length).toBeGreaterThan(
     0,
   );
-  await userEvent.type(screen.getByLabelText("邀请码"), "test-code");
+  await userEvent.type(screen.getByLabelText("邀请链接"), "0123456789abcdef0123456789abcdef");
   await userEvent.click(screen.getByRole("button", { name: "加入房间" }));
   expect(rpc).toHaveBeenCalledWith(
-    expect.objectContaining({ action: "join", body: { code: "test-code" } }),
+    expect.objectContaining({ action: "join", body: { code: "0123456789abcdef0123456789abcdef" } }),
   );
   await userEvent.click(screen.getByRole("button", { name: "返回我的房间" }));
   status = { ...status, room_creation: { allowed: true } };
@@ -462,7 +470,7 @@ test("renewed invitation uses the actual standalone invitation response", async 
   vi.mocked(rpc).mockImplementation(async (request) => {
     if (request.action === "invite")
       return {
-        code: "test-invitation",
+        code: "0123456789abcdef0123456789abcdef",
         revision: 1,
         expires_at: new Date(Date.now() + 600000).toISOString(),
       } as never;
@@ -471,8 +479,8 @@ test("renewed invitation uses the actual standalone invitation response", async 
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "邀请朋友" }));
   expect(await screen.findByRole("dialog")).toBeTruthy();
-  expect(await screen.findByText("test-invitation")).toBeTruthy();
-  expect(screen.getByRole("button", { name: "复制邀请码" })).toBeTruthy();
+  expect(await screen.findByText("https://room.nodelane.net/join#0123456789abcdef0123456789abcdef")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "复制邀请链接" })).toBeTruthy();
   expect(rpc).toHaveBeenCalledWith({
     action: "invite",
     room: "room",
@@ -483,7 +491,7 @@ test("renewed invitation uses the actual standalone invitation response", async 
 
 test("an open join form stops accepting operations when the service disappears", async () => {
   const app = render(<App />);
-  await userEvent.type(screen.getByLabelText("邀请码"), "test-code");
+  await userEvent.type(screen.getByLabelText("邀请链接"), "0123456789abcdef0123456789abcdef");
   vi.mocked(useService).mockReturnValue({
     status,
     error: { code: "local_service_unavailable", error: "服务离线" },
@@ -543,6 +551,33 @@ test("leave failure keeps the app running", async () => {
   expect(screen.getByRole("dialog")).toBeTruthy();
 });
 
+test("a newer invitation remains visible when an earlier join finishes", async () => {
+  const first = "0123456789abcdef0123456789abcdef";
+  const second = "fedcba9876543210fedcba9876543210";
+  const clearInvitation = vi.fn();
+  let incoming = { invitation: first, revision: 1, clearInvitation };
+  vi.mocked(useInvitation).mockImplementation(() => incoming);
+  let complete!: (value: unknown) => void;
+  vi.mocked(rpc).mockImplementation(async (request) => {
+    if (request.action === "join")
+      return new Promise((resolve) => { complete = resolve; });
+    return defaultReply(request) as never;
+  });
+  const view = render(<App />);
+  expect((screen.getByLabelText("邀请链接") as HTMLInputElement).value).toBe(first);
+  await userEvent.click(screen.getByRole("button", { name: "加入房间" }));
+  expect(rpc).toHaveBeenCalledWith(expect.objectContaining({
+    action: "join", body: { code: first },
+  }));
+  incoming = { invitation: second, revision: 2, clearInvitation };
+  view.rerender(<App />);
+  expect((screen.getByLabelText("邀请链接") as HTMLInputElement).value).toBe(second);
+  await act(async () => complete({}));
+  expect((screen.getByLabelText("邀请链接") as HTMLInputElement).value).toBe(second);
+  expect(clearInvitation).not.toHaveBeenCalled();
+  expect(vi.mocked(rpc).mock.calls.filter(([request]) => request.action === "join")).toHaveLength(1);
+});
+
 test("creating a room submits the general server game once and retains invitation only in memory", async () => {
   let complete!: (value: unknown) => void;
   vi.mocked(rpc).mockImplementation(async (request) => {
@@ -577,18 +612,18 @@ test("creating a room submits the general server game once and retains invitatio
   complete({
     room: { name: "周末世界", game_name: game.name },
     invitation: {
-      code: "fixture-invitation",
+      code: "0123456789abcdef0123456789abcdef",
       revision: 1,
       expires_at: new Date(Date.now() + 100000).toISOString(),
     },
   });
   await waitFor(() =>
-    expect(screen.getByText("fixture-invitation")).toBeTruthy(),
+    expect(screen.getByText("https://room.nodelane.net/join#0123456789abcdef0123456789abcdef")).toBeTruthy(),
   );
   expect(Object.keys(localStorage)).toEqual([languageStorageKey]);
   expect(localStorage.getItem(languageStorageKey)).toBe("zh-CN");
   await user.click(screen.getByRole("button", { name: "关闭对话框" }));
-  expect(screen.queryByText("fixture-invitation")).toBeNull();
+  expect(screen.queryByText("https://room.nodelane.net/join#0123456789abcdef0123456789abcdef")).toBeNull();
 });
 
 function joinedParty() {
@@ -957,7 +992,7 @@ test("a signed out account exposes login without exposing room creation", async 
 test("room detail reserves the sidebar for game information and actions", () => {
   joinedParty();
   render(<App />);
-  expect(screen.queryByPlaceholderText("粘贴邀请码")).toBeNull();
+  expect(screen.queryByPlaceholderText("粘贴邀请链接")).toBeNull();
   expect(screen.queryByRole("button", { name: "创建房间" })).toBeNull();
   expect(screen.queryByText("暂停本机网络")).toBeNull();
   const table = screen.getByRole("table");

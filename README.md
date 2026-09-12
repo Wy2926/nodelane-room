@@ -4,6 +4,8 @@
 
 玩家桌面客户端 `nlroom` 使用 Tauri 2 + React + TypeScript，首次使用默认连接 `https://room.nodelane.net`。`nlroom-cli` 面向脚本和开发调试，网络后台 `nlroom-service` 独立运行。界面设计见 [客户端设计](docs/client.md)，修改代码先用 [任务导航](docs/files.md#按任务读取) 定位。
 
+项目自有代码采用 [MIT 许可证](LICENSE)；第三方组件保留各自许可证，见 [第三方说明](THIRD_PARTY_NOTICES.md)。Windows 发布者签名要求见 [Code signing policy](docs/updates.md#code-signing-policy)。
+
 V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 6，API 仍为 /v2；仅接受空 schema 或本版本创建的当前结构，旧库不迁移、不自动补表、不清空。0.2.1 包含当前 Ethernet LAN 架构；[镜像清单](deploy/IMAGES.txt) 提供镜像摘要，历史 0.2.0 使用旧数据面，不能与当前客户端混用。本机 IPC 为版本 3，HTTP 与 IPC 统一使用 `interaction-1` 契约，不兼容旧客户端或旧响应。当前检查与未验收项见 [验证记录](docs/validation.md)。
 
 ## 控制面和节点
@@ -16,7 +18,7 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 ## Windows 客户端
 
-桌面玩家使用 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`（按当前源码构建；正式发布前完成代码签名）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。GUI 使用 `https://room.nodelane.net`，不提供服务端地址设置；登录账号或填写访客昵称后即可建房、输入邀请码加入和管理成员；进入网络诊断页自动检查。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
+桌面玩家使用 `dist/desktop/nlroom-0.3.1-windows-amd64-setup.exe`（按当前源码构建，须配置发布者签名）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。GUI 使用 `https://room.nodelane.net`，不提供服务端地址设置；登录账号或填写访客昵称后即可建房、粘贴邀请链接加入和管理成员；进入网络诊断页自动检查。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
 
 安装包使用 NSIS 3 Modern UI 2，由原生 `nlroom-update.exe` 完成安装、升级与卸载，不执行 PowerShell。助手在提权前取得玩家 SID，检查版本、架构、完整包摘要与权限，并通过受限 Named Pipe 回传结果。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，包含程序、`Uninstall.exe`、构建信息、许可和供启动时使用的 `drivers/tap/`。GUI 保持普通用户运行，后台独立运行。WebView2 作为现有系统环境前提，安装器不检测、下载或安装运行时。
 
@@ -55,6 +57,8 @@ $nl = "$env:ProgramFiles\NodeLaneRoom\nlroom-cli.exe"
 加入后，已配置游戏自动应用服务端指定的端口，用 `room members` 查看成员虚拟 IP 和规则。Minecraft 预置 TCP 25565，与其他游戏共用通用数据面；游戏实际监听端口须与配置一致。所有游戏统一使用 Ethernet LAN，管理员配置房内广播、组播及直接连接权限；客户端准备与使用见下文，技术设计及兼容边界见 [游戏网络](docs/game-network.md)。
 
 账号的“限制创建房间”仅禁止新建，仍可登录、加入和管理已有房间；GUI 显示具体限制与刷新入口。需要撤销连接时使用管理台的设备撤销或账号删除，详见[用户身份](docs/architecture.md#用户身份)。
+
+复制邀请链接后，好友可在浏览器查看房间信息、打开客户端或下载安装。邀请与自动续期规则见 [客户端交互](docs/client.md#邀请与房间期限)。
 
 ## 游戏管理
 
@@ -103,10 +107,10 @@ Go 开发归档可从原解压目录运行 `nlroom-update.exe remove` 卸载；�
 
 ## Linux 桌面与客户端开发
 
-Linux 桌面完整包需按下方步骤单独构建，包名为 `dist/desktop/nlroom_0.3.0_amd64.deb`。在 Ubuntu 22.04/24.04、Debian 12/13 上由 apt 安装依赖；首次安装需显式绑定玩家：
+Linux 桌面完整包需按下方步骤单独构建，包名为 `dist/desktop/nlroom_0.3.1_amd64.deb`。在 Ubuntu 22.04/24.04、Debian 12/13 上由 apt 安装依赖；首次安装需显式绑定玩家：
 
 ```sh
-sudo apt install ./nlroom_0.3.0_amd64.deb
+sudo apt install ./nlroom_0.3.1_amd64.deb
 sudo nlroom-setup --owner "$USER"
 nlroom
 ```
@@ -161,7 +165,7 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 
 版本分别维护在 `internal/model/version.go` 的 `ControlVersion`、`NodeVersion`、`ClientVersion`；客户端同时更新 desktop 的 npm/Tauri/Cargo 程序版本，管理台 npm 程序版本随控制面更新。协议版本独立维护。构建按组件写入 `dist/control/<版本>/`、`dist/node/<版本>/`、`dist/client/<版本>/`，归档名包含组件、版本、系统和架构；`-Components client` 或 `-Components node` 可单独构建。控制面构建同时准备其固定节点版本的 amd64/arm64 原生安装资源。
 
-客户端归档仅含 CLI、后台及许可，Windows 另含安装入口；控制面与节点使用各自 Linux 归档，控制面附部署模板和同源节点安装包。每个组件目录独立生成 SHA256SUMS。完整桌面安装包仍写入 `dist/desktop/`；程序尚未由 NodeLane 代码签名证书签名。构建不安装服务、不创建云资源。
+客户端归档仅含 CLI、后台及许可，Windows 另含安装入口；控制面与节点使用各自 Linux 归档，控制面附部署模板和同源节点安装包。每个组件目录独立生成 SHA256SUMS。完整桌面安装包仍写入 `dist/desktop/`；Windows 正式完整包默认要求代码签名配置，见 [发布者签名](docs/updates.md#windows-发布者签名)。构建不安装服务、不创建云资源。
 
 构建后用 `python scripts/check-release.py dist` 检查归档的 SHA256、内容、架构和 Linux 执行权限。
 
@@ -170,13 +174,13 @@ Windows 上构建 Windows/Linux amd64、arm64 归档（PowerShell 5.1+）：
 桌面完整包需要 Rust 1.95、Node.js 24、Windows NSIS 或 Linux WebKitGTK 4.1 系统依赖。Windows 打包会下载并校验固定的 TAP 驱动、网卡工具及对应源码，缓存位于 `.local/desktop-drivers`；Linux 交叉打包另需 `msitools`，构建镜像已包含。GUI、Rust、Go 和传入发布目录的版本必须一致；构建器校验架构并记录摘要，产物附带 SHA256。在对应平台执行：
 
 ```sh
-python scripts/desktop/build.py --platform windows --arch amd64 --release dist/client/0.3.0/nodelane-room-client-0.3.0-windows-amd64
-python scripts/desktop/build.py --platform linux --arch amd64 --release dist/client/0.3.0/nodelane-room-client-0.3.0-linux-amd64
+python scripts/desktop/build.py --platform windows --arch amd64 --release dist/client/0.3.1/nodelane-room-client-0.3.1-windows-amd64
+python scripts/desktop/build.py --platform linux --arch amd64 --release dist/client/0.3.1/nodelane-room-client-0.3.1-linux-amd64
 ```
 
 `scripts/desktop/Dockerfile` 提供 Ubuntu 22.04 构建环境、Windows 交叉编译工具和原生 WebView 验收工具。`--skip-web` 仅复用已构建并检查的前端资源。当前生成的 EXE 为未签名测试包，deb 尚未进入签名软件仓库；构建不安装宿主服务、不发布产物。ARM64 参数用于相应工具链，未通过 ARM 真机验收。
 
-桌面检查：`npm --prefix desktop test`、`cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked`、`python scripts/desktop/test_package.py`；原生安装事务与 Windows API 检查纳入 `go test ./internal/update`，不安装宿主服务或驱动。打包后可构建上述 Dockerfile 为 `nodelane-desktop-build:local`，再运行 `python scripts/desktop/test_live.py --package dist/desktop/nlroom_0.3.0_amd64.deb`，通过真实 WebView、普通用户 socket、隔离 HTTPS/数据库与 Nebula 验证流程。它仅安装到临时容器，结束后清理；不代替宿主 systemd 或 Windows 服务验收。
+桌面检查：`npm --prefix desktop test`、`cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked`、`python scripts/desktop/test_package.py`；原生安装事务与 Windows API 检查纳入 `go test ./internal/update`，不安装宿主服务或驱动。打包后可构建上述 Dockerfile 为 `nodelane-desktop-build:local`，再运行 `python scripts/desktop/test_live.py --package dist/desktop/nlroom_0.3.1_amd64.deb`，通过真实 WebView、普通用户 socket、隔离 HTTPS/数据库与 Nebula 验证流程。它仅安装到临时容器，结束后清理；不代替宿主 systemd 或 Windows 服务验收。
 
 ## 实时网络监控
 

@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod invitation;
 mod ipc;
 mod language;
 #[cfg(windows)]
@@ -100,20 +101,26 @@ fn main() {
         return;
     }
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| show(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            invitation::receive(app, args.into_iter());
+            show(app);
+        }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .manage(ipc::Bridge::default())
         .manage(DesktopLanguage::default())
+        .manage(invitation::PendingInvitation::default())
         .invoke_handler(tauri::generate_handler![
             ipc::player_request,
             ipc::game_image,
             exit_app,
             notify_state,
-            set_language
+            set_language,
+            invitation::take_invitation
         ])
         .setup(|app| {
+            invitation::receive(app.handle(), std::env::args().skip(1));
             let language = Language::default();
             #[cfg(windows)]
             tauri::async_runtime::spawn_blocking(move || startup::prepare_tap(language));

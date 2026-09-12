@@ -115,6 +115,9 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       forms.css 输入、模态弹窗、邀请码与端口样式
       feedback.css 错误、提示、空状态与开发预览标识
     native/ 真实 Tauri 本机桥接
+      use-invitation.ts 冷启动与重复唤起的邀请暂存，首次设置期间保留
+      use-invitation.test.ts 原生邀请监听、冷启动、重复唤起与卸载回归
+      use-query.test.ts 首次读取等待、失败收尾与后台刷新稳定性
       api.ts 玩家 IPC、默认控制端、错误文案、剪贴板与生命周期命令
       use-service.ts 不重叠状态轮询、退避与原生通知
       use-service.test.ts 版本一致性、并发刷新与服务恢复测试
@@ -123,6 +126,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       model.ts 玩家、游戏、房间、本机请求与诊断返回类型
       time.ts 时间与状态新鲜度格式化
       ui/ 跨页面控件
+        Loading.tsx 可访问的等待动画与状态文案
         Empty.tsx 空状态与加载说明
         Modal.tsx 原生对话框、焦点和 Escape 行为
         PlayerAvatar.tsx 以昵称首字符呈现玩家头像
@@ -133,6 +137,9 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         artwork-loader.ts 有界图像请求和缓存
         use-catalog.ts 目录、管理房间与陈旧状态加载
       rooms/ 联机房间与成员
+        invitation-link.ts 官方邀请链接构造、严格校验与邀请码提取
+        invitation-link.test.ts 官方链接往返及来源和参数拒绝测试
+        invitation-page.test.ts 浏览器邀请摘要、唤起、失效与时间偏差回归
         RoomPage.tsx 当前房间置顶列表、入房侧栏、满宽封面与详情导航
         RoomHero.tsx 封面下方的房间标题、主要动作与连接状态
         Members.tsx 对齐成员表、虚拟 IP、最近 30 秒实测与管理菜单
@@ -142,7 +149,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
           types.ts 弹窗状态类型
           RoomDialogs.tsx 房间弹窗调度与错误反馈
           CreateRoom.tsx 固定通用房间、名称与服务端建房许可表单
-          Invitation.tsx 临时邀请码及复制
+          Invitation.tsx 临时邀请链接、有效性校验与复制
           Confirmation.tsx 权限操作和离房退出确认
       device/ 初始化与桌面偏好
         Updates.tsx 版本页面、启动更新提示、跳过版本、下载进度与取消及自动安装
@@ -165,6 +172,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     icons/ 原生窗口及安装图标（不展开）
     src/ 原生程序实现
       main.rs 窗口、托盘、通知、语言同步与生命周期
+      invitation.rs 有界协议参数验证、单实例通知与一次性邀请读取
       language.rs 复用前端语言字典的原生文案与语言白名单测试
       startup.rs 已安装 Windows GUI 的启动 TAP 检查、按需提权与失败提示
       ipc/ 有界玩家服务桥接
@@ -237,9 +245,12 @@ internal/ 产品内部实现
     api.go 控制面认证、幂等请求与 SSE 恢复
     enrollment.go 基础设施节点登记认证
   control/ 公开官网、私有管理页面、按调用方分文件的 HTTP API 与共享事务状态
+    invitation_preview.go 匿名持有有效邀请的最小房间摘要与限速
+    invitation_preview_test.go 邀请权限、过期撤销、只读预览与公开页面测试
     site_web.go 与控制状态独立的中英官网模板渲染、语言路由及静态资源白名单
     site_web_test.go 中英官网页面切换、资源白名单、方法边界及管理入口隔离测试
     siteweb/ 与桌面风格一致的公开中英双语多页官网
+      join.html 中文邀请摘要、客户端唤起与下载入口
       layout.html 共用页面骨架、双语导航、语言切换、页脚和元信息
       index.html 产品介绍、应用截图与主要入口
       product.html 房间、邀请、连接状态与中文桌面截图展示
@@ -249,6 +260,7 @@ internal/ 产品内部实现
       privacy.html 账号、设备、房间及诊断数据的隐私说明
       terms.html 产品用途、使用条件与支持范围说明
       en/ 官网对应的英文页面内容
+        join.html 英文邀请摘要、客户端唤起与下载入口
         index.html 英文产品介绍、应用截图与主要入口
         product.html 英文房间、邀请、连接状态与桌面截图展示
         download.html 英文客户端版本选择、平台要求与安装指引
@@ -258,6 +270,7 @@ internal/ 产品内部实现
         terms.html 英文产品用途、使用条件与支持范围说明
       assets/ 官网本地样式与应用截图
         site.css 暖白珊瑚色、多页共享与响应式官网样式
+        invitation.js 浏览器邀请正文查询、唤起和失效反馈
         downloads.js 官网双语版本加载、平台选择与按需下载地址获取
         brand-mark.png 复用的 NodeLane 应用品牌图形
         app-lobby.jpg 当前应用房间大厅截图
@@ -437,6 +450,8 @@ scripts/ 构建、安装与验证工具
   build.ps1 按控制面、节点和客户端独立版本构建多架构发布包
   build.sh Linux 可执行文件构建
   desktop/ Windows 与 Linux 桌面构建、交付与原生验收
+    signing.py Windows Authenticode、可信时间戳与签后验证
+    versioninfo.py Windows 自有 Go 程序产品、文件版本及版权资源
     build.py 锁定版本的原生 GUI 构建、构建摘要与完整安装包入口
     branding.py 从既有品牌图标几何生成安装向导位图
     Dockerfile Ubuntu 22.04 桌面构建、Windows 交叉编译与 WebView 测试工具
@@ -468,5 +483,6 @@ scripts/ 构建、安装与验证工具
     main.go 从发布包生成同源下载资源与清单
   test-deploy.py 部署模板与发布镜像冒烟测试
   test-docker.py 隔离 TAP/中继/低 MTU 回归与独立数据库 Go/race 检查
+LICENSE 项目自有代码 MIT 许可证
 THIRD_PARTY_NOTICES.md 第三方许可声明
 ```

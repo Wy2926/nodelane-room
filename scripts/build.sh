@@ -4,7 +4,9 @@ cd "$(dirname "$0")/.."
 go mod verify
 npm --prefix internal/control/adminweb ci
 npm --prefix internal/control/adminweb run build
-mkdir -p dist/linux
+mkdir -p dist/linux/licenses
+cp LICENSE dist/linux/licenses/NodeLaneRoom-LICENSE
+cp THIRD_PARTY_NOTICES.md dist/linux/THIRD_PARTY_NOTICES.txt
 build_flags='-s -w'
 if [ -n "${NODELANE_UPDATE_ROOT:-}" ]; then
   trust=$(base64 < "$NODELANE_UPDATE_ROOT" | tr -d '\n')

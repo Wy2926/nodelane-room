@@ -205,6 +205,9 @@ func (s *Store) Sweep(ctx context.Context) error {
 		if err := enforceUpdates(ctx, tx); err != nil {
 			return err
 		}
+		if err := renewRooms(ctx, tx, ""); err != nil {
+			return err
+		}
 		rows, err := tx.Query(ctx, "SELECT id FROM rooms WHERE NOT closed AND expires_at<=now()")
 		if err != nil {
 			return err

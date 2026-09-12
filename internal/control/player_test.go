@@ -182,6 +182,133 @@ func TestExpiryReclaimAndRoomAuthorization(t *testing.T) {
 		t.Fatal("quarantined addresses never reclaimed")
 	}
 }
+
+func TestRoomHeartbeatAutoRenewalKeepsAuthorizationBounded(t *testing.T) {
+	s, ca := database(t)
+	a := user(t, apiServer(t, s, ca), "host")
+	r := create(t, a)
+	ctx := context.Background()
+	path := "/v2/rooms/" + r.Room.ID
+	var before time.Time
+	must(t, s.Pool.QueryRow(ctx, "UPDATE rooms SET expires_at=now()+interval '2 minutes' WHERE id=$1 RETURNING expires_at", r.Room.ID).Scan(&before))
+	l := lease(t, a, r.Room.ID)
+	if !l.ExpiresAt.Before(before.Add(time.Second)) {
+		t.Fatal("initial lease must remain bounded by room expiry")
+	}
+	revision := roomRevision(t, s, r.Room.ID)
+	var result struct {
+		AcceptedAt time.Time `json:"accepted_at"`
+		ValidUntil time.Time `json:"membership_valid_until"`
+	}
+	must(t, a.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, &result))
+	if !result.ValidUntil.Equal(result.AcceptedAt.Add(45 * time.Second)) {
+		t.Fatal("renewal must retain the 45 second heartbeat authorization limit")
+	}
+	var snap model.Snapshot
+	must(t, a.Call(ctx, "GET", path, nil, &snap))
+	if snap.Room == nil || !snap.Room.ExpiresAt.Equal(before.Add(24*time.Hour)) || snap.Room.Revision != revision+1 {
+		t.Fatal("heartbeat did not publish exactly one day of renewal with a new revision")
+	}
+	var certificateExpiry time.Time
+	must(t, s.Pool.QueryRow(ctx, "SELECT expires_at FROM certificates WHERE fingerprint=$1", l.Fingerprint).Scan(&certificateExpiry))
+	if !certificateExpiry.Equal(l.ExpiresAt) {
+		t.Fatal("room renewal extended an already issued certificate")
+	}
+	must(t, a.Call(ctx, "POST", path+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, nil))
+	must(t, s.Sweep(ctx))
+	var after time.Time
+	must(t, s.Pool.QueryRow(ctx, "SELECT expires_at FROM rooms WHERE id=$1", r.Room.ID).Scan(&after))
+	if !after.Equal(before.Add(24*time.Hour)) || roomRevision(t, s, r.Room.ID) != revision+1 {
+		t.Fatal("normal heartbeats or maintenance renewed the room again")
+	}
+}
+
+func TestRoomAutoRenewalAcrossConcurrentHeartbeatsAndSweeps(t *testing.T) {
+	s, ca := database(t)
+	one, two := apiServer(t, s, ca), apiServer(t, s, ca)
+	clients := []*client.API{user(t, one, "host"), user(t, two, "guest"), user(t, one, "other")}
+	r := create(t, clients[0])
+	join(t, clients[1], r)
+	join(t, clients[2], r)
+	ctx := context.Background()
+	var before time.Time
+	must(t, s.Pool.QueryRow(ctx, "UPDATE rooms SET expires_at=now()+interval '1 hour' WHERE id=$1 RETURNING expires_at", r.Room.ID).Scan(&before))
+	revision := roomRevision(t, s, r.Room.ID)
+	results := make(chan error, 16)
+	var wg sync.WaitGroup
+	for i := 0; i < cap(results); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if i%4 == 0 {
+				results <- s.Sweep(ctx)
+				return
+			}
+			results <- clients[i%len(clients)].Call(ctx, "POST", "/v2/rooms/"+r.Room.ID+"/heartbeat", model.HeartbeatRequest{LANVersion: model.LANVersion}, nil)
+		}()
+	}
+	wg.Wait()
+	close(results)
+	for err := range results {
+		must(t, err)
+	}
+	var after time.Time
+	must(t, s.Pool.QueryRow(ctx, "SELECT expires_at FROM rooms WHERE id=$1", r.Room.ID).Scan(&after))
+	if !after.Equal(before.Add(24*time.Hour)) || roomRevision(t, s, r.Room.ID) != revision+1 {
+		t.Fatal("concurrent replicas must extend the room exactly once")
+	}
+	var changes, audits int
+	must(t, s.Pool.QueryRow(ctx, "SELECT count(*) FROM events WHERE room_id=$1 AND kind='room_renewed'", r.Room.ID).Scan(&changes))
+	must(t, s.Pool.QueryRow(ctx, "SELECT count(*) FROM admin_events WHERE target=$1 AND kind='room.renewed'", r.Room.ID).Scan(&audits))
+	if changes != 1 || audits != 1 {
+		t.Fatalf("expected one durable change and audit, got %d and %d", changes, audits)
+	}
+}
+
+func TestRoomSweepRenewsOnlyAuthorizedOnlineRooms(t *testing.T) {
+	s, ca := database(t)
+	server := apiServer(t, s, ca)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name   string
+		adjust string
+		renew  bool
+	}{
+		{name: "online", renew: true},
+		{name: "offline", adjust: "UPDATE members SET last_seen=now()-interval '46 seconds' WHERE room_id=$1"},
+		{name: "left", adjust: "UPDATE members SET active=false WHERE room_id=$1"},
+		{name: "revoked device", adjust: "UPDATE user_devices SET revoked=true WHERE device_id IN (SELECT device_id FROM members WHERE room_id=$1)"},
+		{name: "expired device", adjust: "UPDATE user_devices SET expires_at=now()-interval '1 second' WHERE device_id IN (SELECT device_id FROM members WHERE room_id=$1)"},
+		{name: "deleted user", adjust: "UPDATE users SET state='deleted' WHERE id=(SELECT owner_user_id FROM rooms WHERE id=$1)"},
+		{name: "creation restricted user", adjust: "UPDATE users SET state='disabled' WHERE id=(SELECT owner_user_id FROM rooms WHERE id=$1)", renew: true},
+		{name: "closed", adjust: "UPDATE rooms SET closed=true WHERE id=$1"},
+		{name: "expired", adjust: "UPDATE rooms SET expires_at=now()-interval '1 second' WHERE id=$1"},
+		{name: "outside final hour", adjust: "UPDATE rooms SET expires_at=now()+interval '61 minutes' WHERE id=$1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := user(t, server, "host")
+			r := create(t, a)
+			_, err := s.Pool.Exec(ctx, "UPDATE rooms SET expires_at=now()+interval '30 minutes' WHERE id=$1", r.Room.ID)
+			must(t, err)
+			if tc.adjust != "" {
+				_, err = s.Pool.Exec(ctx, tc.adjust, r.Room.ID)
+				must(t, err)
+			}
+			var before, after time.Time
+			must(t, s.Pool.QueryRow(ctx, "SELECT expires_at FROM rooms WHERE id=$1", r.Room.ID).Scan(&before))
+			must(t, s.Sweep(ctx))
+			must(t, s.Pool.QueryRow(ctx, "SELECT expires_at FROM rooms WHERE id=$1", r.Room.ID).Scan(&after))
+			want := before
+			if tc.renew {
+				want = want.Add(24 * time.Hour)
+			}
+			if !after.Equal(want) {
+				t.Fatalf("expiry changed by %s, want %s", after.Sub(before), want.Sub(before))
+			}
+		})
+	}
+}
+
 func TestIdempotencyAndSSESnapshotRecovery(t *testing.T) {
 	s, ca := database(t)
 	server := apiServer(t, s, ca)

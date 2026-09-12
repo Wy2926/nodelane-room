@@ -11,6 +11,7 @@ export function useQuery<T>(
   const key = JSON.stringify([scope, request]);
   const [result, setResult] = useState<{
     key: string;
+    reload: number;
     data?: T;
     error?: Failure;
     updatedAt: number;
@@ -22,11 +23,12 @@ export function useQuery<T>(
     async function load() {
       try {
         const data = await rpc<T>(request);
-        if (active) setResult({ key, data, updatedAt: Date.now() });
+        if (active) setResult({ key, reload, data, updatedAt: Date.now() });
       } catch (error) {
         if (active)
           setResult((previous) => ({
             key,
+            reload,
             error: failure(error),
             data: previous?.key === key ? previous.data : undefined,
             updatedAt: previous?.key === key ? previous.updatedAt : 0,
@@ -45,6 +47,6 @@ export function useQuery<T>(
     data: current?.data,
     error: current?.error,
     updatedAt: current?.updatedAt || 0,
-    loading: enabled && !current,
+    loading: enabled && (!current || current.reload !== reload),
   };
 }

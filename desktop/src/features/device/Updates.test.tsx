@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Updates, UpdatePrompt } from "./Updates";
 import { rpc, clientVersion } from "../../native/api";
@@ -13,6 +13,31 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.removeItem("nlroom.skipped-update");
   setLanguage("zh-CN");
+});
+
+test.each([false, true])("a waiting update request shows progress and prevents repeat submission (failed: %s)", async (failed) => {
+  let complete!: (value: unknown) => void;
+  let reject!: (reason: unknown) => void;
+  vi.mocked(rpc).mockImplementation(async (request) => {
+    if (request.action === "update-check")
+      return new Promise((resolve, fail) => { complete = resolve; reject = fail; });
+    return { state: "idle", downloaded: 0, required: false } as never;
+  });
+  render(<Updates />);
+  const button = screen.getByRole("button", { name: "检查更新" }) as HTMLButtonElement;
+  await waitFor(() => expect(button.disabled).toBe(false));
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(button.disabled).toBe(true);
+  expect(screen.getByRole("status").querySelector(".spinner")).toBeTruthy();
+  expect(vi.mocked(rpc).mock.calls.filter(([request]) => request.action === "update-check")).toHaveLength(1);
+  await act(async () => {
+    if (failed) reject({ code: "local_control_timeout" });
+    else complete({});
+  });
+  await waitFor(() => expect(button.disabled).toBe(false));
+  expect(screen.getByRole("status").querySelector(".spinner")).toBeNull();
+  if (failed) expect(screen.getByRole("alert")).toBeTruthy();
 });
 
 test("forced update is visible during download and installation is available only after verification", async () => {

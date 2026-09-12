@@ -1,0 +1,26 @@
+{{define "content"}}
+<section class="page-heading invitation-heading container">
+  <p class="eyebrow">PLAY TOGETHER / 房间邀请</p>
+  <h1>朋友已经就位，<br><span>就等你了。</span></h1>
+  <p class="lead">先查看房间，再打开客户端确认加入。</p>
+</section>
+<section class="container download-section" data-invitation aria-busy="true">
+  <article class="download-card">
+    <p data-invite-status role="status">正在读取房间信息…</p>
+    <div data-invite-room hidden>
+      <h2 data-invite-name></h2>
+      <p data-invite-game></p>
+      <p data-invite-members></p>
+      <p data-invite-expiry></p>
+    </div>
+    <div class="download-actions">
+      <a class="button primary" data-invite-open hidden>打开客户端</a>
+      <button class="button" data-invite-retry type="button">刷新房间信息</button>
+      <a class="button" href="/download" target="_blank" rel="noopener noreferrer">下载客户端 ↗</a>
+    </div>
+    <p class="hint" data-invite-help>还没有客户端？下载安装后，回到本页点击“打开客户端”即可。</p>
+    <noscript><p>请启用 JavaScript，以查看房间并打开客户端。</p></noscript>
+  </article>
+</section>
+<script src="/site-assets/invitation.js" defer></script>
+{{end}}

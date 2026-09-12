@@ -9,10 +9,12 @@ import shutil
 import subprocess
 import tempfile
 import struct
+import sys
 
 from licenses import collect
 from branding import render
 from drivers import bundle_tap
+from signing import load_signer
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -62,16 +64,19 @@ def verify_binary(path, platform, arch):
         if machine != expected: raise SystemExit(f'Binary architecture mismatch: {path.name}')
 
 
-def windows_payload(stage, release, gui, required, target):
+def windows_payload(stage, release, gui, required, target, signer=None):
     payload, engine = stage / 'payload', stage / 'engine'
     payload.mkdir()
     engine.mkdir()
     for name in required:
         shutil.copy2(release / name, payload / name)
-    shutil.copy2(release / 'nlroom-update.exe', engine / 'nlroom-update.exe')
     shutil.copytree(release / 'licenses', payload / 'licenses')
     collect(ROOT, payload / 'licenses/desktop', target)
     shutil.copy2(gui, payload / 'nlroom.exe')
+    if signer:
+        for name in ('nlroom.exe', 'nlroom-cli.exe', 'nlroom-service.exe', 'nlroom-update.exe'):
+            signer.sign(payload / name)
+    shutil.copy2(payload / 'nlroom-update.exe', engine / 'nlroom-update.exe')
     payload_hashes(payload)
     return payload, engine
 
@@ -81,7 +86,11 @@ def main():
     parser.add_argument('--arch', choices=['amd64', 'arm64'], default='amd64')
     parser.add_argument('--gui', type=Path, required=True)
     parser.add_argument('--release', type=Path, required=True, help='Matching Go release directory')
+    parser.add_argument('--allow-unsigned', action='store_true', help='Windows development package only; never publish')
     args = parser.parse_args()
+    if args.allow_unsigned and args.platform != 'windows':
+        parser.error('--allow-unsigned is only valid for Windows')
+    signer = load_signer(args.allow_unsigned) if args.platform == 'windows' else None
     dest = ROOT / 'dist' / 'desktop'
     dest.mkdir(parents=True, exist_ok=True)
     temp_root = ROOT / '.local'
@@ -99,14 +108,15 @@ def main():
     with tempfile.TemporaryDirectory(prefix='desktop-package-', dir=temp_root) as tmp:
         stage = Path(tmp)
         if args.platform == 'windows':
-            payload, engine = windows_payload(stage, args.release, args.gui, required, target)
+            payload, engine = windows_payload(stage, args.release, args.gui, required, target, signer)
             bundle_tap(payload / 'drivers/tap', payload / 'licenses', args.arch)
             for name in ('tap0901.sys', 'tapctl.exe'):
                 verify_binary(payload / 'drivers/tap' / name, 'windows', args.arch)
             payload_hashes(payload)
             art = stage / 'art'
             render(art)
-            out = dest / f'nlroom-{version}-windows-{args.arch}-setup.exe'
+            suffix = '' if signer else '-unsigned'
+            out = dest / f'nlroom-{version}-windows-{args.arch}{suffix}-setup.exe'
             partial = out.with_suffix(out.suffix + '.partial')
             compiler = shutil.which('makensis')
             if not compiler and os.name == 'nt':
@@ -115,7 +125,11 @@ def main():
             prefix = '/' if os.name == 'nt' else '-'
             defines = dict(PAYLOAD=payload, ENGINE=engine, OUTPUT=partial, VERSION=version, ARCH=args.arch,
                            ICON=ROOT / 'desktop/src-tauri/icons/icon.ico', ART=art)
+            if signer:
+                defines.update(SIGNED_BUILD=1, PYTHON=sys.executable, SIGN_SCRIPT=ROOT / 'scripts/desktop/signing.py')
             subprocess.run([compiler, prefix + 'WX', prefix + 'INPUTCHARSET', 'UTF8'] + [f'{prefix}D{k}={v}' for k, v in defines.items()] + [str(ROOT / 'scripts/desktop/windows.nsi')], check=True)
+            if signer:
+                signer.sign(partial)
         else:
             def copy(source, relative, mode=0o644):
                 target = stage / relative
@@ -138,10 +152,10 @@ def main():
             collect(ROOT, stage / 'usr/share/doc/nlroom/licenses/desktop', target)
             applications = stage / 'usr/share/applications'
             applications.mkdir(parents=True)
-            (applications / 'net.nodelane.room.desktop').write_text('[Desktop Entry]\nType=Application\nName=NodeLane Room\nComment=游戏房间联机\nExec=nlroom\nIcon=net.nodelane.room\nTerminal=false\nCategories=Game;Network;\n', encoding='utf-8')
+            (applications / 'net.nodelane.room.desktop').write_text('[Desktop Entry]\nType=Application\nName=NodeLane Room\nComment=游戏房间联机\nExec=nlroom %u\nIcon=net.nodelane.room\nTerminal=false\nCategories=Game;Network;\nMimeType=x-scheme-handler/nodelane-room;\n', encoding='utf-8')
             control = stage / 'DEBIAN'
             control.mkdir()
-            (control / 'control').write_text(f'Package: nlroom\nVersion: {version}\nSection: games\nPriority: optional\nArchitecture: {args.arch}\nMaintainer: NodeLane\nDepends: libc6 (>= 2.35), libgcc-s1, libstdc++6, libwebkit2gtk-4.1-0, libgtk-3-0, libayatana-appindicator3-1, librsvg2-2, libxdo3, systemd\nDescription: NodeLane Room desktop game networking\n', encoding='utf-8')
+            (control / 'control').write_text(f'Package: nlroom\nVersion: {version}\nSection: games\nPriority: optional\nArchitecture: {args.arch}\nMaintainer: NodeLane\nDepends: libc6 (>= 2.35), libgcc-s1, libstdc++6, libwebkit2gtk-4.1-0, libgtk-3-0, libayatana-appindicator3-1, librsvg2-2, libxdo3, systemd, desktop-file-utils\nDescription: NodeLane Room desktop game networking\n', encoding='utf-8')
             for name in ['postinst', 'prerm', 'postrm']:
                 copy(ROOT / f'scripts/desktop/linux-{name}.sh', 'DEBIAN/' + name, 0o755)
             out = dest / f'nlroom_{version}_{args.arch}.deb'

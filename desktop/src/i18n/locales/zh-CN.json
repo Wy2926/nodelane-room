@@ -217,10 +217,10 @@
   "createRoom.roomName": "房间名称",
   "createRoom.giveThisSessionAName": "给这场联机起个名字",
   "createRoom.createAndConnect": "创建并连接",
-  "invitation.copyInviteCode": "复制邀请码",
-  "invitation.storageHelp": "邀请码只在当前窗口内保留，不保存到本机历史记录。",
-  "joinRoom.inviteCode": "邀请码",
-  "joinRoom.pasteInviteCode": "粘贴邀请码",
+  "invitation.copyInviteCode": "复制邀请链接",
+  "invitation.storageHelp": "邀请链接仅保留在当前窗口，不会保存到本地历史。",
+  "joinRoom.inviteCode": "邀请链接",
+  "joinRoom.pasteInviteCode": "粘贴邀请链接",
   "joinRoom.joinAndConnect": "加入并连接",
   "roomDialogs.inviteFriendsToPlay": "邀请朋友一起玩",
   "language.choose": "选择语言",
@@ -517,5 +517,6 @@
   "updates.transfer": "{downloaded} / {total} MB · {speed} MB/s",
   "updates.preparing": "正在校验安装包并准备安装…",
   "updates.changed": "推荐版本已变化，请重新确认更新。",
-  "updates.skipSession": "无法保存偏好，本次打开期间将不再提示此版本。"
+  "updates.skipSession": "无法保存偏好，本次打开期间将不再提示此版本。",
+  "experience.working": "正在处理…"
 }

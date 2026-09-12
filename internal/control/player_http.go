@@ -11,6 +11,7 @@ import (
 )
 
 func (s *Server) registerPlayer(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v2/invitations/preview", s.invitationPreview)
 	mux.HandleFunc("GET /v2/rooms/{room}/invite", s.playerAuth(s.playerInviteInfo))
 	mux.HandleFunc("POST /v2/rooms/{room}/invite/revoke", s.playerMutation(func(r *http.Request, tx pgx.Tx, id string, b []byte) (any, error) {
 		return s.playerMemberAction(r, tx, id, b, "invite/revoke")

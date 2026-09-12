@@ -2,6 +2,7 @@
 set -eu
 case "$1" in
   configure|abort-upgrade|abort-remove|abort-deconfigure)
+    update-desktop-database /usr/share/applications
     if [ -d /run/systemd/system ]; then
       systemctl daemon-reload
       systemctl enable --now nlroom-update.timer

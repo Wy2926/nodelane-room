@@ -1,0 +1,26 @@
+{{define "content"}}
+<section class="page-heading invitation-heading container">
+  <p class="eyebrow">PLAY TOGETHER / INVITATION</p>
+  <h1>Your friends are ready.<br><span>Come on in.</span></h1>
+  <p class="lead">Preview the room, then confirm joining in the app.</p>
+</section>
+<section class="container download-section" data-invitation aria-busy="true">
+  <article class="download-card">
+    <p data-invite-status role="status">Loading room information…</p>
+    <div data-invite-room hidden>
+      <h2 data-invite-name></h2>
+      <p data-invite-game></p>
+      <p data-invite-members></p>
+      <p data-invite-expiry></p>
+    </div>
+    <div class="download-actions">
+      <a class="button primary" data-invite-open hidden>Open the app</a>
+      <button class="button" data-invite-retry type="button">Refresh room</button>
+      <a class="button" href="/en/download" target="_blank" rel="noopener noreferrer">Download the app ↗</a>
+    </div>
+    <p class="hint" data-invite-help>No app yet? Install it, then return to this page and click “Open the app”.</p>
+    <noscript><p>Enable JavaScript to preview the room and open the app.</p></noscript>
+  </article>
+</section>
+<script src="/site-assets/invitation.js" defer></script>
+{{end}}

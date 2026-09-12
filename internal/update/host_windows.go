@@ -389,10 +389,16 @@ func registerBundle(target, version string) error {
 			return err
 		}
 	}
+	if err := registerInvitationProtocol(target); err != nil {
+		return err
+	}
 	return createShortcut(target)
 }
 
 func unregisterBundle() error {
+	if err := unregisterInvitationProtocol(); err != nil {
+		return err
+	}
 	if err := registry.DeleteKey(registry.LOCAL_MACHINE, uninstallKey); err != nil && !errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
 		return err
 	}
@@ -405,6 +411,67 @@ func unregisterBundle() error {
 		return nil
 	}
 	return err
+}
+
+const invitationProtocolKey = `Software\Classes\nodelane-room`
+
+func registerInvitationProtocol(target string) error {
+	for suffix, values := range map[string]map[string]string{
+		"":                    {"": "URL:NodeLane Room invitation", "URL Protocol": "", "NodeLaneInstallLocation": target},
+		`\shell\open\command`: {"": `"` + filepath.Join(target, "nlroom.exe") + `" "%1"`},
+	} {
+		key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, invitationProtocolKey+suffix, registry.SET_VALUE|registry.WOW64_64KEY)
+		if err != nil {
+			return err
+		}
+		for name, value := range values {
+			if err := key.SetStringValue(name, value); err != nil {
+				key.Close()
+				return err
+			}
+		}
+		key.Close()
+	}
+	return nil
+}
+
+func unregisterInvitationProtocol() error {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, invitationProtocolKey, registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	target, _, err := key.GetStringValue("NodeLaneInstallLocation")
+	key.Close()
+	if err != nil {
+		return nil
+	} // Do not remove a registration owned by another application.
+	installed, err := registry.OpenKey(registry.LOCAL_MACHINE, uninstallKey, registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if err != nil {
+		return nil
+	}
+	location, _, err := installed.GetStringValue("InstallLocation")
+	installed.Close()
+	if err != nil || !strings.EqualFold(filepath.Clean(target), filepath.Clean(location)) {
+		return nil
+	}
+	command, err := registry.OpenKey(registry.LOCAL_MACHINE, invitationProtocolKey+`\shell\open\command`, registry.QUERY_VALUE|registry.WOW64_64KEY)
+	if err != nil {
+		return nil
+	}
+	value, _, err := command.GetStringValue("")
+	command.Close()
+	if err != nil || value != `"`+filepath.Join(target, "nlroom.exe")+`" "%1"` {
+		return nil
+	}
+	for _, suffix := range []string{`\shell\open\command`, `\shell\open`, `\shell`, ""} {
+		if err := registry.DeleteKey(registry.LOCAL_MACHINE, invitationProtocolKey+suffix); err != nil && !errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
+			return err
+		}
+	}
+	return nil
 }
 
 func createShortcut(target string) error {

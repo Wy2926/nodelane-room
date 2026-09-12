@@ -42,6 +42,7 @@ def main():
             node=tf.getmember('nlroom-node'); require(node.mode==0o755,'native executable mode')
             require(tf.extractfile(node).read()==(release/f'nodelane-room-node-{version}-linux-{arch}'/'nlroom-node').read_bytes(),'native payload differs from full release')
             require(tf.getmember('nlroom-node.service').isfile(),'missing native systemd unit')
+            require(tf.getmember('licenses/NodeLaneRoom-LICENSE').isfile(),'missing native program license')
     print('PASS native installation manifests, two node packages and SHA256 checksums')
     for role, version in versions.items():
         release = root / role / version
@@ -101,7 +102,7 @@ def main():
             allowed = {'control': {'nodelane-server'}, 'node': {'nlroom-node'}, 'client': {'nlroom-cli', 'nlroom-service', 'nlroom-update'}}[role]
             actual = {Path(path).stem for path in files if '/' not in path and Path(path).stem in {'nodelane-server','nlroom-node','nlroom-cli','nlroom-service','nlroom-update'}}
             require(actual == allowed, 'component binary separation')
-            required += ["BUILD.txt", "THIRD_PARTY_NOTICES.txt", "licenses/Go-LICENSE", "licenses/modules.txt"]
+            required += ["BUILD.txt", "THIRD_PARTY_NOTICES.txt", "licenses/NodeLaneRoom-LICENSE", "licenses/Go-LICENSE", "licenses/modules.txt"]
             for path in required:
                 require(files.get(path), f"missing {path} in {name}")
             require(b"github.com/Wy2926/nebula v0.0.0-20260908082845-d929786cba7f" in files["BUILD.txt"], "wrong Nebula pin")

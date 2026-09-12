@@ -1,8 +1,9 @@
 FROM node:24.21.0-bookworm-slim AS admin
-WORKDIR /web
+WORKDIR /web/adminweb
 COPY internal/control/adminweb/package*.json ./
 RUN npm ci
 COPY internal/control/adminweb ./
+COPY internal/control/siteweb ../siteweb
 RUN npm run build && npm test
 
 FROM golang:1.26.8-bookworm AS source
@@ -11,7 +12,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-COPY --from=admin /web/dist ./internal/control/adminweb/dist
+COPY --from=admin /web/adminweb/dist ./internal/control/adminweb/dist
 COPY scripts ./scripts
 COPY docs ./docs
 COPY desktop/package.json ./desktop/package.json

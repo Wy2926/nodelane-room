@@ -12,8 +12,11 @@ import { Members } from "./Members";
 import { Connection } from "./Connection";
 import { Art } from "../catalog/Artwork";
 import { Empty } from "../../shared/ui/Empty";
+import { invitationCode } from "./invitation-link";
+import { Loading } from "../../shared/ui/Loading";
 
 export function RoomPage({
+  incoming,
   view,
   status,
   actions,
@@ -23,6 +26,7 @@ export function RoomPage({
   connection,
   onRecover,
 }: {
+  incoming: { invitation: string; revision: number; clearInvitation: (revision: number) => void };
   view: RoomView;
   status: Status;
   actions: Actions;
@@ -33,10 +37,16 @@ export function RoomPage({
   onRecover: (action: Recovery) => void;
 }) {
   const [details, setDetails] = useState(!!status.selected_room);
+  const latestIncoming = useRef(incoming);
+  latestIncoming.current = incoming;
+  const [invitation, setInvitation] = useState(incoming.invitation);
+  useEffect(() => {
+    if (incoming.invitation) { setInvitation(incoming.invitation); setDetails(false); }
+  }, [incoming.invitation, incoming.revision]);
   const [ownedOnly, setOwnedOnly] = useState(false);
   const workspace = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    setDetails(!!status.selected_room);
+    setDetails(!incoming.invitation && !!status.selected_room);
   }, [status.selected_room]);
   const { room, activeRoom, game, roomFresh, managementError, selected } = view;
   useEffect(() => {
@@ -98,6 +108,7 @@ export function RoomPage({
             </button>
             {room ? (
               <>
+                {view.loading && <Loading label={t("desk.loadingRooms")} />}
                 {!roomFresh && (
                   <div className="banner warning" role="status">
                     {t("roomPage.staleHelp")}
@@ -114,7 +125,7 @@ export function RoomPage({
                 <Members {...{ view, status, actions, usable }} />
               </>
             ) : (
-              <Empty title={t("roomPage.syncingRoom")}>
+              <Empty loading={view.loading} title={t("roomPage.syncingRoom")}>
                 <p>{t("roomPage.syncingHelp")}</p>
               </Empty>
             )}
@@ -150,7 +161,7 @@ export function RoomPage({
               </button>
             </div>
             {catalog.loading ? (
-              <Empty title={t("desk.loadingRooms")} />
+              <Empty loading title={t("desk.loadingRooms")} />
             ) : (
               <div className="room-list">
                 {visible.map((r) => {
@@ -244,15 +255,20 @@ export function RoomPage({
                   e.preventDefault();
                   if (!joiningAllowed) return;
                   const form = e.currentTarget;
-                  const code = String(new FormData(form).get("code")).trim();
-                  if (!code) return;
+                  const submittedRevision = incoming.revision;
+                  const code = invitationCode(invitation);
+                  if (!code) { actions.setError(failure({code: "invite_unusable"})); return; }
                   void actions.perform(
                     t("joinRoom.joinAndConnect"),
                     { action: "join", body: { code } },
                     () => {
-                      form.reset();
+                      if (latestIncoming.current.revision === submittedRevision) {
+                        form.reset();
+                        setInvitation("");
+                        incoming.clearInvitation(submittedRevision);
+                        setDetails(true);
+                      }
                       view.setSelected("");
-                      setDetails(true);
                     },
                   );
                 }}
@@ -261,8 +277,10 @@ export function RoomPage({
                   {t("joinRoom.inviteCode")}
                   <input
                     name="code"
+                    value={invitation}
+                    onChange={(e) => setInvitation(e.target.value)}
                     required
-                    maxLength={128}
+                    maxLength={256}
                     autoComplete="off"
                     spellCheck={false}
                     placeholder={t("joinRoom.pasteInviteCode")}

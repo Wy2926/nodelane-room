@@ -2,7 +2,13 @@
 LangString Branding ${LANG_SIMPCHINESE} "NodeLane · 和朋友在同一房间"
 VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "FileDescription" "NodeLane Room 安装与维护"
 LangString WelcomeTitle ${LANG_SIMPCHINESE} "欢迎使用$\r$\nNodeLane Room"
-LangString WelcomeText ${LANG_SIMPCHINESE} "和朋友在同一房间。$\r$\n$\r$\n此向导将安装游戏联机客户端与网络后台，或维护已有安装。$\r$\n$\r$\n版本 ${VERSION} · ${ARCH}$\r$\n开发测试版 · 尚未进行代码签名$\r$\n$\r$\n请从日常游戏使用的 Windows 账户运行。点击安装后，Windows 将请求管理员授权。"
+!ifdef SIGNED_BUILD
+  !define SIGNING_NOTICE ""
+!else
+  !define SIGNING_NOTICE "$\r$\n开发测试版 · 尚未进行代码签名"
+!endif
+LangString WelcomeText ${LANG_SIMPCHINESE} "和朋友在同一房间。$\r$\n$\r$\n此向导将安装游戏联机客户端与网络后台，或维护已有安装。$\r$\n$\r$\n版本 ${VERSION} · ${ARCH}${SIGNING_NOTICE}$\r$\n$\r$\n请从日常游戏使用的 Windows 账户运行。点击安装后，Windows 将请求管理员授权。"
+!undef SIGNING_NOTICE
 LangString InstallingTitle ${LANG_SIMPCHINESE} "正在配置 NodeLane Room"
 LangString InstallingSubtitle ${LANG_SIMPCHINESE} "请稍候，正在校验程序并配置网络后台。"
 LangString FinishTitle ${LANG_SIMPCHINESE} "NodeLane Room 已准备好"

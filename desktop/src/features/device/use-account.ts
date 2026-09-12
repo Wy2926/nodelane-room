@@ -53,6 +53,8 @@ export function useAccount(
       : undefined);
   return {
     server,
+    loading:
+      capabilities.loading || login.loading || devices.loading || account.loading,
     state,
     waiting: [
       "starting",

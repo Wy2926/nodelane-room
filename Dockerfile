@@ -14,13 +14,13 @@ COPY internal ./internal
 COPY --from=admin /web/dist ./internal/control/adminweb/dist
 COPY scripts/release ./scripts/release
 COPY deploy/node.sh deploy/nlroom-node.service ./deploy/
-COPY THIRD_PARTY_NOTICES.md ./
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/nodelane-server ./cmd/nodelane-server \
  && CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags='-s -w' -o /out/nlroom-node ./cmd/nlroom-node
 RUN set -eu; version=$(sed -n 's/^const NodeVersion = "\([^"]*\)"/\1/p' internal/model/version.go); for arch in amd64 arm64; do \
     bundle=/out/nodelane-room-node-$version-linux-$arch; mkdir -p "$bundle/licenses"; \
     CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$bundle/nlroom-node" ./cmd/nlroom-node; \
-    cp THIRD_PARTY_NOTICES.md "$bundle/THIRD_PARTY_NOTICES.txt"; cp /usr/local/go/LICENSE "$bundle/licenses/Go-LICENSE"; \
+    cp THIRD_PARTY_NOTICES.md "$bundle/THIRD_PARTY_NOTICES.txt"; cp LICENSE "$bundle/licenses/NodeLaneRoom-LICENSE"; cp /usr/local/go/LICENSE "$bundle/licenses/Go-LICENSE"; \
     go version > "$bundle/BUILD.txt"; go list -m all >> "$bundle/BUILD.txt"; \
     go list -m -f '{{if .Replace}}{{.Replace.Dir}}{{else}}{{.Dir}}{{end}}' all | while read -r directory; do \
       [ -n "$directory" ] || continue; destination="$bundle/licenses/$(basename "$directory")"; mkdir -p "$destination"; \
