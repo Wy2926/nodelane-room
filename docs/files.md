@@ -82,12 +82,12 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       brand-mark.png 从选定设计提取的珊瑚色品牌图形
     main.tsx 正式客户端挂载
     preview.tsx 独立开发预览夹具，模拟交互并明确无真实网络
-    test-setup.ts DOM 测试环境、滚动与对话框模拟
+    test-setup.ts DOM 测试环境与对话框模拟
     app/ 应用编排与系统导航
       App.tsx 本机状态、独立可达的系统页面与房间弹窗组合
       App.test.tsx 房间流程、诊断实测与脱敏、离线设置和本机更新错误测试
       RenderBoundary.tsx 页面渲染故障隔离与恢复入口
-      Shell.tsx 顶部导航、个人资料与退出下拉菜单、关闭窗口
+      Shell.tsx 常驻顶栏与底栏、独立滚动内容、个人资料菜单及关闭窗口
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
       OperationFeedback.tsx 接管确认、未决操作查询与执行进度
@@ -97,7 +97,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       use-actions.test.ts 未决写互斥、接管子步骤与跨服务实例旧回复测试
     i18n/ 客户端语言选择与翻译
       index.ts 语言偏好持久化、订阅与字典插值
-      LanguageSelection.tsx 进入客户端前的语言选择界面
+      LanguageSelection.tsx 沿用三段窗口布局的首次语言选择界面
       i18n.test.ts 字典键、插值、日期与源码文案边界检查
       locales/ 按语言独立维护的界面及原生文案
         zh-CN.json 简体中文客户端字典
@@ -105,8 +105,8 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     styles/ 暖白与珊瑚色共享样式
       tokens.css 颜色、字体、圆角与焦点变量
       index.css 全客户端样式入口
-      base.css 控件、排版、焦点与减少动态效果
-      layout.css 房间列表、入房侧栏、设置、诊断与响应式布局
+      base.css 控件、排版、焦点、隐藏滚动条与减少动态效果
+      layout.css 窗口边缘与三段布局、房间列表、入房侧栏及系统页响应式样式
       forms.css 输入、模态弹窗、邀请码与端口样式
       feedback.css 错误、提示、空状态与开发预览标识
     native/ 真实 Tauri 本机桥接

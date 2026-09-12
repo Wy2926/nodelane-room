@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -40,14 +40,15 @@ export function RoomPage({
 }) {
   const [details, setDetails] = useState(!!status.selected_room);
   const [ownedOnly, setOwnedOnly] = useState(false);
+  const workspace = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setDetails(!!status.selected_room);
-    window.scrollTo({ top: 0, behavior: "instant" });
   }, [status.selected_room]);
   const { room, activeRoom, game, roomFresh, managementError, selected } = view;
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
-  }, [details, selected]);
+    const content = workspace.current?.closest("main");
+    if (content) content.scrollTop = 0;
+  }, [details, selected, status.selected_room]);
   const rooms =
     activeRoom && !catalog.rooms.some((r) => r.id === activeRoom.id)
       ? [activeRoom, ...catalog.rooms]
@@ -84,7 +85,10 @@ export function RoomPage({
       );
   };
   return (
-    <div className={`room-workspace${details ? " room-detail" : ""}`}>
+    <div
+      ref={workspace}
+      className={`room-workspace${details ? " room-detail" : ""}`}
+    >
       <section className="room-main">
         {details ? (
           <>

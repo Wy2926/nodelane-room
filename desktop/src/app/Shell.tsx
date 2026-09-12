@@ -41,6 +41,7 @@ export function Shell({
   const online = !error && !stale && status?.control === "online";
   const [profileOpen, setProfileOpen] = useState(false);
   const profile = useRef<HTMLDetailsElement>(null);
+  const content = useRef<HTMLElement>(null);
   const closeProfile = () => {
     if (profile.current) profile.current.open = false;
   };
@@ -52,7 +53,7 @@ export function Shell({
     return () => document.removeEventListener("pointerdown", dismiss);
   }, []);
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
+    if (content.current) content.current.scrollTop = 0;
   }, [page]);
   return (
     <div className="shell" data-page={page}>
@@ -154,8 +155,15 @@ export function Shell({
         </details>
         {isTauri() && <WindowControls />}
       </header>
-      <main id="main-content" tabIndex={-1}>
-        <h1 className="sr-only">{t(titles[page])}</h1>
+      <main
+        id="main-content"
+        ref={content}
+        tabIndex={0}
+        aria-labelledby="page-title"
+      >
+        <h1 id="page-title" className="sr-only">
+          {t(titles[page])}
+        </h1>
         {children}
       </main>
       <footer className="app-status" aria-label={t("desk.connectionStatus")}>

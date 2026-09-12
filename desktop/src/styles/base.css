@@ -1,6 +1,8 @@
-* { box-sizing: border-box; }
-html { min-width: 360px; background: var(--paper); }
-body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.6 var(--font-ui); -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+html { min-width: 360px; height: 100%; background: var(--paper); }
+body { height: 100%; overflow: hidden; margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.6 var(--font-ui); -webkit-font-smoothing: antialiased; }
+#root { height: 100%; }
 button, input, select, textarea { font: inherit; }
 button, summary, a { -webkit-tap-highlight-color: transparent; }
 button { min-height: 40px; border: 1px solid var(--line); border-radius: var(--radius-control); color: var(--ink); background: transparent; padding: 9px 16px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; cursor: pointer; font-weight: 600; transition: background 120ms ease, color 120ms ease; }
