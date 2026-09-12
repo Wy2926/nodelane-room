@@ -2,6 +2,8 @@
 
 mod ipc;
 mod language;
+#[cfg(windows)]
+mod startup;
 use language::Language;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -113,6 +115,8 @@ fn main() {
         ])
         .setup(|app| {
             let language = Language::default();
+            #[cfg(windows)]
+            tauri::async_runtime::spawn_blocking(move || startup::prepare_tap(language));
             let open = MenuItem::with_id(
                 app,
                 "open",

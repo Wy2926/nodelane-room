@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   isTauri: () => false,
   invoke: vi.fn(),
 }));
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => vi.resetAllMocks());
 
 test("uncertain writes block new intents while pause and original receipt remain available", async () => {
   vi.mocked(rpc)
@@ -20,12 +20,7 @@ test("uncertain writes block new intents while pause and original receipt remain
       message: "private internal details",
       request_id: "control-request",
     })
-    .mockResolvedValueOnce({})
-    .mockResolvedValueOnce({
-      id: "original",
-      state: "rejected",
-      result: { code: "room_full" },
-    });
+    .mockResolvedValueOnce({});
   const view = renderHook(() => useActions(vi.fn(), "service-a"));
   await act(async () => {
     await view.result.current.perform("create", {
@@ -34,6 +29,11 @@ test("uncertain writes block new intents while pause and original receipt remain
     });
   });
   const original = vi.mocked(rpc).mock.calls[0][0].command_id;
+  vi.mocked(rpc).mockResolvedValueOnce({
+    id: original,
+    state: "rejected",
+    result: { code: "room_full" },
+  });
   expect(view.result.current.pending).toBe(original);
   expect(view.result.current.error?.error).not.toContain(
     "private internal details",
@@ -56,46 +56,128 @@ test("uncertain writes block new intents while pause and original receipt remain
   expect(view.result.current.error?.code).toBe("room_full");
 });
 
-test("confirmed takeover continues the original join with a new child operation", async () => {
-  vi.mocked(rpc)
-    .mockRejectedValueOnce({
+test.each([false, true])(
+  "takeover resumes join after confirmation (receipt: %s)",
+  async (receipt) => {
+    vi.mocked(rpc).mockRejectedValueOnce({
       code: "account_in_use",
       details: {
         room_id: "occupied",
         device_id: "old-device",
         actual_revision: 7,
       },
-    })
-    .mockResolvedValueOnce({})
-    .mockResolvedValueOnce({ room: { id: "joined" } });
-  const success = vi.fn();
-  const view = renderHook(() => useActions(vi.fn(), "service-a"));
-  await act(async () => {
-    await view.result.current.perform(
+    });
+    if (receipt)
+      vi.mocked(rpc).mockRejectedValueOnce({ code: "local_rpc_timeout" });
+    else vi.mocked(rpc).mockResolvedValueOnce({});
+    vi.mocked(rpc).mockResolvedValue({ room: { id: "joined" } });
+    const success = vi.fn();
+    const view = renderHook(() => useActions(vi.fn(), "service-a"));
+    await act(async () => {
+      await view.result.current.perform(
+        "join",
+        { action: "join", body: { code: "memory-only" } },
+        success,
+      );
+    });
+    expect(view.result.current.takeover?.device).toBe("old-device");
+    await act(async () => {
+      await view.result.current.takeOverAndContinue();
+    });
+    if (receipt) {
+      vi.mocked(rpc).mockResolvedValueOnce({
+        id: view.result.current.pending,
+        state: "succeeded",
+        result: { data: {} },
+      });
+    }
+    if (receipt)
+      await act(async () => {
+        await view.result.current.checkOperation();
+      });
+    const requests = vi
+      .mocked(rpc)
+      .mock.calls.map(([request]) => request)
+      .filter((request) => request.action !== "get-operation");
+    expect(requests.map((r) => r.action)).toEqual([
       "join",
-      { action: "join", body: { code: "memory-only" } },
-      success,
+      "account-takeover",
+      "join",
+    ]);
+    expect(requests[1].body).toEqual({
+      room_id: "occupied",
+      device_id: "old-device",
+      expected_revision: 7,
+    });
+    expect(requests[2].body).toEqual(requests[0].body);
+    expect(new Set(requests.map((r) => r.command_id)).size).toBe(3);
+    expect(success).toHaveBeenCalledOnce();
+  },
+);
+
+test.each([false, true])(
+  "old receipt queries cannot unlock a new query (review: %s)",
+  async (review) => {
+    let rejectOld!: (error: unknown) => void;
+    let resolveNew!: (value: unknown) => void;
+    vi.mocked(rpc)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectOld = reject;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveNew = resolve;
+          }),
+      );
+    const view = renderHook(
+      ({ instance }) =>
+        useActions(vi.fn(), instance, {
+          operations: [
+            {
+              id: "pending",
+              state: review ? "unresolved" : "pending",
+              known_commit: false,
+              deadline: "2026-09-12T00:00:00Z",
+            },
+          ],
+          unavailable: false,
+          roomBlocked: false,
+        }),
+      { initialProps: { instance: "old" } },
     );
-  });
-  expect(view.result.current.takeover?.device).toBe("old-device");
-  await act(async () => {
-    await view.result.current.takeOverAndContinue();
-  });
-  const requests = vi.mocked(rpc).mock.calls.map(([request]) => request);
-  expect(requests.map((r) => r.action)).toEqual([
-    "join",
-    "account-takeover",
-    "join",
-  ]);
-  expect(requests[1].body).toEqual({
-    room_id: "occupied",
-    device_id: "old-device",
-    expected_revision: 7,
-  });
-  expect(requests[2].body).toEqual(requests[0].body);
-  expect(new Set(requests.map((r) => r.command_id)).size).toBe(3);
-  expect(success).toHaveBeenCalledOnce();
-});
+    let old!: Promise<void>;
+    act(() => {
+      old = review
+        ? view.result.current.reviewPending()
+        : view.result.current.checkOperation();
+    });
+    view.rerender({ instance: "new" });
+    let next!: Promise<void>;
+    act(() => {
+      next = view.result.current.checkOperation();
+    });
+    await act(async () => {
+      rejectOld({ code: "local_control_timeout" });
+      await old;
+    });
+    expect(view.result.current.checking).toBe(true);
+    expect(view.result.current.error).toBeUndefined();
+    await act(async () => {
+      resolveNew({
+        id: "pending",
+        state: "rejected",
+        result: { code: "room_full" },
+      });
+      await next;
+    });
+    expect(view.result.current.pending).toBeUndefined();
+    expect(view.result.current.error?.code).toBe("room_full");
+  },
+);
 
 test("a response from the previous service instance cannot complete the new screen", async () => {
   let complete!: (value: unknown) => void;

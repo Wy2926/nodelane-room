@@ -3,20 +3,14 @@ import { GameController } from "@phosphor-icons/react";
 import type { Game } from "../../shared/model";
 import { artwork } from "./artwork-loader";
 
-export function Art({
-  game,
-  kind = "cover",
-}: {
-  game: Game;
-  kind?: "cover" | "background";
-}) {
-  const source = kind === "cover" ? game.cover_url : game.background_url;
+export function Art({ game }: { game: Game }) {
+  const source = game.cover_url;
   const [url, setURL] = useState("");
   useEffect(() => {
     let cancelled = false;
     setURL("");
     if (source)
-      void artwork(game.id, kind)
+      void artwork(game.id)
         .then((value) => {
           if (!cancelled) setURL(value);
         })
@@ -24,7 +18,7 @@ export function Art({
     return () => {
       cancelled = true;
     };
-  }, [game.id, kind, source]);
+  }, [game.id, source]);
   return url ? (
     <img className="art" src={url} alt="" onError={() => setURL("")} />
   ) : (

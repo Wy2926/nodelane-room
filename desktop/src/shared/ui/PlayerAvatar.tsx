@@ -3,8 +3,7 @@ export function PlayerAvatar({
   size = "medium",
 }: {
   name: string;
-  identity?: string;
-  size?: "small" | "medium" | "large";
+  size?: "small" | "medium";
 }) {
   return (
     <span className={`player-avatar avatar-${size}`} aria-hidden="true">

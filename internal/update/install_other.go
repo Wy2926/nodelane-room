@@ -8,7 +8,6 @@ import (
 )
 
 func SupportedInstall(string) bool { return false }
-func finishInstall()               {}
 func StartInstall(context.Context, string) error {
 	return model.Failure("local_update_install_unsupported")
 }
@@ -22,6 +21,6 @@ func FreeSpace(string) (uint64, error) { return 0, model.Failure("local_update_i
 func installPackage(context.Context, string, InstallJob) error {
 	return model.Failure("local_update_install_unsupported")
 }
-func rollbackPackage(context.Context, string, InstallJob) error {
-	return model.Failure("local_update_install_unsupported")
+func installFailure(context.Context, string, InstallJob) (string, string) {
+	return "failed", "local_update_install_unsupported"
 }

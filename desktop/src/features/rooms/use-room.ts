@@ -1,79 +1,46 @@
-import { useEffect, useState } from "react";
-import { rpc, failure } from "../../native/api";
+import { useState } from "react";
+import { useQuery } from "../../native/use-query";
 import { fresh } from "../../shared/time";
 import type { Status, Management, Failure } from "../../shared/model";
+
 export function useRoom(
   status: Status,
   serviceError: Failure | undefined,
   reload: number,
 ) {
   const [selected, setSelected] = useState("");
-  const [management, setManagement] = useState<Management>();
-  const [managementError, setManagementError] = useState<Failure>();
-  const [managementAt, setManagementAt] = useState(0);
-  const hasIdentity = !!status.device_id;
   const activeRoom =
-    status?.selected_room && status.room?.id === status.selected_room
+    status.selected_room && status.room?.id === status.selected_room
       ? status.room
       : undefined;
   const isCurrent = !!activeRoom && (!selected || selected === activeRoom.id);
-  const room = isCurrent ? activeRoom : management?.room;
-  const game = isCurrent ? status?.game : management?.game;
-  const members = isCurrent ? status?.members || [] : management?.members || [];
+  const management = useQuery<Management>(
+    { action: "manage", room: selected },
+    7000,
+    {
+      enabled: !!selected && !isCurrent && !!status.device_id && !serviceError,
+      scope: `${status.service_instance_id}:${status.device_id}:${status.user?.id}`,
+      reload,
+    },
+  );
+  const room = isCurrent ? activeRoom : management.data?.room;
+  const game = isCurrent ? status.game : management.data?.game;
+  const members = (isCurrent ? status.members : management.data?.members) || [];
   const roomFresh = isCurrent
-    ? fresh(status?.snapshot_at) && !serviceError
-    : !managementError && Date.now() - managementAt < 15000;
-
-  const owner = room?.owner_user_id === status?.user?.id;
+    ? fresh(status.snapshot_at) && !serviceError
+    : !serviceError &&
+      !management.error &&
+      Date.now() - management.updatedAt < 15000;
+  const owner = room?.owner_user_id === status.user?.id;
   const canManage =
     !!room &&
     owner &&
-    (isCurrent ? status.permissions.manage : management?.permissions.manage) &&
     roomFresh &&
     !room.closed &&
-    Date.parse(room.expires_at) > Date.now();
-  useEffect(() => {
-    if (
-      !selected ||
-      selected === activeRoom?.id ||
-      !hasIdentity ||
-      serviceError
-    ) {
-      setManagement(undefined);
-      setManagementError(undefined);
-      return;
-    }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    setManagement(undefined);
-    setManagementError(undefined);
-    const load = async () => {
-      try {
-        const out = await rpc<Management>({ action: "manage", room: selected });
-        if (!cancelled) {
-          setManagement(out);
-          setManagementError(undefined);
-          setManagementAt(Date.now());
-        }
-      } catch (e) {
-        if (!cancelled) setManagementError(failure(e));
-      }
-      if (!cancelled) timer = setTimeout(load, 7000);
-    };
-    void load();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [
-    selected,
-    activeRoom?.id,
-    hasIdentity,
-    !!serviceError,
-    reload,
-    status.service_instance_id,
-  ]);
-
+    Date.parse(room.expires_at) > Date.now() &&
+    (isCurrent
+      ? status.permissions.manage
+      : management.data?.permissions.manage);
   return {
     selected,
     setSelected,
@@ -85,7 +52,7 @@ export function useRoom(
     roomFresh,
     owner,
     canManage,
-    managementError,
+    managementError: isCurrent ? undefined : management.error,
   };
 }
 export type RoomView = ReturnType<typeof useRoom>;

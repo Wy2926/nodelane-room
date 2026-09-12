@@ -24,7 +24,6 @@ func StartInstall(ctx context.Context, dir string) error {
 func Bootstrap(context.Context, string) error {
 	return model.Failure("local_update_install_unsupported")
 }
-func finishInstall() {}
 func installLock(dir string) (func(), error) {
 	if !SupportedInstall(dir) {
 		return nil, model.Failure("local_update_install_unsupported")
@@ -82,4 +81,11 @@ func rollbackPackage(ctx context.Context, dir string, j InstallJob) error {
 		return err
 	}
 	return aptInstall(ctx, PackagePath(dir, j.Previous.Release.UpdateArtifact), j.From)
+}
+
+func installFailure(ctx context.Context, dir string, j InstallJob) (string, string) {
+	if rollbackPackage(ctx, dir, j) == nil && WaitReady(ctx, dir, j.From) == nil {
+		return "rolled_back", "local_update_rolled_back"
+	}
+	return "failed", "local_update_recovery_failed"
 }

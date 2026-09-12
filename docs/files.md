@@ -13,7 +13,7 @@
 | LAN、授权、凭据到期 | `internal/lan/`、`internal/engine/`、`internal/agent/network.go`、`runtime*_test.go` | [数据面](architecture.md#数据面)、[游戏网络](game-network.md) |
 | 桌面界面、本机 IPC | `desktop/src/`、`desktop/src-tauri/src/ipc/`、`internal/agent/local*`、`images.go` | [界面](client.md#界面与视觉规范)、[桌面架构](client.md#桌面架构) |
 | 客户端更新、版本规则 | `internal/update/`、`internal/agent/updates.go`、`internal/control/updates*`、`scripts/updates/` | [更新与发布](updates.md) |
-| 安装、权限、系统服务 | `internal/platform/`、`internal/nodehost/`、`scripts/desktop/`、安装脚本 | [本机权限](architecture.md#本机权限)、[客户端安装](../README.md#windows-客户端) |
+| 安装、权限、系统服务 | `internal/update/`、`internal/platform/`、`internal/nodehost/`、`scripts/desktop/` | [本机权限](architecture.md#本机权限)、[客户端安装](../README.md#windows-客户端) |
 | 监控、探测、GeoIP | `internal/probe/`、`internal/engine/telemetry.go`、`internal/agent/telemetry.go`、`traffic*`、`internal/control/telemetry*`、`geoip*` | [统计口径](architecture.md#监控)、[采集配置](deployment.md#监控与-ip-归属地) |
 | 构建、部署、验收 | `scripts/`、`deploy/`、`.github/workflows/` | [构建](../README.md#开发与构建)、[部署](deployment.md)、[当前验收](validation.md#当前源码与产物) |
 
@@ -33,7 +33,7 @@
 AGENTS.md 开发约束与索引维护规则
 cmd/ 可执行程序入口
   nlroom-update/ 特权更新助手入口
-    main.go 受保护任务校验、安装与恢复命令
+    main.go 原生安装、启动 TAP 准备与受保护更新任务入口
   nlroom-node/ Linux lighthouse/relay 命令
     main.go 登记、运行、诊断与原生安装管理
   nlroom-cli/ Windows/Linux 开发与诊断 CLI
@@ -90,10 +90,11 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       Shell.tsx 常驻顶栏与底栏、独立滚动内容、个人资料菜单及关闭窗口
       navigation.ts 页面标识与标题字典键
       Feedback.tsx 服务故障、忙碌与操作反馈
-      OperationFeedback.tsx 接管确认、未决操作查询与执行进度
+      OperationFeedback.tsx 页面与弹窗共用的接管、未决查询和执行进度
       Problem.tsx 业务错误、恢复入口与支持详情
       experience.ts 连接状态展示、操作可用性与恢复动作映射
-      use-actions.ts 操作互斥、复制与确认管理
+      use-actions.ts 写操作互斥、账号接管、复制与确认管理
+      use-operations.ts 未决收据查询、过期核对与异步回复隔离
       use-actions.test.ts 未决写互斥、接管子步骤与跨服务实例旧回复测试
     i18n/ 客户端语言选择与翻译
       index.ts 语言偏好持久化、订阅与字典插值
@@ -110,9 +111,10 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       forms.css 输入、模态弹窗、邀请码与端口样式
       feedback.css 错误、提示、空状态与开发预览标识
     native/ 真实 Tauri 本机桥接
-      api.ts 玩家 IPC、错误文案、剪贴板与生命周期命令
+      api.ts 玩家 IPC、默认控制端、错误文案、剪贴板与生命周期命令
       use-service.ts 不重叠状态轮询、退避与原生通知
       use-service.test.ts 版本一致性、并发刷新与服务恢复测试
+      use-query.ts 目录、房间和账号共用的有界轮询与旧回复隔离
     shared/ 共用数据与简单 UI
       model.ts 玩家、游戏、房间、本机请求与诊断返回类型
       time.ts 时间与状态新鲜度格式化
@@ -123,7 +125,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
         PortList.tsx 授权端口列表
     features/ 按玩家流程组织的页面
       catalog/ 服务端游戏目录与本机游戏图片
-        Artwork.tsx 本机游戏图像展示与缺图状态
+        Artwork.tsx 本机游戏封面展示与缺图状态
         artwork-loader.ts 有界图像请求和缓存
         use-catalog.ts 目录、管理房间与陈旧状态加载
       rooms/ 联机房间与成员
@@ -141,8 +143,10 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
       device/ 初始化与桌面偏好
         Updates.tsx 本机更新状态、进度与安装确认
         Updates.test.tsx 强制下载状态与安装确认边界测试
-        Setup.tsx 默认线上控制端、访客昵称与首次使用
+        Setup.tsx 固定线上控制端、访客昵称与首次使用
         Account.tsx 访客绑定、浏览器登录、设备切换与退出账号
+        use-account.ts 登录能力、事务与账号设备查询
+        use-account.test.ts 身份切换与旧登录回复回归
         Settings.tsx 分类偏好、设备信息与本机更新入口
       diagnostics/ 真实网络诊断
         Diagnostics.tsx 连接与授权状态、本机系统检查
@@ -158,6 +162,7 @@ desktop/ Tauri 与 React 玩家客户端，主机风格独立于管理台
     src/ 原生程序实现
       main.rs 窗口、托盘、通知、语言同步与生命周期
       language.rs 复用前端语言字典的原生文案与语言白名单测试
+      startup.rs 已安装 Windows GUI 的启动 TAP 检查、按需提权与失败提示
       ipc/ 有界玩家服务桥接
         mod.rs 桥接命令入口
         protocol.rs 玩家请求校验与类型
@@ -180,12 +185,19 @@ go.mod 模块依赖与 Nebula 补丁锁定
 go.sum 依赖校验和
 internal/ 产品内部实现
   update/ 签名更新验证、下载与特权安装引擎
+    bundle.go Windows 程序载荷校验、逐文件覆盖与过期文件清理
+    bundle_test.go 载荷路径、摘要、架构及安装中断后覆盖修复测试
+    host_windows.go 原生 ACL、SCM、进程等待、卸载登记和开始菜单快捷方式
+    host_windows_test.go 孤立网卡登记、只读 PnP、签名、子进程退出和原生快捷方式测试
+    setup_windows.go 原生安装升级卸载、SID 绑定、UAC 和受限状态管道
+    setup_other.go 非 Windows 平台跳过原生安装命令
+    tap_windows.go 原生 PnP TAP 检查、签名验证、按需安装与按登记 GUID 清理
     trust_test.go 签名篡改、过期与元数据回退测试
     trust.go TUF 信任链、版本防回退与目标验证
-    install_windows.go Windows 提权、隔离运行器与开机恢复
+    install_windows.go Windows 提权后临时运行器与完整安装包启动
     install_other.go 其他平台拒绝系统安装
     install_linux.go Linux root 更新、APT 锁与可信 deb 恢复
-    install.go 持久安装任务、二次校验与健康恢复
+    install.go 持久安装任务、二次校验、健康检查与平台安装结果
     download_test.go HTTPS 恢复下载与错误响应验证
     download.go 多镜像断点续传与完整包校验
   agent/ 玩家与节点后台状态协调
@@ -387,26 +399,20 @@ scripts/ 构建、安装与验证工具
     drivers.py 固定 TAP 驱动与 tapctl 的下载校验、只读提取及对应源码打包
     licenses.py 收集精确解析的桌面依赖声明与许可证
     package.py 校验版本和架构、分离运行文件与临时工具、生成 EXE/deb 与校验和
-    tap.ps1 签名及摘要校验、专用 TAP 创建、失败清理与按登记 GUID 卸载
-    windows.nsi 保留玩家账户的双语安装、更新恢复与独立卸载向导
+    windows.nsi 保留玩家账户的双语覆盖安装与独立卸载向导
     locales/ 按语言独立维护的安装向导文案
-      zh-CN.nsh 简体中文安装、恢复及卸载字典
-      en-US.nsh 英文安装、恢复及卸载字典
+      zh-CN.nsh 简体中文安装、修复及卸载字典
+      en-US.nsh 英文安装、修复及卸载字典
     linux-setup.sh 绑定 Linux 玩家 UID、启动后台与检查本机就绪
     linux-postinst.sh deb 安装或更新后重载并检查已绑定后台
     linux-prerm.sh deb 更新或移除前停止并等待旧后台退出
     linux-postrm.sh deb 移除后重载，保留身份和用户绑定
     test_package.py 版本、二进制架构、内容摘要与 Debian 生命周期测试
-    test-windows.ps1 原生 UTF-8 状态读取、GUI 文件替换、停止失败、登记失败和版本恢复测试
-    test-uninstall.ps1 模拟 SCM 下的身份保留、显式清除、停止失败及卸载边界测试
-    test-setup.ps1 Windows PowerShell 提权状态管道的输出与退出错误测试
-    test-tap.ps1 模拟受限注册表、驱动暂存、专用网卡创建与按 GUID 清理的隔离测试
     test_live.py 为已打包 Linux 客户端创建和清理隔离联机验收环境
     test-linux.sh 仅容器内的 deb 安装、真实 UID 隔离、替换及卸载验收
     test_webview.py 通过真实 WebView 和本机服务操作玩家完整联机流程
   check-release.py 各组件归档校验和、版本、内容隔离、架构与权限检查
-  Install.cmd Windows 双击安装入口
-  install.ps1 Windows 完整包校验、用户绑定、安装更新与失败回滚
+  Install.cmd Windows Go 归档的原生助手双击安装入口
   NodeLaneRoom.cmd 玩家开发命令行启动入口
   openapi/ API 契约生成工具
     main.go 更新协议类型、管理与节点接口及调用方分组
@@ -416,9 +422,7 @@ scripts/ 构建、安装与验证工具
   package-compose.py 部署模板归档与校验和生成
   release/ 原生安装资源打包工具
     main.go 从发布包生成同源下载资源与清单
-  setup.ps1 提权前捕获玩家 SID、受限管道回传安装状态并启动安装或回滚
   test-deploy.py 部署模板与发布镜像冒烟测试
   test-docker.py 隔离 TAP/中继/低 MTU 回归与独立数据库 Go/race 检查
-  uninstall.ps1 Windows 停止等待、受保护目录卸载与可选状态清理
 THIRD_PARTY_NOTICES.md 第三方许可声明
 ```

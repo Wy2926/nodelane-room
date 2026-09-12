@@ -29,7 +29,7 @@ class PackagingTests(unittest.TestCase):
                 (release / name).write_bytes(b'fixture')
             with patch('package.collect'):
                 payload, engine = windows_payload(stage, release, release / 'nlroom.exe', required, 'x86_64-pc-windows-msvc')
-            self.assertEqual({p.name for p in engine.iterdir()}, {'setup.ps1', 'install.ps1', 'uninstall.ps1'})
+            self.assertEqual({p.name for p in engine.iterdir()}, {'nlroom-update.exe'})
             self.assertFalse(any(p.suffix in ('.ps1', '.cmd', '.bat') for p in payload.rglob('*')))
             self.assertFalse((payload / 'MicrosoftEdgeWebview2Setup.exe').exists())
             self.assertIn('nlroom.exe', (payload / 'PAYLOAD.sha256').read_text())

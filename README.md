@@ -16,25 +16,27 @@ V2 使用全新数据库、CA 和节点/玩家身份。数据库结构版本为 
 
 ## Windows 客户端
 
-桌面玩家使用 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`（按当前源码构建；正式发布前完成代码签名）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。默认连接 `https://room.nodelane.net`，填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
+桌面玩家使用 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`（按当前源码构建；正式发布前完成代码签名）。在玩家账户下双击，先选择简体中文或 English，接受 UAC 提权，完成后从开始菜单打开 **NodeLane Room**。首次打开客户端先选择语言，后续自动记住，可在设置 → 桌面偏好中更改。GUI 使用 `https://room.nodelane.net`，不提供服务端地址设置；填写昵称后即可读取游戏库、建房、输入邀请码加入、管理成员及诊断。正式入口经 Tauri、Named Pipe 和 Go 后台操作真实网络。
 
-安装包使用 NSIS 3 Modern UI 2，提供 NodeLane 品牌欢迎页、安装与维护页、进度及完成页。安装入口在提权前取得玩家 SID；检查版本、架构和完整包摘要，提权后的具体错误回传到安装日志。内置官方已签名的 TAP-Windows6 9.27.0 驱动，校验后创建专用网卡（规则见下方 LAN 网卡）。缺少 WebView2 时校验微软签名并运行随包的官方 Evergreen 引导程序，需要联网。GUI 保持普通用户运行，后台独立运行。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，只保留程序、原生 `Uninstall.exe`、构建信息和许可；PowerShell、驱动安装工具与 WebView2 引导程序仅在临时目录执行。
+安装包使用 NSIS 3 Modern UI 2，由原生 `nlroom-update.exe` 完成安装、升级与卸载，不执行 PowerShell。助手在提权前取得玩家 SID，检查版本、架构、完整包摘要与权限，并通过受限 Named Pipe 回传结果。安装目录固定为 `%ProgramFiles%\NodeLaneRoom`，包含程序、`Uninstall.exe`、构建信息、许可和供启动时使用的 `drivers/tap/`。GUI 保持普通用户运行，后台独立运行。WebView2 作为现有系统环境前提，安装器不检测、下载或安装运行时。
 
-更新时退出客户端，在同一玩家账户下运行新版完整安装包。“安装与维护”显示当前和目标版本，同版本可重新安装，普通更新拒绝降级。安装器保留身份与用户绑定，停止并等待后台退出后替换程序；新版后台就绪或系统登记失败时恢复旧程序。成功后保留一份旧程序在 `%ProgramFiles%\NodeLaneRoom.previous`，不会保存第二份身份。再次运行安装包，若存在新版安装器生成的备份，可选择“恢复上一次安装的程序”；仅适用于当前 `nlroom-service.exe` 服务结构及身份格式、本机协议兼容的版本。
+已安装的 GUI 每次启动时由原生助手检查 `nodelane0-lan`，通过 Windows PnP 获取实际设备的驱动登记，排除已移除设备的连接残留。已有合格网卡直接继续；缺失时请求 UAC，核对原安装玩家 SID，再校验随包驱动并创建专用网卡。取消授权或安装失败时仍可查看设置和诊断，处理问题后重启客户端重试。源码目录中的开发 GUI 不自动安装宿主驱动。
 
-卸载在 Windows 设置的“已安装的应用”选择 **NodeLane Room → 卸载**，或双击安装目录中的 `Uninstall.exe`。独立卸载向导默认保留设备身份与用户绑定；勾选清除数据还需再次确认。卸载会停止并等待后台退出，移除程序、安装器创建并登记的专用网卡、旧版备份、开始菜单和系统登记；停止失败时保留程序和卸载入口。共享 TAP 驱动包和 WebView2 保留。`Uninstall.exe /S` 可静默卸载并保留身份，仍需管理员授权。
+更新时在同一玩家账户下运行新版完整安装包。“安装与维护”显示当前和目标版本，同版本可重新安装，普通更新拒绝降级。安装器保留身份与用户绑定，关闭客户端、停止并等待后台退出后覆盖程序，完成后检查新版后台。失败或中断后重新运行同一版本或新版完整安装包修复；不自动回滚、不保留旧版备份、不创建开机恢复任务。
 
-设置 → 版本与更新可查看版本；“检查更新”目前仅提供界面和未接入提示。当前交付仍为完整包手动更新，不提供在线更新源或静默自动更新。Windows 服务、UAC 和驱动的真机结果见 [验证记录](docs/validation.md)，不可将打包通过视为真机验收通过。
+卸载在 Windows 设置的“已安装的应用”选择 **NodeLane Room → 卸载**，或双击安装目录中的 `Uninstall.exe`。独立卸载向导默认保留设备身份与用户绑定；勾选清除数据还需再次确认。卸载先取得与更新共用的锁，再停止并等待后台退出，移除程序、原生助手创建并登记的专用网卡、旧版遗留备份、开始菜单和系统登记；停止失败时保留程序和卸载入口。共享 TAP 驱动包保留。清除身份后只保留空的受保护状态目录及锁文件。`Uninstall.exe /S` 可静默卸载并保留身份，仍需管理员授权。
+
+设置 → 版本与更新提供签名包检查、下载与安装入口；发布、可信根和服务端配置见 [客户端更新](docs/updates.md)。Windows 在线更新与手动完整包使用同一个原生安装流程，常规升级不安装驱动。Windows 服务、UAC 和驱动的真机结果见 [验证记录](docs/validation.md)，不可将打包通过视为真机验收通过。
 
 开发和脚本用户也可解压 Go 发布 ZIP，在玩家账户下运行 `Install.cmd`；`NodeLaneRoom.cmd` 打开已配置临时 PATH 的普通 PowerShell。该归档不含 GUI。
 
 也可先在玩家自己的终端执行 `whoami /user` 获取 SID，再在管理员 PowerShell 手动安装：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -OwnerSid 'S-1-5-21-...'
+.\nlroom-update.exe setup --source . --owner-sid 'S-1-5-21-...'
 ```
 
-使用同一账户 UAC 提权安装时可省略 `-OwnerSid`。安装到 `%ProgramFiles%\NodeLaneRoom`，后台 `nlroom-service.exe` 以 SYSTEM 运行，服务注册名仍为 `NodeLaneRoom`；状态在 `%ProgramData%\NodeLaneRoom`，只有 SYSTEM/管理员能读。玩家通过授权 SID 的 Named Pipe 操作，无需继续提权。
+使用同一账户 UAC 提权安装时可省略 `--owner-sid`。安装到 `%ProgramFiles%\NodeLaneRoom`，后台 `nlroom-service.exe` 以 SYSTEM 运行，服务注册名仍为 `NodeLaneRoom`；状态在 `%ProgramData%\NodeLaneRoom`，只有 SYSTEM/管理员能读。玩家通过授权 SID 的 Named Pipe 操作，无需继续提权。
 
 普通终端执行（可把安装目录加入自己的 PATH）：
 
@@ -68,7 +70,7 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 
 管理台可配置广播、组播；额外 Ethernet 类型仅在老游戏需要时填写，如 IPX 的 `0x8137`、IEEE 802.3 的 `0`。动态端口游戏可配置 TCP、UDP 各一条 `1–65535`。须使用支持当前 LAN 与 IPC 的匹配客户端，能力字段见游戏网络文档。
 
-- Windows：完整桌面安装包内置 [TAP-Windows6 9.27.0](https://github.com/OpenVPN/tap-windows6/releases/tag/9.27.0) 与 OpenVPN 2.6.22 的 `tapctl`，固定下载摘要并验证 Microsoft/OpenVPN 签名。`tapctl` 仅用于管理网卡；`licenses/tap-windows6/` 中的两个 `.tar.gz` 是随附源码及许可，不执行，也不安装 OpenVPN 客户端或服务。安装器只暂存驱动包，再创建 **`nodelane0-lan`** 专用网卡，MTU 为 1500；不更新或重命名其他 VPN 网卡。已存在的同名网卡须为官方 TAP ID（`root\tap0901` 或 `tap0901`）且驱动至少 9.27.0，否则停止安装。仅安装器新建的 GUID 写入受保护的 `tap.guid`，失败时清理、卸载时核对名称和 GUID 后移除；预先手动准备的网卡保留。CLI 开发归档需管理员自行准备专用 TAP。客户端服务只打开网卡并配置、清理地址，不执行驱动安装。Windows 驱动实际加载及完整安装卸载仍须真机验收。
+- Windows：完整桌面包内置 [TAP-Windows6 9.27.0](https://github.com/OpenVPN/tap-windows6/releases/tag/9.27.0) 与 OpenVPN 2.6.22 的 `tapctl`，固定下载摘要并通过 Windows Authenticode 核对 Microsoft/OpenVPN 签名。`tapctl` 仅用于管理网卡；`licenses/tap-windows6/` 中的两个 `.tar.gz` 是随附源码及许可，不执行，也不安装 OpenVPN 客户端或服务。GUI 启动时仅在缺少专用网卡时提权暂存驱动、创建 **`nodelane0-lan`**，MTU 为 1500；不更新或重命名其他 VPN 网卡。已有同名网卡须为官方 TAP ID（`root\tap0901` 或 `tap0901`）且驱动至少 9.27.0，否则报告错误。只有本次新建的 GUID 写入受保护的 `tap.guid`，失败时清理、卸载时核对名称和 GUID 后移除；手动准备的网卡保留。CLI 开发归档仍需管理员自行准备 TAP。网络服务只打开网卡并配置、清理地址，不执行驱动安装。Windows 驱动实际加载及完整安装卸载仍须真机验收。
 - Linux：后台以 root 或所需网络管理权限运行，使用内核 `/dev/net/tun` 创建非持久 `nodelane0-lan` TAP，停止时释放；不桥接物理网卡。
 - 入房后用 `status --json` 或 `doctor` 查看 `lan.ready`、MAC、IPv6、MTU。MAC 与控制端绑定成功才就绪；游戏选择此虚拟网卡或其虚拟 IP。是否自动出现房间仍取决于游戏的接口选择与已配置发现规则。
 
@@ -97,7 +99,7 @@ Steam 是当前唯一自动导入来源，无需 API Key；外部商店接口没
 
 证书最多 10 分钟，剩余约 7 分钟开始续签。控制失联期间不接受新操作；游戏流量受最近心跳后 45 秒授权及当前凭据截止时间约束，实际可用时间也取决于对端和 relay。端口与 LAN 策略变化会受控重启 Nebula，短暂重连，这是规避固定上游版本防火墙热更新竞争的措施。
 
-仅 Go 开发归档使用发布包中的 `uninstall.ps1`：可先 `room leave`，再在管理员 PowerShell 执行卸载脚本。默认保留设备身份；`-PurgeState` 同时清除身份。后台退出会关闭隧道和 TAP（基础设施释放 Nebula TUN）。
+Go 开发归档可从原解压目录运行 `nlroom-update.exe remove` 卸载；不要从将被删除的安装目录运行助手。默认保留设备身份，`--purge` 同时清除身份。后台退出会关闭隧道和 TAP（基础设施释放 Nebula TUN）。
 
 ## Linux 桌面与客户端开发
 
@@ -174,7 +176,7 @@ python scripts/desktop/build.py --platform linux --arch amd64 --release dist/cli
 
 `scripts/desktop/Dockerfile` 提供 Ubuntu 22.04 构建环境、Windows 交叉编译工具和原生 WebView 验收工具。`--skip-web` 仅复用已构建并检查的前端资源。当前生成的 EXE 为未签名测试包，deb 尚未进入签名软件仓库；构建不安装宿主服务、不发布产物。ARM64 参数用于相应工具链，未通过 ARM 真机验收。
 
-桌面检查：`npm --prefix desktop test`、`cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked`、`python scripts/desktop/test_package.py`，Windows 另运行 `scripts/desktop/test-windows.ps1`、`scripts/desktop/test-uninstall.ps1`，并使用 Windows PowerShell 5.1 运行 `scripts/desktop/test-setup.ps1`、`scripts/desktop/test-tap.ps1`。打包后可构建上述 Dockerfile 为 `nodelane-desktop-build:local`，再运行 `python scripts/desktop/test_live.py --package dist/desktop/nlroom_0.3.0_amd64.deb`，通过真实 WebView、普通用户 socket、隔离 HTTPS/数据库与 Nebula 验证流程。它仅安装到临时容器，结束后清理；不代替宿主 systemd 或 Windows 服务验收。
+桌面检查：`npm --prefix desktop test`、`cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked`、`python scripts/desktop/test_package.py`；原生安装事务与 Windows API 检查纳入 `go test ./internal/update`，不安装宿主服务或驱动。打包后可构建上述 Dockerfile 为 `nodelane-desktop-build:local`，再运行 `python scripts/desktop/test_live.py --package dist/desktop/nlroom_0.3.0_amd64.deb`，通过真实 WebView、普通用户 socket、隔离 HTTPS/数据库与 Nebula 验证流程。它仅安装到临时容器，结束后清理；不代替宿主 systemd 或 Windows 服务验收。
 
 ## 实时网络监控
 

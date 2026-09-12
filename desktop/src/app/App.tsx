@@ -149,6 +149,7 @@ function Client() {
       )}
       {service.status?.device_id && !identityNeedsAttention && (
         <Session
+          key={`${service.status.service_instance_id}:${service.status.device_id}:${service.status.user?.id}`}
           status={service.status}
           serviceError={serviceError}
           page={page}

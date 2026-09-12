@@ -114,7 +114,6 @@ func Apply(ctx context.Context, dir string) error {
 	if j.State != "ready" && j.State != "installing" {
 		return nil
 	}
-	defer finishInstall()
 	fail := func(code string) error {
 		j.State, j.ErrorCode = "failed", code
 		if e := SaveJob(dir, j); e != nil {
@@ -128,7 +127,7 @@ func Apply(ctx context.Context, dir string) error {
 	if err = VerifyPrepared(dir, j.Prepared); err != nil {
 		return fail("local_update_package_invalid")
 	}
-	if j.Previous != nil {
+	if runtime.GOOS == "linux" && j.Previous != nil {
 		if j.Previous.Release.Version != j.From {
 			return fail("local_update_rollback_invalid")
 		}
@@ -146,11 +145,7 @@ func Apply(ctx context.Context, dir string) error {
 		err = WaitReady(ctx, dir, j.Release.Version)
 	}
 	if err != nil {
-		j.State, j.ErrorCode = "failed", "local_update_recovery_failed"
-		if rollbackPackage(ctx, dir, j) == nil && WaitReady(ctx, dir, j.From) == nil {
-			j.State = "rolled_back"
-			j.ErrorCode = "local_update_rolled_back"
-		}
+		j.State, j.ErrorCode = installFailure(ctx, dir, j)
 	} else {
 		j.State, j.ErrorCode = "succeeded", ""
 	}

@@ -141,7 +141,6 @@
 .check-state { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
 .check-state[data-tone=ok] { color: var(--positive); }
 .check-state[data-tone=warning], .diagnostic-warning { color: var(--warning); }
-.eyebrow { display: none; }
 @media (max-width: 1100px) {
   .app-header { gap: 14px; padding: 0 24px; }
   .brand { font-size: 20px; }

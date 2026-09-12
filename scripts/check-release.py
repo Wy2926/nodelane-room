@@ -64,7 +64,7 @@ def main():
             if name.endswith(".zip"):
                 with zipfile.ZipFile(archive) as bundle:
                     files = {item.filename: bundle.read(item) for item in bundle.infolist() if not item.is_dir()}
-                required = ["nlroom-cli.exe", "nlroom-service.exe", "nlroom-update.exe", "Install.cmd", "setup.ps1", "install.ps1", "uninstall.ps1", "NodeLaneRoom.cmd"]
+                required = ["nlroom-cli.exe", "nlroom-service.exe", "nlroom-update.exe", "Install.cmd", "PAYLOAD.sha256", "NodeLaneRoom.cmd"]
                 for binary in ("nlroom-cli.exe", "nlroom-service.exe", "nlroom-update.exe"):
                     data = files[binary]
                     offset = struct.unpack_from("<I", data, 0x3C)[0]

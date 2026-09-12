@@ -6,7 +6,6 @@ export function PortList({ ports }: { ports: Port[] }) {
       {ports.length ? (
         ports.map((p) => (
           <span
-            className="port"
             key={`${p.protocol}/${p.port}`}
             title={p.description}
           >

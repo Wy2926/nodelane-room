@@ -4,11 +4,8 @@ const images = new Map<string, string>();
 let bytes = 0;
 let active = 0;
 const queue: (() => void)[] = [];
-export async function artwork(
-  game: string,
-  kind: "cover" | "background",
-): Promise<string> {
-  const key = `${game}/${kind}`;
+export async function artwork(game: string): Promise<string> {
+  const key = game;
   const existing = images.get(key);
   if (existing) {
     images.delete(key);
@@ -25,7 +22,7 @@ export async function artwork(
     else throw new Error("artwork queue full");
   });
   try {
-    const data = await invoke<string>("game_image", { game, kind });
+    const data = await invoke<string>("game_image", { game, kind: "cover" });
     while (bytes + data.length > 16 * 1024 * 1024 && images.size) {
       const first = images.keys().next().value!;
       bytes -= images.get(first)!.length;

@@ -7,6 +7,7 @@ import { CreateRoom } from "./CreateRoom";
 import { Problem } from "../../../app/Problem";
 import { Invitation } from "./Invitation";
 import { Confirmation } from "./Confirmation";
+import { OperationFeedback } from "../../../app/OperationFeedback";
 
 export function RoomDialogs(props: {
   actions: Actions;
@@ -42,39 +43,8 @@ export function RoomDialogs(props: {
           onDismiss={() => setError(undefined)}
         />
       )}
-      {actions.takeover && (
-        <div className="banner warning" role="alert">
-          <p>{t("interaction.takeoverHelp")}</p>
-          <small>{actions.takeover.device}</small>
-          <button
-            disabled={!!busy}
-            onClick={() => void actions.takeOverAndContinue()}
-          >
-            {t("interaction.takeover")}
-          </button>
-          <button onClick={actions.cancelTakeover}>
-            {t("account.cancel")}
-          </button>
-        </div>
-      )}
-      {actions.pending && (
-        <div className="banner warning" role="status">
-          <p>{t("interaction.pending")}</p>
-          <button onClick={() => void actions.checkOperation(actions.pending!)}>
-            {t("interaction.checkOperation")}
-          </button>
-          <button
-            onClick={() =>
-              void actions.perform(t("interaction.stopNetwork"), {
-                action: "network-stop",
-              })
-            }
-          >
-            {t("interaction.stopNetwork")}
-          </button>
-        </div>
-      )}
-      {dialog.type === "create" && <CreateRoom {...props} dialog={dialog} />}
+      <OperationFeedback actions={actions} />
+      {dialog.type === "create" && <CreateRoom {...props} />}
       {dialog.type === "invite" && <Invitation {...props} dialog={dialog} />}
       {dialog.type === "confirm" && <Confirmation {...props} dialog={dialog} />}
     </Modal>

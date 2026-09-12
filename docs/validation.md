@@ -9,8 +9,39 @@
 | 对象 | 适用范围 |
 |---|---|
 | 当前 LAN 源码 | 单播、广播/组播、帧授权和分片已实现；组件和 Linux TAP 检查见下节，游戏本体仍未验收 |
-| 当前完整安装包 | Windows amd64 0.2.1 已重新构建，内置签名 TAP 9.27.0，修复注册表枚举与两种官方 TAP ID 校验；安装包本身未签名，完整安装与驱动加载仍待真机验收 |
+| 当前完整安装包 | Windows amd64 0.3.0 已重建为原生覆盖安装，TAP 改为客户端启动时按需安装，移除安装器 WebView2 与 PowerShell 依赖；安装包未签名，完整安装与驱动加载仍待真机验收 |
 | 历史 0.2.0 安装包与镜像 | 使用旧数据面，不能与当前客户端混用；发布源码提交和镜像摘要见 [IMAGES.txt](../deploy/IMAGES.txt)，旧包/WebView 结果只列于历史证据 |
+
+## GUI 地址设置与 TAP 启动检查（2026-09-12）
+
+在原生安装工作区上移除 GUI 初始化与账号登录的服务端地址输入；新身份使用线上控制端，已有身份沿用后台配置。TAP 检查改用 PnP 实际设备的驱动登记，排除已移除设备的连接残留，保留读取失败原因，并检查已登记网卡是否可被系统网络接口查询到；官方驱动 ID、最低版本及卸载 GUID/名称校验保持。
+
+| 检查 | 实际结果 |
+|---|---|
+| Windows Go | Go 1.27.0：gofmt、全量 vet、普通测试通过，含真实 Nebula 进程内集成；最终 TAP 改动另经 update vet、update 与 architecture 测试复查。临时用户注册表覆盖其他驱动、低版本、读取失败及孤立连接登记；实际 PnP 枚举为只读，不安装或打开 TAP 数据句柄。[全量](../.local/tap-fix-tests.log)、[最终定向](../.local/tap-fix-targeted-tests.log) |
+| 桌面 | Node 24.21.0：50 项测试及生产构建通过，覆盖无地址输入、固定初始化地址和已有账号控制端保留。Rust 1.95.0：6 项通过，1 项已安装服务往返检查跳过。[前端](../.local/tap-fix-desktop-tests.log)、[Rust](../.local/tap-fix-rust-tests.log) |
+| 打包检查 | Python 6 项通过，7 项 Debian 检查按平台跳过；WebView 夹具的隔离控制端改由 CLI 初始化，仅检查语法，未运行 WebView 联机流程。[打包检查](../.local/tap-fix-package-tests.log) |
+| 安装包 | amd64 Go 归档、原生 GUI release 与 NSIS 3.11 完整包重建通过；首次打包未找到 PATH 中的 NSIS，使用已有工具重新打包通过。[GUI 构建](../.local/tap-fix-installer-build.log)、[最终打包](../.local/tap-fix-package-build.log)、[摘要](../.local/tap-fix-artifacts.json) |
+
+本轮未配置 Windows 测试数据库，数据库用例跳过；未重跑 Linux 数据库/race 与 Docker TAP 拓扑。用户已卸载报错客户端，原故障状态未完整复现；新包的 Windows 初装、UAC、TAP 加载、卸载与双机 NAT/Minecraft 仍须实机复测。
+
+本地安装包 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`，SHA256 `05218287fc0b33149f23e26ee7e9627ff8309864d6d3bd230972effa6b05e726`。本轮未安装宿主服务或驱动、未发布；其他架构未重建。
+
+## Windows 原生安装简化（2026-09-12）
+
+安装、更新和卸载改用 Go 原生助手，删除四个运行时 PS1 及对应模拟测试；保留验包、停服务等待、权限和身份绑定。Windows 采用完整包覆盖，中断后重跑安装包修复，移除自动回滚、旧版备份和开机恢复；TAP 在已安装 GUI 启动时检查，仅缺失时提权安装。WebView2 为已有环境前提。操作见 [Windows 客户端](../README.md#windows-客户端)。
+
+| 检查 | 实际结果 |
+|---|---|
+| Windows Go | Go 1.27.0：gofmt、vet 和全量测试复查通过；最后的安装改动经 update 与 architecture 定向复查。覆盖载荷路径/摘要/架构、拷贝中断后重装、旧文件损坏修复、身份保留、临时注册表和子进程错误传递。未配置 Windows 测试数据库。[全量复查](../.local/native-install-go-final.log) |
+| 签名与原生 API | 实际核验随包 TAP sys/cat 的 Microsoft 签名、tapctl 的 OpenVPN 签名；错误发布者和篡改文件被拒绝。临时目录快捷方式、无提权子进程及注册表测试通过。[签名](../.local/native-install-tap-signatures.log) |
+| 桌面 | Node 24.21.0：49 项测试和生产构建通过；Rust 1.95.0：6 项通过，1 项已安装服务往返测试跳过。正式 GUI release 构建通过，含启动 TAP 检查与错误详情。 |
+| 安装包 | Python 6 项打包检查通过，7 项 Debian 检查按平台跳过；NSIS 3.11 严格编译通过。amd64/arm64 Go ZIP 摘要、完整载荷、PE 架构与无 PS1 检查通过。完整 EXE 仅构建 amd64，未执行安装。[构建](../.local/native-install-desktop-build.log)、[制品](../.local/native-install-artifacts.json) |
+| Linux 数据库、并发与真实 TAP | 独立 PostgreSQL：vet、全量测试及 `go test -race -count=1 ./...` 通过。双客户端真实 Nebula TAP/中继、跨房拒绝、撤销、策略变化、IPv4/IPv6、32KB UDP、广播/组播和低 MTU 通过，测试容器、卷与网络清理通过。[结果](../.local/nodelane-test-20260912-082945-24bb4d/results.json) |
+
+本轮 Windows 全量测试曾触发 Nebula RIO 的 `cq is corrupt` 崩溃，复查通过，但不视为修复；固定上游与补丁未改动。[失败日志](../.local/native-install-go-test.log)。一次 Docker 拓扑运行在初始探测返回 `local_peer_unreachable` 后中止，完整复查通过。[该次结果](../.local/nodelane-test-20260912-082546-c877b6/results.json)。
+
+本地产物 `dist/desktop/nlroom-0.3.0-windows-amd64-setup.exe`，SHA256 `302d97ce5085d955a58951a0807afa7da4d85681d85c8299076442a407b5e4d2`。未发布、未安装宿主服务或驱动。Win10/Win11 真机初装、覆盖升级、中断重装、SID/UAC、TAP 加载与卸载，以及双机 NAT/Minecraft 仍未验收；未运行全组件发布归档检查。
 
 ## 房间布局与后台测量（2026-09-12）
 

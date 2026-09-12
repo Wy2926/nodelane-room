@@ -1,47 +1,30 @@
-import { useEffect, useState } from "react";
-import { rpc, failure } from "../../native/api";
-import type { Game, Room, Failure } from "../../shared/model";
+import { useQuery } from "../../native/use-query";
+import type { Game, Room } from "../../shared/model";
+
 export function useCatalog(
   device: string | undefined,
   unavailable: boolean,
   reload: number,
   instance?: string,
 ) {
-  const [games, setGames] = useState<Game[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [truncated, setTruncated] = useState(false);
-  const [gamesError, setGamesError] = useState<Failure>();
-  const [roomsError, setRoomsError] = useState<Failure>();
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    if (!device || unavailable) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const load = async () => {
-      const [g, r] = await Promise.allSettled([
-        rpc<Game[]>({ action: "games" }),
-        rpc<{ rooms: Room[]; truncated: boolean }>({ action: "rooms" }),
-      ]);
-      if (cancelled) return;
-      if (g.status === "fulfilled") {
-        setGames(g.value);
-        setGamesError(undefined);
-      } else setGamesError(failure(g.reason));
-      if (r.status === "fulfilled") {
-        setRooms(r.value.rooms);
-        setTruncated(r.value.truncated);
-        setRoomsError(undefined);
-      } else setRoomsError(failure(r.reason));
-      setLoading(false);
-      timer = setTimeout(load, 15000);
-    };
-    void load();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [device, unavailable, reload, instance]);
-
-  return { games, rooms, truncated, gamesError, roomsError, loading };
+  const options = {
+    enabled: !!device && !unavailable,
+    reload,
+    scope: `${instance}:${device}`,
+  };
+  const games = useQuery<Game[]>({ action: "games" }, 15000, options);
+  const rooms = useQuery<{ rooms: Room[]; truncated: boolean }>(
+    { action: "rooms" },
+    15000,
+    options,
+  );
+  return {
+    games: games.data || [],
+    rooms: rooms.data?.rooms || [],
+    truncated: rooms.data?.truncated || false,
+    gamesError: games.error,
+    roomsError: rooms.error,
+    loading: games.loading || rooms.loading,
+  };
 }
 export type Catalog = ReturnType<typeof useCatalog>;

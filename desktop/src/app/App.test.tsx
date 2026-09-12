@@ -274,9 +274,11 @@ test("an already open creation form responds to a new restriction", async () => 
   );
 });
 
-test("first use submits the online control endpoint by default", async () => {
+test("first use uses the online control endpoint without a server setting", async () => {
   status.device_id = "";
-  render(<App />);
+  status.server = "";
+  const { container } = render(<App />);
+  expect(container.querySelector('input[type="url"], input[name="server"]')).toBeNull();
   const user = userEvent.setup();
   await user.type(screen.getByLabelText("设备昵称"), "旅人");
   await user.click(screen.getByRole("button", { name: "开始旅程" }));
@@ -284,6 +286,24 @@ test("first use submits the online control endpoint by default", async () => {
     action: "init",
     server: "https://room.nodelane.net",
     name: "旅人",
+  });
+});
+
+test("account login has no server setting and uses the existing identity server", async () => {
+  const { container } = render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "设置" }));
+  await userEvent.click(screen.getByRole("button", { name: "设备信息" }));
+  expect(container.querySelector('input[type="url"], input[name="server"]')).toBeNull();
+  await waitFor(() => expect(rpc).toHaveBeenCalledWith({
+    action: "capabilities",
+    server: "https://example.test",
+  }));
+  await userEvent.click(screen.getByRole("button", { name: "登录已有账号" }));
+  await userEvent.click(screen.getByRole("button", { name: "确认登录已有账号" }));
+  expect(rpc).toHaveBeenCalledWith({
+    action: "account-login",
+    server: "https://example.test",
+    name: "玩家",
   });
 });
 
@@ -394,9 +414,7 @@ test("leave failure keeps the app running", async () => {
   await user.click(screen.getByLabelText("个人资料"));
   await user.click(screen.getByRole("button", { name: /^离房并退出/ }));
   await user.click(screen.getByRole("button", { name: "确认离房并退出" }));
-  expect(
-    (await screen.findAllByText(/操作结果.*确认|操作结果待确认/)).length,
-  ).toBeGreaterThan(0);
+  expect(await screen.findByText("正在确认操作结果")).toBeTruthy();
   expect(exitApp).not.toHaveBeenCalled();
   expect(screen.getByRole("dialog")).toBeTruthy();
 });

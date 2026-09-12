@@ -6,6 +6,7 @@ import zhCN from "../i18n/locales/zh-CN.json";
 import { version } from "../../package.json";
 
 export const clientVersion = version;
+export const defaultServer = "https://room.nodelane.net";
 export const isKnownCode = (code: string) =>
   Object.hasOwn(zhCN, `business.${code}`);
 

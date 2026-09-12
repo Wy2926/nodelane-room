@@ -72,10 +72,13 @@ def main():
         session = wait(lambda: call('POST', '/session', {'capabilities': {'alwaysMatch': {'tauri:options': {'application': '/usr/bin/nlroom'}}}}), 'native WebView startup')['sessionId']
         click('input[name=language][value="zh-CN"]')
         button('继续')
-        fill('input[name=name]', '桌面验收玩家')
-        click('.server-choice summary')
-        fill('input[name=server]', 'https://control:8443')
-        button('开始旅程')
+        wait(lambda: script("return !!document.querySelector('input[name=name]')"), 'initialization screen')
+        if script("return !!document.querySelector('input[type=url],input[name=server]')"):
+            raise RuntimeError('Removed server setting remains visible')
+        # The production GUI has no endpoint setting. Bind this disposable
+        # test identity to the isolated control service through the CLI.
+        subprocess.run(['nlroom-cli', 'init', '--server', 'https://control:8443',
+            '--name', '桌面验收玩家'], check=True, stdout=subprocess.DEVNULL)
         wait(lambda: status().get('device_id'), 'real identity initialization')
         button('游戏库')
         click('#game-custom')
@@ -123,7 +126,7 @@ def main():
         wait(lambda: subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'nlroom'], stdout=subprocess.DEVNULL).returncode == 1, 'GUI process exit', 10)
         exited = True
         wait(lambda: status()['engine'] == 'running', 'service survives GUI exit')
-        print('PASS native WebView: init, catalog, create, LAN readiness/server policy, invitation rotation/copy, leave/manage/close, join, measured ping, diagnostics and GUI exit')
+        print('PASS native WebView: no server setting, CLI test identity, catalog, create, LAN readiness/server policy, invitation rotation/copy, leave/manage/close, join, measured ping, diagnostics and GUI exit')
     except Exception:
         if session:
             try:

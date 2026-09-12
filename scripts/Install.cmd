@@ -1,5 +1,5 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+"%~dp0nlroom-update.exe" setup --source "%~dp0."
 if errorlevel 1 (
   echo Installation failed. Review the message above.
   pause

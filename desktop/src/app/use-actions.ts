@@ -4,8 +4,9 @@ import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { copyText, exitApp, failure, isKnownCode, rpc } from "../native/api";
 import type { Failure, Request, Operation, Status } from "../shared/model";
+import { useOperations } from "./use-operations";
 import type { Dialog } from "../features/rooms/dialogs/types";
-const writes = new Set([
+const roomActions = new Set([
   "create",
   "join",
   "owner-join",
@@ -15,6 +16,9 @@ const writes = new Set([
   "transfer",
   "leave",
   "close",
+]);
+const writes = new Set([
+  ...roomActions,
   "account-takeover",
   "account-logout",
   "revoke-device",
@@ -32,10 +36,7 @@ export function useActions(
 ) {
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  const refreshRef = useRef(refreshAll);
-  refreshRef.current = refreshAll;
-  const instanceRef = useRef(instance);
-  instanceRef.current = instance;
+  const scope = useRef({});
   const [takeover, setTakeover] = useState<{
     room: string;
     device: string;
@@ -46,59 +47,39 @@ export function useActions(
     request: Request;
     success?: (value: unknown) => void;
   }>(undefined);
-  const pendingFollowup = useRef<(() => Promise<unknown>) | undefined>(
-    undefined,
-  );
   const [dialog, setDialog] = useState<Dialog>();
-  const [busy, setBusy] = useState("");
+  const [busy, setBusyState] = useState("");
   const busyRef = useRef(false);
   const [error, setError] = useState<Failure>();
   const [notice, setNotice] = useState(false);
-  const [pending, setPendingState] = useState<string>();
-  const [unresolved, setUnresolved] = useState(false);
-  const [reviewed, setReviewed] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const checkingRef = useRef(false);
   const pauseRef = useRef(false);
-  const acknowledged = useRef(new Set<string>());
   const [retryAt, setRetryAt] = useState(0);
   const [now, setNow] = useState(Date.now());
-  const pendingRef = useRef<string>(undefined);
-  function setPending(value: string | undefined) {
-    if (value !== pendingRef.current) setReviewed(false);
-    pendingRef.current = value;
-    setPendingState(value);
+  const { hasPending, track, followup, ...operations } = useOperations({
+    instance,
+    operations: options?.operations,
+    unavailable: options?.unavailable,
+    busy: busyRef,
+    refresh: refreshAll,
+    setError,
+    closeDialog: () => setDialog(undefined),
+  });
+  function setBusy(label: string) {
+    busyRef.current = !!label;
+    setBusyState(label);
   }
-  const pendingSuccess = useRef<((value: unknown) => void) | undefined>(
-    undefined,
-  );
   useEffect(() => {
-    pendingSuccess.current = undefined;
-    pendingFollowup.current = undefined;
+    scope.current = {};
     resumeIntent.current = undefined;
     setTakeover(undefined);
     setDialog(undefined);
-    busyRef.current = false;
     setBusy("");
     setError(undefined);
     setRetryAt(0);
+    return () => {
+      scope.current = {};
+    };
   }, [instance]);
-  useEffect(() => {
-    const operation = options?.operations.find(
-      (op) => !acknowledged.current.has(op.id),
-    );
-    if (!pendingRef.current && operation) {
-      setPending(operation.id);
-      setUnresolved(operation.state === "unresolved");
-    }
-  }, [options?.operations]);
-  const checkRef = useRef<() => Promise<void>>(async () => {});
-  checkRef.current = () => checkOperation(pendingRef.current);
-  useEffect(() => {
-    if (!pending || unresolved || options?.unavailable) return;
-    const timer = setInterval(() => void checkRef.current(), 3000);
-    return () => clearInterval(timer);
-  }, [pending, unresolved, options?.unavailable]);
   useEffect(() => {
     if (!retryAt) return;
     const timer = setInterval(() => {
@@ -135,15 +116,17 @@ export function useActions(
     request: Request,
     success?: (value: T) => void,
   ) {
+    const sourceScope = scope.current;
     if (request.action === "network-stop") {
       if (pauseRef.current) return false;
       pauseRef.current = true;
       try {
         await rpc(request);
+        if (scope.current !== sourceScope) return false;
         refreshAll();
         return true;
       } catch (e) {
-        setError(failure(e));
+        if (scope.current === sourceScope) setError(failure(e));
         return false;
       } finally {
         pauseRef.current = false;
@@ -153,20 +136,7 @@ export function useActions(
       setError(failure({ code: "local_service_unavailable" }));
       return false;
     }
-    if (
-      optionsRef.current?.roomBlocked &&
-      [
-        "create",
-        "join",
-        "owner-join",
-        "invite",
-        "invite-revoke",
-        "kick",
-        "transfer",
-        "close",
-        "leave",
-      ].includes(request.action)
-    ) {
+    if (optionsRef.current?.roomBlocked && roomActions.has(request.action)) {
       setError(failure({ code: "local_network_offline" }));
       return false;
     }
@@ -192,21 +162,15 @@ export function useActions(
     if (retryAt > Date.now()) return false;
     if (busyRef.current) return false;
     if (
-      pendingRef.current &&
-      ![
-        "get-operation",
-        "network-stop",
-        "network-retry",
-        "ping",
-        "doctor",
-      ].includes(request.action)
+      hasPending() &&
+      !["get-operation", "network-retry", "ping", "doctor"].includes(
+        request.action,
+      )
     )
       return false;
-    busyRef.current = true;
     setBusy(label);
     setError(undefined);
     setNotice(false);
-    const sourceInstance = instanceRef.current;
     try {
       if (writes.has(request.action))
         request = {
@@ -215,7 +179,7 @@ export function useActions(
             request.command_id || crypto.randomUUID().replaceAll("-", ""),
         };
       const result = await rpc<T>(request);
-      if (instanceRef.current !== sourceInstance) {
+      if (scope.current !== sourceScope) {
         refreshAll();
         return false;
       }
@@ -224,7 +188,7 @@ export function useActions(
       return true;
     } catch (e) {
       const issue = failure(e);
-      if (instanceRef.current !== sourceInstance) return false;
+      if (scope.current !== sourceScope) return false;
       if (issue.code === "operation_result_redacted") {
         setDialog(undefined);
         refreshAll();
@@ -276,120 +240,25 @@ export function useActions(
             "system_internal_error",
           ].includes(issue.code))
       ) {
-        setPending(issue.operation_id || request.command_id);
-        setUnresolved(false);
-        pendingSuccess.current =
-          (success as ((value: unknown) => void) | undefined) || (() => {});
+        track(
+          issue.operation_id || request.command_id!,
+          success as ((value: unknown) => void) | undefined,
+        );
       }
       refreshAll();
       return false;
     } finally {
-      if (instanceRef.current === sourceInstance) {
-        busyRef.current = false;
+      if (scope.current === sourceScope) {
         setBusy("");
       }
     }
   }
 
-  async function checkOperation(id = pendingRef.current) {
-    if (
-      !id ||
-      busyRef.current ||
-      checkingRef.current ||
-      optionsRef.current?.unavailable
-    )
-      return;
-    const sourceInstance = instanceRef.current;
-    checkingRef.current = true;
-    setChecking(true);
-    try {
-      const operation = await rpc<Operation>({
-        action: "get-operation",
-        target: id,
-      });
-      if (instanceRef.current !== sourceInstance) {
-        refreshAll();
-        return;
-      }
-      if (operation.state === "succeeded") {
-        acknowledged.current.add(id);
-        if (operation.result?.data != null)
-          pendingSuccess.current?.(operation.result.data);
-        else setDialog(undefined);
-        setPending(undefined);
-        setUnresolved(false);
-        setError(undefined);
-        pendingSuccess.current = undefined;
-      } else if (operation.state === "rejected") {
-        acknowledged.current.add(id);
-        pendingFollowup.current = undefined;
-        setPending(undefined);
-        setUnresolved(false);
-        setError(failure(operation.result));
-        pendingSuccess.current = undefined;
-      } else if (operation.state === "unresolved") {
-        pendingFollowup.current = undefined;
-        setPending(id);
-        setUnresolved(true);
-        setError(failure({ code: "operation_expired" }));
-        pendingSuccess.current = undefined;
-      } else {
-        setPending(id);
-        setUnresolved(false);
-      }
-      refreshAll();
-    } catch (e) {
-      if (instanceRef.current === sourceInstance) {
-        const issue = failure(e);
-        setError(issue);
-        if (issue.code === "operation_expired") setUnresolved(true);
-      }
-    } finally {
-      checkingRef.current = false;
-      setChecking(false);
-    }
-    if (pendingFollowup.current && !pendingSuccess.current) {
-      const next = pendingFollowup.current;
-      pendingFollowup.current = undefined;
-      await next();
-    }
-  }
-  async function reviewPending() {
-    const id = pendingRef.current;
-    if (!id || !unresolved || checkingRef.current) return;
-    if (reviewed) {
-      acknowledged.current.add(id);
-      setPending(undefined);
-      setUnresolved(false);
-      setError(undefined);
-      refreshRef.current();
-      return;
-    }
-    checkingRef.current = true;
-    setChecking(true);
-    const sourceInstance = instanceRef.current;
-    try {
-      const status = await rpc<import("../shared/model").Status>({
-        action: "status",
-      });
-      if (sourceInstance !== instanceRef.current || pendingRef.current !== id)
-        return;
-      if (status.control !== "online")
-        throw { code: "local_control_unreachable" };
-      setDialog(undefined);
-      setReviewed(true);
-      refreshRef.current();
-    } catch (e) {
-      setError(failure(e));
-    } finally {
-      checkingRef.current = false;
-      setChecking(false);
-    }
-  }
   async function takeOverAndContinue() {
     const intent = resumeIntent.current;
     const target = takeover;
     if (!intent || !target) return;
+    const sourceScope = scope.current;
     setTakeover(undefined);
     resumeIntent.current = undefined;
     const resume = () =>
@@ -406,9 +275,9 @@ export function useActions(
         expected_revision: target.revision,
       },
     });
+    if (scope.current !== sourceScope) return;
     if (accepted) await resume();
-    else if (pendingSuccess.current !== undefined || pending)
-      pendingFollowup.current = resume;
+    else followup(resume);
   }
 
   async function copy(value: string) {
@@ -451,13 +320,8 @@ export function useActions(
     copy,
     confirm,
     quit,
-    pending,
-    unresolved,
-    reviewed,
-    checking,
-    reviewPending,
+    ...operations,
     retrySeconds: Math.max(0, Math.ceil((retryAt - now) / 1000)),
-    checkOperation,
     takeover,
     takeOverAndContinue,
     cancelTakeover: () => {

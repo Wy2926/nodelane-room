@@ -4,7 +4,7 @@
 
 ## 发布与信任
 
-使用 [go-tuf/v2](https://github.com/theupdateframework/go-tuf) 验证 root、timestamp、snapshot、targets 的签名、到期时间及版本递增；使用 [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) 对接 S3 协议。客户端内置初始 `root.json`，本机受保护缓存保存已信任的最高版本。下载源、管理台和数据库不能自行建立新的签名信任。安装前再次验证完整 TUF 元数据、平台、版本、文件大小和 SHA256；仅允许比当前版本高的目标，恢复仅使用此次事务中已验证的上一版。
+使用 [go-tuf/v2](https://github.com/theupdateframework/go-tuf) 验证 root、timestamp、snapshot、targets 的签名、到期时间及版本递增；使用 [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2) 对接 S3 协议。客户端内置初始 `root.json`，本机受保护缓存保存已信任的最高版本。下载源、管理台和数据库不能自行建立新的签名信任。安装前再次验证完整 TUF 元数据、平台、版本、文件大小和 SHA256；仅允许比当前版本高的目标，Linux 恢复仅使用此次事务中已验证的上一版；Windows 失败后重新运行完整安装包修复。
 
 签名身份与 Nebula CA、设备身份和存储凭据分开。根私钥离线保存；发布机器只需要 targets、snapshot、timestamp 三把私钥。私钥目录不能进入仓库、镜像或发布包。Linux 下目录权限为 0700，文件为 0600；Windows 下需用管理员权限在 `%ProgramData%` 的直接子目录创建密钥，使用 DPAPI 和 ACL，不能跨机器直接复制加密后的文件。生产环境需另外准备离线备份、受控发布流程及 Windows Authenticode 代码签名；TUF 签名不替代操作系统发布者签名。
 
@@ -71,7 +71,7 @@ Linux 自动更新要求服务端同时保留当前已安装版本的可信 deb�
 
 服务每分钟检查更新，自动下载到受保护目录，支持断点续传、大小限制、镜像切换与最终摘要验证；普通 GUI 不直接执行下载链接或任意命令。磁盘预检为目标包大小的四倍加 256 MiB，安装前校验平台包身份。下载中可继续联机；安装前停止并等待网络服务。
 
-Windows 用户点击安装并接受 UAC 后，由固定路径的 `nlroom-update.exe` 复制到受保护状态目录执行。NSIS 完整替换 GUI、服务与 CLI，保留原安装用户 SID；健康检查要求新服务版本和本机 IPC 匹配。安装失败恢复上一完整目录。目录交换写入持久事务记录，临时 SYSTEM 开机任务在断电后恢复同一已验证任务；任务结束移除。Windows 安装结束后用户重新打开客户端。下载完成不等于成功。
+Windows 用户点击安装并接受 UAC 后，由固定路径的 `nlroom-update.exe` 复制到受保护状态目录执行。NSIS 调用原生助手停止并等待后台退出、覆盖安装 GUI、服务与 CLI，保留原安装用户 SID，不执行 PowerShell，也不安装 TAP 或 WebView2；TAP 的启动检查见 [Windows 客户端](../README.md#windows-客户端)。健康检查要求新服务版本和本机 IPC 匹配。失败或中断后重新运行完整安装包修复，允许修复不完整的旧程序目录；不自动回滚、不保留上一版目录、不创建开机恢复任务。临时运行器只用于释放正在覆盖的更新助手，不在系统启动时执行。Windows 安装结束后用户重新打开客户端。下载完成不等于成功。
 
 Linux 初次安装 deb 并绑定用户后，网络服务自动下载；空闲时或强制到期后启动独立 root `nlroom-update.service`。APT 只安装指定的可信 deb 及其依赖，禁止移除软件包，不进行系统全面升级；包管理器自行串行锁定。更新单元与网络服务分开，替换服务不会杀死自身。APT 已开始后等待其自然结束，避免超时杀进程留下并发 dpkg 子进程；可观察 `journalctl -u nlroom-update.service`。新服务未通过版本与 IPC 健康检查时尝试安装已验证的上一版。开机定时器处理未完成任务；底层包管理数据库损坏、依赖源故障或两版均启动失败需要管理员修复，并如实上报失败。
 

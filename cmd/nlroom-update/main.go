@@ -12,6 +12,13 @@ import (
 
 func main() {
 	ctx := context.Background()
+	if handled, err := update.SetupCommand(ctx, os.Args[1:]); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	dir := platform.DefaultDir()
 	if err := platform.SecureDir(dir); err != nil {
 		fmt.Fprintln(os.Stderr, "update permission denied")

@@ -111,9 +111,14 @@ try {
         Copy-Item -LiteralPath (Join-Path $root 'deploy/nlroom-node.service') -Destination $bundle -Force
       }
       if ($env:GOOS -eq 'windows') {
-        foreach ($script in @('install.ps1','uninstall.ps1','setup.ps1','Install.cmd','NodeLaneRoom.cmd')) {
+        foreach ($script in @('Install.cmd','NodeLaneRoom.cmd')) {
           Copy-Item -LiteralPath (Join-Path $root "scripts/$script") -Destination $bundle -Force
         }
+        $payloadHashes = Get-ChildItem -LiteralPath $bundle -Recurse -File | Sort-Object FullName | ForEach-Object {
+          $relative = $_.FullName.Substring($bundle.Length + 1).Replace('\', '/')
+          (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relative
+        }
+        $payloadHashes | Set-Content -LiteralPath (Join-Path $bundle 'PAYLOAD.sha256') -Encoding ascii
         Compress-Archive -Path "$bundle/*" -DestinationPath (Join-Path $release "$name.zip") -Force
       } else {
         $targetOS=$env:GOOS; $targetArch=$env:GOARCH

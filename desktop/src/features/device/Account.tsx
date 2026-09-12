@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { t } from "../../i18n";
-import { failure, rpc } from "../../native/api";
+import { useAccount } from "./use-account";
 import type { Actions } from "../../app/use-actions";
 import type { Status } from "../../shared/model";
 
@@ -13,118 +13,18 @@ export function Account({
   actions: Actions;
   unavailable?: boolean;
 }) {
-  const [server, setServer] = useState("https://room.nodelane.net");
   const [name, setName] = useState("");
-  const [state, setState] = useState("none");
+  const account = useAccount(status, actions, unavailable);
+  const { server, state, waiting, loginAvailable, devices, occupancy } =
+    account;
   const [message, setMessage] = useState("");
-  const [loginAvailable, setLoginAvailable] = useState(false);
-  useEffect(() => {
-    if (unavailable) return;
-    let active = true;
-    setLoginAvailable(false);
-    const timer = setTimeout(() => {
-      void rpc<{ oidc_enabled: boolean; ready: boolean }>({
-        action: "capabilities",
-        server,
-      })
-        .then((value) => {
-          if (active) {
-            setLoginAvailable(value.oidc_enabled && value.ready);
-            if (!value.oidc_enabled)
-              setMessage(failure({ code: "auth_oidc_unavailable" }).error);
-          }
-        })
-        .catch((e) => {
-          if (active) setMessage(failure(e).error);
-        });
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [server, status?.service_instance_id, unavailable]);
-  const [devices, setDevices] = useState<
-    { device_id: string; name: string; revoked: boolean }[]
-  >([]);
-  const [occupancy, setOccupancy] = useState<{
-    room_id: string;
-    device_id: string;
-    revision: number;
-  }>();
   const configured = !!status?.device_id;
-  useEffect(() => {
-    if (unavailable) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    async function poll() {
-      try {
-        const [list, me] = await Promise.all([
-          rpc<typeof devices>({ action: "account-devices" }),
-          rpc<{ occupancy?: typeof occupancy }>({ action: "account-status" }),
-        ]);
-        if (active) {
-          setDevices(list);
-          setOccupancy(me.occupancy);
-        }
-      } catch (e) {
-        if (active) setMessage(failure(e).error);
-      }
-      if (active) timer = setTimeout(poll, 7000);
-    }
-    if (status?.user?.kind === "registered") void poll();
-    else {
-      setDevices([]);
-      setOccupancy(undefined);
-    }
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [status?.user?.id, status?.service_instance_id, unavailable]);
-  useEffect(() => {
-    if (unavailable) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    async function poll() {
-      try {
-        const result = await rpc<{ state: string; code?: string }>({
-          action: "account-poll",
-        });
-        if (!active) return;
-        setState(result.state || "none");
-        if (result.code && result.code !== "ok")
-          setMessage(failure({ code: result.code }).error);
-        if (result.state === "ready") {
-          setMessage(t("account.completed"));
-          await actions.perform(t("account.completed"), { action: "status" });
-        }
-      } catch (e) {
-        if (active) setMessage(failure(e).error);
-      }
-      if (active) timer = setTimeout(poll, 2000);
-    }
-    void poll();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-    // The account transaction is owned by the Go service; resume after remounts.
-  }, [unavailable]);
-  const waiting = [
-    "starting",
-    "waiting",
-    "pending",
-    "authorizing",
-    "exchanging",
-    "verified",
-    "leaving_old_room",
-    "saving_identity",
-  ].includes(state);
   function login() {
     if (new TextEncoder().encode(name.trim()).length > 80) {
       setMessage(t("interaction.byteLimit"));
       return;
     }
+    setMessage("");
     const request = {
       action: "account-login" as const,
       server,
@@ -155,15 +55,6 @@ export function Account({
       {!configured && (
         <details>
           <summary>{t("account.loginOptions")}</summary>
-          <label>
-            {t("settings.gamingService")}
-            <input
-              value={server}
-              type="url"
-              maxLength={2048}
-              onChange={(e) => setServer(e.target.value)}
-            />
-          </label>
           <label>
             {t("account.newName")}
             <input
@@ -263,7 +154,9 @@ export function Account({
       {["expired", "failed"].includes(state) && (
         <p role="alert">{t("account.retry")}</p>
       )}
-      {message && <p role="status">{message}</p>}
+      {(message || account.message) && (
+        <p role="status">{message || account.message}</p>
+      )}
       {devices.length > 0 && (
         <details>
           <summary>{t("interaction.devices")}</summary>

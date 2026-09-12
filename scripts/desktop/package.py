@@ -9,7 +9,6 @@ import shutil
 import subprocess
 import tempfile
 import struct
-import urllib.request
 
 from licenses import collect
 from branding import render
@@ -69,8 +68,7 @@ def windows_payload(stage, release, gui, required, target):
     engine.mkdir()
     for name in required:
         shutil.copy2(release / name, payload / name)
-    for name in ['install.ps1', 'uninstall.ps1', 'setup.ps1']:
-        shutil.copy2(ROOT / 'scripts' / name, engine / name)
+    shutil.copy2(release / 'nlroom-update.exe', engine / 'nlroom-update.exe')
     shutil.copytree(release / 'licenses', payload / 'licenses')
     collect(ROOT, payload / 'licenses/desktop', target)
     shutil.copy2(gui, payload / 'nlroom.exe')
@@ -102,18 +100,10 @@ def main():
         stage = Path(tmp)
         if args.platform == 'windows':
             payload, engine = windows_payload(stage, args.release, args.gui, required, target)
-            bundle_tap(engine / 'tap', payload / 'licenses', args.arch)
+            bundle_tap(payload / 'drivers/tap', payload / 'licenses', args.arch)
             for name in ('tap0901.sys', 'tapctl.exe'):
-                verify_binary(engine / 'tap' / name, 'windows', args.arch)
-            shutil.copy2(ROOT / 'scripts/desktop/tap.ps1', engine / 'tap.ps1')
+                verify_binary(payload / 'drivers/tap' / name, 'windows', args.arch)
             payload_hashes(payload)
-            # Official Evergreen bootstrapper; the elevated installer verifies
-            # Microsoft's Authenticode signature before executing it.
-            with urllib.request.urlopen('https://go.microsoft.com/fwlink/p/?LinkId=2124703', timeout=60) as response:
-                bootstrapper = response.read((5 << 20) + 1)
-            if len(bootstrapper) > 5 << 20 or not bootstrapper.startswith(b'MZ'):
-                raise SystemExit('Invalid Microsoft WebView2 bootstrapper download')
-            (engine / 'MicrosoftEdgeWebview2Setup.exe').write_bytes(bootstrapper)
             art = stage / 'art'
             render(art)
             out = dest / f'nlroom-{version}-windows-{args.arch}-setup.exe'

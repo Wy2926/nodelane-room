@@ -43,6 +43,7 @@ mod tests {
             "native.disconnected",
             "native.disabled",
             "native.controlUnavailable",
+            "native.tapFailed",
         ] {
             assert_ne!(Language::Chinese.text(key), Language::English.text(key));
         }

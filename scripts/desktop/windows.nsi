@@ -21,14 +21,10 @@ ShowInstDetails hide
 ShowUninstDetails hide
 
 Var CurrentVersion
-Var Operation
-Var RestoreRadio
-Var UpdateRadio
 Var PurgeCheckbox
 Var PurgeState
 Var FinishText
 Var Arguments
-Var PowerShell
 
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\NodeLaneRoom"
 !define MUI_ICON "${ICON}"
@@ -47,7 +43,7 @@ Var PowerShell
 !define MUI_WELCOMEPAGE_TITLE "$(WelcomeTitle)"
 !define MUI_WELCOMEPAGE_TEXT "$(WelcomeText)"
 !insertmacro MUI_PAGE_WELCOME
-Page custom InstallOptions InstallOptionsLeave
+Page custom InstallOptions
 !define MUI_PAGE_HEADER_TEXT "$(InstallingTitle)"
 !define MUI_PAGE_HEADER_SUBTEXT "$(InstallingSubtitle)"
 !insertmacro MUI_PAGE_INSTFILES
@@ -85,14 +81,6 @@ Function .onInit
   ${EndIf}
   SetRegView 64
   StrCpy $INSTDIR "$PROGRAMFILES64\NodeLaneRoom"
-  StrCpy $PowerShell "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
-  StrCpy $Operation "install"
-  ${GetParameters} $0
-  ClearErrors
-  ${GetOptions} $0 "/ROLLBACK" $1
-  ${IfNot} ${Errors}
-    StrCpy $Operation "rollback"
-  ${EndIf}
   ReadRegStr $CurrentVersion HKLM "${UNINSTALL_KEY}" "DisplayVersion"
 FunctionEnd
 
@@ -108,31 +96,11 @@ Function InstallOptions
   ${If} $CurrentVersion != ""
     StrCpy $1 "$(UpdateAction)"
   ${EndIf}
-  ${NSD_CreateRadioButton} 0 62u 100% 14u "$1"
-  Pop $UpdateRadio
-  ${NSD_Check} $UpdateRadio
-  StrCpy $RestoreRadio ""
-  IfFileExists "$PROGRAMFILES64\NodeLaneRoom.previous\Uninstall.exe" 0 no_restore
-    ${NSD_CreateRadioButton} 0 84u 100% 14u "$(RestoreAction)"
-    Pop $RestoreRadio
-    ${If} $Operation == "rollback"
-      ${NSD_Uncheck} $UpdateRadio
-      ${NSD_Check} $RestoreRadio
-    ${EndIf}
-  no_restore:
+  ${NSD_CreateLabel} 0 62u 100% 28u "$1"
+  Pop $0
   ${NSD_CreateLabel} 0 112u 100% 62u "$(Requirements)"
   Pop $0
   nsDialogs::Show
-FunctionEnd
-
-Function InstallOptionsLeave
-  StrCpy $Operation "install"
-  ${If} $RestoreRadio != ""
-    ${NSD_GetState} $RestoreRadio $0
-    ${If} $0 == ${BST_CHECKED}
-      StrCpy $Operation "rollback"
-    ${EndIf}
-  ${EndIf}
 FunctionEnd
 
 Section "NodeLane Room"
@@ -142,20 +110,16 @@ Section "NodeLane Room"
   SetOutPath "$PLUGINSDIR\payload"
   File /r "${PAYLOAD}\*"
   WriteUninstaller "$PLUGINSDIR\payload\Uninstall.exe"
-  StrCpy $Arguments "-Quiet"
+  StrCpy $Arguments ""
   ${GetParameters} $0
   ClearErrors
   ${GetOptions} $0 "/MANAGEDUPDATE" $1
   ${IfNot} ${Errors}
-    StrCpy $Arguments "$Arguments -ManagedUpdate"
-  ${EndIf}
-  ${If} $Operation == "rollback"
-    StrCpy $Arguments "$Arguments -Rollback"
+    StrCpy $Arguments "$Arguments --managed"
   ${EndIf}
   DetailPrint "$(InstallingDetail)"
-  ; The localized wizard reports failures; PowerShell details remain in the log.
-  ; Keep this UI and setup.ps1 as the player, including alternate-account UAC.
-  nsExec::ExecToLog '"$PowerShell" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\engine\setup.ps1" -SourceDir "$PLUGINSDIR\payload" $Arguments'
+  ; Capture the player's SID in the native helper before alternate-account UAC.
+  nsExec::ExecToLog '"$PLUGINSDIR\engine\nlroom-update.exe" setup --source "$PLUGINSDIR\payload" $Arguments'
   Pop $0
   ${If} $0 != 0
     MessageBox MB_ICONSTOP "$(InstallError)" /SD IDOK
@@ -172,7 +136,6 @@ Function un.onInit
   SetRegView 64
   !insertmacro MUI_UNGETLANGUAGE
   StrCpy $INSTDIR "$PROGRAMFILES64\NodeLaneRoom"
-  StrCpy $PowerShell "$WINDIR\SysNative\WindowsPowerShell\v1.0\powershell.exe"
   StrCpy $PurgeState ${BST_UNCHECKED}
   StrCpy $FinishText "$(DataRetained)"
 FunctionEnd
@@ -203,16 +166,13 @@ FunctionEnd
 Section "Uninstall"
   InitPluginsDir
   SetOutPath "$PLUGINSDIR"
-  File "${ENGINE}\uninstall.ps1"
-  File "${ENGINE}\tap.ps1"
-  SetOutPath "$PLUGINSDIR\tap"
-  File /r "${ENGINE}\tap\*"
-  StrCpy $Arguments "-Quiet"
+  File "${ENGINE}\nlroom-update.exe"
+  StrCpy $Arguments ""
   ${If} $PurgeState == ${BST_CHECKED}
-    StrCpy $Arguments "$Arguments -PurgeState"
+    StrCpy $Arguments "$Arguments --purge"
     StrCpy $FinishText "$(DataCleared)"
   ${EndIf}
-  nsExec::ExecToLog '"$PowerShell" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\uninstall.ps1" $Arguments'
+  nsExec::ExecToLog '"$PLUGINSDIR\nlroom-update.exe" remove $Arguments'
   Pop $0
   ${If} $0 != 0
     MessageBox MB_ICONSTOP "$(UninstallError)" /SD IDOK

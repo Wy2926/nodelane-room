@@ -1,5 +1,6 @@
 import { Account } from "./Account";
 import { t } from "../../i18n";
+import { defaultServer } from "../../native/api";
 import type { Actions } from "../../app/use-actions";
 export function Setup({ actions }: { actions: Actions }) {
   const { perform, busy } = actions;
@@ -13,7 +14,7 @@ export function Setup({ actions }: { actions: Actions }) {
           const data = new FormData(e.currentTarget);
           void perform(t("setup.initializingDevice"), {
             action: "init",
-            server: String(data.get("server")).trim(),
+            server: defaultServer,
             name: String(data.get("name")).trim(),
           });
         }}
@@ -27,19 +28,6 @@ export function Setup({ actions }: { actions: Actions }) {
             placeholder={t("setup.aNameYourFriendsWillRecognize")}
           />
         </label>
-        <details className="server-choice">
-          <summary>{t("setup.gamingServiceRoomNodelaneNet")}</summary>
-          <label>
-            {t("setup.controlServiceUrl")}
-            <input
-              name="server"
-              type="url"
-              required
-              defaultValue="https://room.nodelane.net"
-              maxLength={2048}
-            />
-          </label>
-        </details>
         <button className="primary" disabled={!!busy}>
           {t("setup.startYourJourney")}
         </button>

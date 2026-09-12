@@ -105,6 +105,9 @@ func TestPackageBoundaries(t *testing.T) {
 				if strings.HasPrefix(imp, "github.com/theupdateframework/go-tuf/") && pkg != "internal/update" {
 					t.Errorf("%s: TUF verification belongs to update", rel)
 				}
+				if imp == "github.com/Microsoft/go-winio" && pkg != "internal/platform" && pkg != "internal/lan" && pkg != "internal/update" {
+					t.Errorf("%s: Windows pipes and device handles belong to platform, LAN or native installation", rel)
+				}
 				if (pkg == "internal/model" || pkg == "internal/device") && !strings.HasPrefix(imp, module) && strings.Contains(strings.Split(imp, "/")[0], ".") {
 					t.Errorf("%s: shared data must not depend on third-party implementations: %s", rel, imp)
 				}

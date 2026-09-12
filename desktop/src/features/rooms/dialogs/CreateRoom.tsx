@@ -2,12 +2,10 @@ import { useState } from "react";
 import { t } from "../../../i18n";
 import { failure } from "../../../native/api";
 import type { Actions } from "../../../app/use-actions";
-import type { Dialog } from "./types";
 import type { Status, RoomResult, Failure, Game } from "../../../shared/model";
 import { Art } from "../../catalog/Artwork";
 
 export function CreateRoom({
-  dialog,
   actions,
   status,
   games = [],
@@ -15,7 +13,6 @@ export function CreateRoom({
   serviceError,
   onJoined,
 }: {
-  dialog: Extract<Dialog, { type: "create" }>;
   actions: Actions;
   status?: Status;
   games?: Game[];
@@ -23,12 +20,11 @@ export function CreateRoom({
   serviceError?: Failure;
   onJoined: () => void;
 }) {
-  const [selected, setSelected] = useState(dialog.game?.id || "");
+  const [selected, setSelected] = useState("");
   const available = games.filter((game) => game.enabled);
   const game =
     available.find((game) => game.id === selected) ||
-    available[0] ||
-    dialog.game;
+    available[0];
   const allowed =
     status?.room_creation?.allowed === true &&
     !actions.busy &&
@@ -78,7 +74,7 @@ export function CreateRoom({
           autoFocus
           value={game?.id || ""}
           onChange={(e) => setSelected(e.target.value)}
-          disabled={!allowed || !!actions.busy}
+          disabled={!allowed}
         >
           {available.map((game) => (
             <option value={game.id} key={game.id}>
@@ -105,7 +101,7 @@ export function CreateRoom({
           maxLength={120}
           required
           placeholder={t("createRoom.giveThisSessionAName")}
-          disabled={!allowed || !!actions.busy}
+          disabled={!allowed}
         />
       </label>
       {status?.room_creation?.reason && (
@@ -115,9 +111,7 @@ export function CreateRoom({
       )}
       <button
         className="primary full"
-        disabled={
-          !allowed || !game || !!actions.busy || !!serviceError || !!gamesError
-        }
+        disabled={!allowed || !game}
       >
         {t("createRoom.createAndConnect")}
       </button>
